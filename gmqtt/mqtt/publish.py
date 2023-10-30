@@ -1,0 +1,136 @@
+import struct
+from dataclasses import dataclass
+from typing import AsyncGenerator, Optional
+
+from gmqtt.mqtt.packet import FixedHeader, PacketType, parse_variable_byte
+from gmqtt.mqtt.properties import Properties, pack_properties, parse_properties
+from gmqtt.mqtt.utils import pack_fixed_header, pack_str16, read
+
+
+def pack_publish_packet(
+    mid: int,
+    topic: str,
+    payload: bytes,
+    qos: int,
+    retain: bool,
+    dup: bool,
+    properties: Optional[Properties],
+) -> bytes:
+    payload_length = 2 + len(topic) + len(payload)
+    properties_bytes = pack_properties(properties)
+    payload_length += len(properties_bytes)
+
+    if qos:
+        payload_length += 2
+
+    fixed_header = pack_fixed_header(
+        PacketType.PUBLISH,
+        flags=(dup & 1) << 3 | (qos << 1) | retain & 1,
+        length=payload_length,
+    )
+
+    packet_payload = bytearray()
+
+    packet_payload.extend(pack_str16(topic))
+
+    if qos:
+        packet_payload.extend(struct.pack("!H", mid))
+
+    packet_payload.extend(properties_bytes)
+
+    packet_payload.extend(payload)
+
+    return fixed_header + bytes(packet_payload)
+
+
+@dataclass(frozen=True)
+class PublishResult:
+    __slots__ = (
+        "packet_identifier",
+        "dup",
+        "qos",
+        "retain",
+        "payload",
+        "properties",
+        "topic",
+    )
+    dup: int
+    qos: int
+    retain: int
+
+    packet_identifier: Optional[int]
+    topic: str
+    payload: bytes
+
+    properties: Properties
+
+
+async def parse_publish_packet(
+    fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+) -> PublishResult:
+    dup = (fixed_header.flags & 0x8) >> 3
+    qos = (fixed_header.flags & 0x6) >> 1
+    retain = fixed_header.flags & 0x01
+
+    payload_length = fixed_header.length
+
+    topic_length, *_ = struct.unpack("!H", await read(stream, 2))
+    payload_length -= 2
+
+    topic, *_ = struct.unpack(f"!{topic_length}s", await read(stream, topic_length))
+    payload_length -= topic_length
+
+    packet_identifier: Optional[int] = None
+    if qos:
+        packet_identifier, *_ = struct.unpack("!H", await read(stream, 2))
+        payload_length -= topic_length
+
+    property_length, length = await parse_variable_byte(stream)
+    properties = await parse_properties(stream, property_length)
+    payload_length -= property_length + length
+
+    payload = await read(stream, payload_length)
+
+    return PublishResult(
+        dup=dup,
+        qos=qos,
+        retain=retain,
+        packet_identifier=packet_identifier,
+        topic=topic,
+        payload=payload,
+        properties=properties,
+    )
+
+
+@dataclass(frozen=True)
+class PubAckResult:
+    __slots__ = ("packet_identifier", "reason_code", "properties")
+
+    packet_identifier: int
+    reason_code: int
+    properties: Properties
+
+
+async def parse_puback_packet(
+    fixed_header: FixedHeader, payload: AsyncGenerator[bytes, None]
+) -> PubAckResult:
+    packet_identifier_msb, *_ = struct.unpack("!B", await anext(payload))
+    packet_identifier_lsb, *_ = struct.unpack("!B", await anext(payload))
+    reason_code, *_ = struct.unpack("!B", await anext(payload))
+
+    property_length, _ = await parse_variable_byte(payload)
+    properties = await parse_properties(payload, property_length)
+
+    return PubAckResult(
+        packet_identifier=(packet_identifier_msb << 8) | packet_identifier_lsb,
+        reason_code=reason_code,
+        properties=properties,
+    )
+
+
+def pack_puback_packet(packet_identifier: int, reason_code: int) -> bytes:
+    length = 4
+
+    return struct.pack(
+        "!BBHBB", PacketType.PUBACK << 4, length, packet_identifier, reason_code, 0
+    )
