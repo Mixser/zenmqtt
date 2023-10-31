@@ -5,4 +5,7 @@ async def build_async_generator(
     seq: Sequence[bytes] | bytes,
 ) -> AsyncGenerator[bytes, None]:
     for byte in seq:
-        yield byte
+        if isinstance(byte, bytes):
+            yield byte
+        elif isinstance(byte, int):
+            yield byte.to_bytes()
