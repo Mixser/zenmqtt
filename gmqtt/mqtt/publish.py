@@ -8,7 +8,7 @@ from gmqtt.mqtt.utils import pack_fixed_header, pack_str16, read
 
 
 def pack_publish_packet(
-    mid: int,
+    packet_identifier: int,
     topic: str,
     payload: bytes,
     qos: int,
@@ -16,7 +16,9 @@ def pack_publish_packet(
     dup: bool,
     properties: Optional[Properties],
 ) -> bytes:
-    payload_length = 2 + len(topic) + len(payload)
+    packed_topic = pack_str16(topic)
+
+    payload_length = len(packed_topic) + len(payload)
     properties_bytes = pack_properties(properties)
     payload_length += len(properties_bytes)
 
@@ -31,10 +33,10 @@ def pack_publish_packet(
 
     packet_payload = bytearray()
 
-    packet_payload.extend(pack_str16(topic))
+    packet_payload.extend(packed_topic)
 
     if qos:
-        packet_payload.extend(struct.pack("!H", mid))
+        packet_payload.extend(struct.pack("!H", packet_identifier))
 
     packet_payload.extend(properties_bytes)
 
@@ -83,7 +85,7 @@ async def parse_publish_packet(
     packet_identifier: Optional[int] = None
     if qos:
         packet_identifier, *_ = struct.unpack("!H", await read(stream, 2))
-        payload_length -= topic_length
+        payload_length -= 2
 
     property_length, length = await parse_variable_byte(stream)
     properties = await parse_properties(stream, property_length)
@@ -96,7 +98,7 @@ async def parse_publish_packet(
         qos=qos,
         retain=retain,
         packet_identifier=packet_identifier,
-        topic=topic,
+        topic=topic.decode(),
         payload=payload,
         properties=properties,
     )
@@ -114,15 +116,14 @@ class PubAckResult:
 async def parse_puback_packet(
     fixed_header: FixedHeader, payload: AsyncGenerator[bytes, None]
 ) -> PubAckResult:
-    packet_identifier_msb, *_ = struct.unpack("!B", await anext(payload))
-    packet_identifier_lsb, *_ = struct.unpack("!B", await anext(payload))
+    packet_identifier, *_ = struct.unpack("!H", await read(payload, 2))
     reason_code, *_ = struct.unpack("!B", await anext(payload))
 
     property_length, _ = await parse_variable_byte(payload)
     properties = await parse_properties(payload, property_length)
 
     return PubAckResult(
-        packet_identifier=(packet_identifier_msb << 8) | packet_identifier_lsb,
+        packet_identifier=packet_identifier,
         reason_code=reason_code,
         properties=properties,
     )
