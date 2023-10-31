@@ -53,7 +53,7 @@ def pack_subscription_packet(
     packet.extend(properties_bytes)
     packet.extend(payload)
 
-    return packet
+    return bytes(packet)
 
 
 async def parse_suback_packet(
