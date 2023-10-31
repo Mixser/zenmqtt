@@ -5,7 +5,7 @@ from gmqtt.connection import create_connection
 from gmqtt.mqtt.connect import ConnectionResult
 from gmqtt.mqtt.protocol import MQTTProtocol
 from gmqtt.mqtt.publish import PublishResult
-from gmqtt.mqtt.subscribe import SubscriptionResult
+from gmqtt.mqtt.subscribe import SubscribeResult, UnsubscribeResult
 
 ClientId = str
 ClientConfig = dict
@@ -31,7 +31,7 @@ class AsyncMessageIterator:
 
 class MQTTClient:
     def __init__(self, client_id: ClientId, config: Optional[ClientConfig] = None):
-        messages = asyncio.Queue(maxsize=50)
+        messages: asyncio.Queue[PublishResult | None] = asyncio.Queue(maxsize=50)
 
         self._protocol = MQTTProtocol(messages)
         self._queue = messages
@@ -64,12 +64,10 @@ class MQTTClient:
     async def publish(self, topic: Topic, message: Message) -> Optional[PublishResult]:
         return await self._protocol.publish(topic, message, qos=1)
 
-    async def subscribe(
-        self, topics: Sequence[Tuple[Topic, QOS]]
-    ) -> Optional[SubscriptionResult]:
+    async def subscribe(self, topics: Sequence[Tuple[Topic, QOS]]) -> SubscribeResult:
         return await self._protocol.subscribe(topics)
 
-    async def unsubscribe(self, topics: Sequence[Topic]) -> None:
+    async def unsubscribe(self, topics: Sequence[Topic]) -> UnsubscribeResult:
         return await self._protocol.unsubscribe(topics)
 
     @property
