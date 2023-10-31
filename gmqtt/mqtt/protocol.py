@@ -21,9 +21,12 @@ from gmqtt.mqtt.publish import (
     parse_publish_packet,
 )
 from gmqtt.mqtt.subscribe import (
-    SubscriptionResult,
+    SubscribeResult,
+    UnsubscribeResult,
     pack_subscription_packet,
+    pack_unsubscribe_packet,
     parse_suback_packet,
+    parse_unsubscribe_packet,
 )
 
 logger = getLogger(__name__)
@@ -85,7 +88,7 @@ class MQTTProtocol:
             elif header.packet_type == PacketType.SUBACK:
                 handler = self.handle_suback_packet
             elif header.packet_type == PacketType.UNSUBACK:
-                continue
+                handler = self.handle_unsuback_packet
             elif header.packet_type == PacketType.PINGRESP:
                 continue
             elif header.packet_type == PacketType.DISCONNECT:
@@ -207,7 +210,7 @@ class MQTTProtocol:
     ) -> None:
         pass
 
-    async def subscribe(self, topics: Sequence[Tuple[str, int]]) -> SubscriptionResult:
+    async def subscribe(self, topics: Sequence[Tuple[str, int]]) -> SubscribeResult:
         assert self._connection
 
         packet_identifier = 0xBEAF  # TODO: implement generator of identifiers
@@ -220,11 +223,27 @@ class MQTTProtocol:
         await self._packet_execution_result[packet_identifier]
         return self._packet_execution_result.pop(packet_identifier).result()
 
-    async def unsubscribe(self, topics: Sequence[str]) -> None:
-        pass
-
     async def handle_suback_packet(
         self, fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
     ) -> None:
         result = await parse_suback_packet(fixed_header, stream)
+        self._packet_execution_result[result.packet_identifier].set_result(result)
+
+    async def unsubscribe(self, topics: Sequence[str]) -> UnsubscribeResult:
+        assert self._connection
+        packet_identifier = 0xDEAD
+
+        self._packet_execution_result[packet_identifier] = asyncio.Future()
+
+        unsubscribe_packet = pack_unsubscribe_packet(packet_identifier, topics)
+
+        await self._connection.write(unsubscribe_packet)
+
+        await self._packet_execution_result[packet_identifier]
+        return self._packet_execution_result.pop(packet_identifier).result()
+
+    async def handle_unsuback_packet(
+        self, fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+    ) -> None:
+        result = await parse_unsubscribe_packet(fixed_header, stream)
         self._packet_execution_result[result.packet_identifier].set_result(result)
