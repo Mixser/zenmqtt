@@ -1,7 +1,7 @@
 import asyncio
 from asyncio import Task
 from logging import getLogger
-from typing import AsyncGenerator, Awaitable, Callable, Optional, Sequence, Tuple
+from typing import AsyncGenerator, Awaitable, Callable, Final, Optional, Sequence, Tuple
 
 from gmqtt.connection import MQTTConnection
 from gmqtt.mqtt.connect import (
@@ -31,15 +31,18 @@ from gmqtt.mqtt.subscribe import (
 
 logger = getLogger(__name__)
 
+BUFFER_SIZE: Final[int] = 1024
+READ_AT_MOST_BYTES: Final[int] = 128
 
-async def build_reader_generator(
+
+async def build_reader_stream(
     connection: MQTTConnection,
 ) -> AsyncGenerator[bytes, None]:
-    buffer: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=1024)
+    buffer: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=BUFFER_SIZE)
 
     async def _read_loop():
         try:
-            while bs := await connection.read(size=1):
+            while bs := await connection.read(size=READ_AT_MOST_BYTES):
                 await buffer.put(bs)
         except Exception as exc:
             logger.error("mqtt_protocol.stream_reader.error", exc_info=exc)
@@ -48,8 +51,9 @@ async def build_reader_generator(
 
     asyncio.create_task(_read_loop(), name="mqtt-protocol-buffered-reader")
 
-    while byte := await buffer.get():
-        yield byte
+    while bytes_list := await buffer.get():
+        for byte in bytes_list:
+            yield byte.to_bytes()
 
 
 class MQTTProtocol:
@@ -66,9 +70,9 @@ class MQTTProtocol:
     async def __read_loop__(self) -> None:
         assert self._connection
 
-        generator = build_reader_generator(self._connection)
+        stream = build_reader_stream(self._connection)
 
-        while header := await parse_fixed_header(generator):
+        while header := await parse_fixed_header(stream):
             handler: Callable[
                 [FixedHeader, AsyncGenerator[bytes, None]], Awaitable[None]
             ]
@@ -99,7 +103,7 @@ class MQTTProtocol:
                 raise ValueError(f"Invalid packet type: {header.packet_type}")
 
             try:
-                await handler(header, generator)
+                await handler(header, stream)
             except Exception as exc:
                 logger.error("mqtt_protocol.handle_incoming_packet.error", exc_info=exc)
 
