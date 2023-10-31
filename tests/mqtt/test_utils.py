@@ -3,7 +3,12 @@ from unittest.mock import ANY
 
 import pytest
 
-from gmqtt.mqtt.packet import FixedHeader, parse_fixed_header, parse_variable_byte, PacketType
+from gmqtt.mqtt.packet import (
+    FixedHeader,
+    PacketType,
+    parse_fixed_header,
+    parse_variable_byte,
+)
 from gmqtt.mqtt.utils import pack_fixed_header, pack_str16, pack_variable_byte_integer
 from tests.mqtt.utils import build_async_generator
 
@@ -31,12 +36,13 @@ def test_pack_str16(value: str):
         value.encode(),
     )
 
+
 @pytest.mark.parametrize(
     "fixed_header",
     (
         FixedHeader(PacketType.CONNECT, flags=0x1, length=23),
         FixedHeader(PacketType.CONNACK, flags=0xB, length=99),
-    )
+    ),
 )
 async def test_pack_fixed_header(fixed_header: FixedHeader):
     assert (
