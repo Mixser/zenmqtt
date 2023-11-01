@@ -1,7 +1,16 @@
 import itertools
 import struct
 from dataclasses import dataclass
-from typing import AsyncGenerator, Final, Optional, Union
+from typing import (
+    AsyncGenerator,
+    Final,
+    Optional,
+    Sequence,
+    Tuple,
+    TypedDict,
+    Union,
+    cast,
+)
 
 from gmqtt.mqtt.packet import FixedHeader, PacketType, parse_variable_byte_integer
 from gmqtt.mqtt.properties import Properties, pack_properties, parse_properties
@@ -96,8 +105,15 @@ def pack_connect_packet(
     return bytes(packet)
 
 
-def pack_disconnect_packet(reason: int) -> bytes:
-    properties_bytes = pack_properties({})
+class DisconnectProperties(TypedDict, total=False):
+    session_expiry_interval: int
+    server_reference: str
+    reason_string: str
+    user_property: Sequence[Tuple[str, str]]
+
+
+def pack_disconnect_packet(reason: int, properties: DisconnectProperties) -> bytes:
+    properties_bytes = pack_properties(cast(Properties, properties))
     payload_length = 1 + len(properties_bytes)
     payload = struct.pack("!B", reason) + properties_bytes
 
@@ -109,7 +125,7 @@ class DisconnectResult:
     __slots__ = ("reason_code", "properties")
 
     reason_code: int
-    properties: Properties
+    properties: DisconnectProperties
 
 
 async def parse_disconnect_packet(
