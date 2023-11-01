@@ -28,6 +28,8 @@ from gmqtt.mqtt.publish import (
 )
 from gmqtt.mqtt.subscribe import (
     SubscribeResult,
+    SubscriptionProperties,
+    UnsubscribeProperties,
     UnsubscribeResult,
     pack_subscription_packet,
     pack_unsubscribe_packet,
@@ -289,13 +291,21 @@ class MQTTProtocol:
         # TODO: here we need to properly implement QOS2 flow
         # Discard stored state
 
-    async def subscribe(self, topics: Sequence[Tuple[str, int]]) -> SubscribeResult:
+    async def subscribe(
+        self,
+        topics: Sequence[Tuple[str, int]],
+        properties: Optional[SubscriptionProperties] = None,
+    ) -> SubscribeResult:
         assert self._connection
+
+        properties = properties or {}
 
         packet_identifier = 0xBEAF  # TODO: implement generator of identifiers
         self._command_packet_futures[packet_identifier] = asyncio.Future()
 
-        subscribe_packet = pack_subscription_packet(packet_identifier, topics)
+        subscribe_packet = pack_subscription_packet(
+            packet_identifier, topics, properties
+        )
 
         await self._connection.write(subscribe_packet)
 
@@ -308,13 +318,20 @@ class MQTTProtocol:
         result = await parse_suback_packet(fixed_header, stream)
         self._command_packet_futures[result.packet_identifier].set_result(result)
 
-    async def unsubscribe(self, topics: Sequence[str]) -> UnsubscribeResult:
+    async def unsubscribe(
+        self, topics: Sequence[str], properties: Optional[UnsubscribeProperties] = None
+    ) -> UnsubscribeResult:
         assert self._connection
+
+        properties = properties or {}
+
         packet_identifier = 0xDEAD
 
         self._command_packet_futures[packet_identifier] = asyncio.Future()
 
-        unsubscribe_packet = pack_unsubscribe_packet(packet_identifier, topics)
+        unsubscribe_packet = pack_unsubscribe_packet(
+            packet_identifier, topics, properties
+        )
 
         await self._connection.write(unsubscribe_packet)
 
