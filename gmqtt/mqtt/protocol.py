@@ -18,6 +18,7 @@ from gmqtt.mqtt.publish import (
     PublishResult,
     pack_puback_packet,
     pack_publish_packet,
+    pack_pubrel_packet,
     parse_puback_packet,
     parse_publish_packet,
     parse_pubrec_packet,
@@ -251,9 +252,14 @@ class MQTTProtocol:
     async def handle_pubrec_packet(
         self, fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
     ) -> None:
-        _ = await parse_pubrec_packet(fixed_header, stream)
-        # TODO: here we need proceed with sending of `pubrel` packet
-        raise NotImplementedError
+        assert self._connection
+
+        pubrec_packet = await parse_pubrec_packet(fixed_header, stream)
+        # TODO: here we need to properly implement QOS2 flow
+
+        await self._connection.write(
+            pack_pubrel_packet(pubrec_packet.packet_identifier, 0x0, {})
+        )
 
     async def subscribe(self, topics: Sequence[Tuple[str, int]]) -> SubscribeResult:
         assert self._connection

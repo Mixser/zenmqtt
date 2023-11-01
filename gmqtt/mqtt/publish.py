@@ -1,3 +1,4 @@
+import itertools
 import struct
 from dataclasses import dataclass
 from typing import AsyncGenerator, Optional
@@ -178,5 +179,57 @@ def pack_pubrec_packet(
     payload.extend(struct.pack("!HB", packet_identifier, reason_code))
 
     payload.extend(properties_payload)
+
+    return bytes(payload)
+
+
+@dataclass(frozen=True)
+class PubRelResult:
+    packet_identifier: int
+    reason_code: int
+    properties: Properties
+
+
+async def parse_pubrel_packet(
+    fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+) -> PubRelResult:
+    packet_identifier, *_ = struct.unpack("!H", await read(stream, 2))
+
+    reason_code = property_length = size = 0
+    properties = {}
+
+    if fixed_header.length > 2:
+        reason_code, *_ = struct.unpack("!B", await anext(stream))
+        property_length, size = await parse_variable_byte(stream)
+        properties = await parse_properties(stream, property_length)
+
+    assert fixed_header.length == 2 + bool(reason_code) + size + property_length
+
+    return PubRelResult(
+        packet_identifier=packet_identifier,
+        reason_code=reason_code,
+        properties=properties,
+    )
+
+
+def pack_pubrel_packet(
+    packet_identifier: int, reason_code: int, properties: Properties
+) -> bytes:
+    payload = bytearray()
+
+    payload.append(PacketType.PUBREL << 4 | 0x2)
+
+    length = 2
+
+    variable_header_payload = bytearray(struct.pack("!H", packet_identifier))
+
+    if reason_code != 0 or properties:
+        properties_payload = pack_properties(properties)
+        length += 1 + len(properties_payload)
+        variable_header_payload.extend(
+            itertools.chain(struct.pack("!B", reason_code), properties_payload)
+        )
+
+    payload.extend(itertools.chain(struct.pack("!B", length), variable_header_payload))
 
     return bytes(payload)
