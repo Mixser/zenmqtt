@@ -1,3 +1,4 @@
+import itertools
 import struct
 from dataclasses import dataclass
 from typing import AsyncGenerator, Final, Optional, Union
@@ -50,13 +51,12 @@ def pack_connect_packet(
     clean_session: bool,
     keepalive: bool,
 ) -> bytes:
-    packet = bytearray()
+    packet = bytearray([PacketType.CONNECT << 4 | 0x00])
+
     connect_flags = 0
 
     if clean_session:
         connect_flags |= 0x02
-
-    packet.append(PacketType.CONNECT << 4 | 0x00)
 
     payload_length = 2 + 4 + 1 + 1 + 2 + 2 + len(client_id)
 
@@ -78,13 +78,14 @@ def pack_connect_packet(
 
     payload_length += len(properties_bytes)
 
-    packet.extend(pack_variable_byte_integer(payload_length))
-
-    packet.extend(struct.pack("!H4sBBH", 4, b"MQTT", 5, connect_flags, keepalive))
-
-    packet.extend(properties_bytes)
-
-    packet.extend(pack_str16(client_id))
+    packet.extend(
+        itertools.chain(
+            pack_variable_byte_integer(payload_length),
+            struct.pack("!H4sBBH", 4, b"MQTT", 5, connect_flags, keepalive),
+            properties_bytes,
+            pack_str16(client_id),
+        )
+    )
 
     if username:
         packet.extend(pack_str16(username))
