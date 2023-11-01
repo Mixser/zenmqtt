@@ -16,10 +16,16 @@ class StreamWriter(Protocol):
     def write(self, payload: bytes) -> None:
         ...
 
+    def write_eof(self) -> None:
+        ...
+
     def is_closing(self) -> bool:
         ...
 
     def close(self) -> None:
+        ...
+
+    async def wait_closed(self) -> None:
         ...
 
 
@@ -33,16 +39,13 @@ class TCPConnectionTransport(MQTTConnectionTransport):
 
     async def close(self) -> None:
         self._reader.feed_eof()
+        self._writer.write_eof()
         self._writer.close()
 
+        await self._writer.wait_closed()
+
     async def read(self, size: int = -1) -> bytes:
-        bs = await self._reader.read(size)
-
-        if not bs or self.is_closing():
-            await self.close()
-            raise ConnectionResetError()
-
-        return bs
+        return await self._reader.read(size)
 
     def is_closing(self) -> bool:
         return self._writer.is_closing()

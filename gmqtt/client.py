@@ -26,7 +26,12 @@ class AsyncMessageIterator:
         return self
 
     async def __anext__(self):
-        return await self._queue.get()
+        value = await self._queue.get()
+
+        if value is None:
+            raise StopAsyncIteration
+
+        return value
 
 
 class MQTTClient:
