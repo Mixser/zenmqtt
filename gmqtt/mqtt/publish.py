@@ -1,7 +1,7 @@
 import itertools
 import struct
 from dataclasses import dataclass
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, Tuple
 
 from gmqtt.mqtt.packet import FixedHeader, PacketType, parse_variable_byte
 from gmqtt.mqtt.properties import Properties, pack_properties, parse_properties
@@ -115,13 +115,11 @@ class PubAckResult:
 
 
 async def parse_puback_packet(
-    fixed_header: FixedHeader, payload: AsyncGenerator[bytes, None]
+    fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
 ) -> PubAckResult:
-    packet_identifier, *_ = struct.unpack("!H", await read(payload, 2))
-    reason_code, *_ = struct.unpack("!B", await anext(payload))
-
-    property_length, _ = await parse_variable_byte(payload)
-    properties = await parse_properties(payload, property_length)
+    packet_identifier, reason_code, properties = await _parse_publish_response_packet(
+        fixed_header, stream
+    )
 
     return PubAckResult(
         packet_identifier=packet_identifier,
@@ -130,12 +128,22 @@ async def parse_puback_packet(
     )
 
 
-def pack_puback_packet(packet_identifier: int, reason_code: int) -> bytes:
-    length = 4
+def pack_puback_packet(
+    packet_identifier: int, reason_code: int, properties: Properties
+) -> bytes:
+    payload = bytearray()
 
-    return struct.pack(
-        "!BBHBB", PacketType.PUBACK << 4, length, packet_identifier, reason_code, 0
+    payload.append(PacketType.PUBACK << 4)
+
+    packet_length, variable_header_payload = _pack_publish_response_variable_header(
+        packet_identifier, reason_code, properties
     )
+
+    payload.extend(
+        itertools.chain(struct.pack("!B", packet_length), variable_header_payload)
+    )
+
+    return bytes(payload)
 
 
 @dataclass(frozen=True)
@@ -148,13 +156,9 @@ class PubRecResult:
 async def parse_pubrec_packet(
     fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
 ) -> PubRecResult:
-    packet_identifier, *_ = struct.unpack("!H", await read(stream, 2))
-    reason_code, *_ = struct.unpack("!B", await anext(stream))
-
-    property_length, size = await parse_variable_byte(stream)
-    properties = await parse_properties(stream, property_length)
-
-    assert fixed_header.length == 2 + 1 + size + property_length
+    packet_identifier, reason_code, properties = await _parse_publish_response_packet(
+        fixed_header, stream
+    )
 
     return PubRecResult(
         packet_identifier=packet_identifier,
@@ -166,19 +170,15 @@ async def parse_pubrec_packet(
 def pack_pubrec_packet(
     packet_identifier: int, reason_code: int, properties: Properties
 ) -> bytes:
-    payload = bytearray()
+    payload = bytearray([PacketType.PUBREC << 4])
 
-    payload.append(PacketType.PUBREC << 4)
+    packet_length, variable_header_payload = _pack_publish_response_variable_header(
+        packet_identifier, reason_code, properties
+    )
 
-    properties_payload = pack_properties(properties)
-
-    length = 2 + 1 + len(properties_payload)
-
-    payload.append(length)
-
-    payload.extend(struct.pack("!HB", packet_identifier, reason_code))
-
-    payload.extend(properties_payload)
+    payload.extend(
+        itertools.chain(struct.pack("!B", packet_length), variable_header_payload)
+    )
 
     return bytes(payload)
 
@@ -193,17 +193,9 @@ class PubRelResult:
 async def parse_pubrel_packet(
     fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
 ) -> PubRelResult:
-    packet_identifier, *_ = struct.unpack("!H", await read(stream, 2))
-
-    reason_code = property_length = size = 0
-    properties = {}
-
-    if fixed_header.length > 2:
-        reason_code, *_ = struct.unpack("!B", await anext(stream))
-        property_length, size = await parse_variable_byte(stream)
-        properties = await parse_properties(stream, property_length)
-
-    assert fixed_header.length == 2 + bool(reason_code) + size + property_length
+    packet_identifier, reason_code, properties = await _parse_publish_response_packet(
+        fixed_header, stream
+    )
 
     return PubRelResult(
         packet_identifier=packet_identifier,
@@ -215,21 +207,93 @@ async def parse_pubrel_packet(
 def pack_pubrel_packet(
     packet_identifier: int, reason_code: int, properties: Properties
 ) -> bytes:
-    payload = bytearray()
+    payload = bytearray([PacketType.PUBREL << 4 | 0x2])
 
-    payload.append(PacketType.PUBREL << 4 | 0x2)
+    packet_length, variable_header_payload = _pack_publish_response_variable_header(
+        packet_identifier, reason_code, properties
+    )
 
+    payload.extend(
+        itertools.chain(struct.pack("!B", packet_length), variable_header_payload)
+    )
+
+    return bytes(payload)
+
+
+@dataclass(frozen=True)
+class PubCompResult:
+    packet_identifier: int
+    reason_code: int
+    properties: Properties
+
+
+async def parse_pubcomp_packet(
+    fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+) -> PubCompResult:
+    packet_identifier, reason_code, properties = await _parse_publish_response_packet(
+        fixed_header, stream
+    )
+
+    return PubCompResult(
+        packet_identifier=packet_identifier,
+        reason_code=reason_code,
+        properties=properties,
+    )
+
+
+def pack_pubcomp_packet(
+    packet_identifier: int, reason_code: int, properties: Properties
+) -> bytes:
+    payload = bytearray([PacketType.PUBCOMP << 4])
+
+    packet_length, variable_header_payload = _pack_publish_response_variable_header(
+        packet_identifier, reason_code, properties
+    )
+
+    payload.extend(
+        itertools.chain(struct.pack("!B", packet_length), variable_header_payload)
+    )
+
+    return bytes(payload)
+
+
+async def _parse_publish_response_packet(
+    fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+) -> Tuple[int, int, Properties]:
+    packet_identifier, *_ = struct.unpack("!H", await read(stream, 2))
+
+    reason_code = property_length = size = 0
+    properties = {}
+
+    if fixed_header.length > 2:
+        reason_code, *_ = struct.unpack("!B", await anext(stream))
+
+    if fixed_header.length > 3:
+        property_length, size = await parse_variable_byte(stream)
+        properties = await parse_properties(stream, property_length)
+
+    assert fixed_header.length == 2 + bool(reason_code) + size + property_length
+
+    return packet_identifier, reason_code, properties
+
+
+def _pack_publish_response_variable_header(
+    packet_identifier: int, reason_code: int, properties: Properties
+) -> Tuple[int, bytes]:
     length = 2
 
     variable_header_payload = bytearray(struct.pack("!H", packet_identifier))
 
-    if reason_code != 0 or properties:
-        properties_payload = pack_properties(properties)
+    if reason_code or properties:
+        properties_payload = b""
+
+        if properties:
+            properties_payload = pack_properties(properties)
+
         length += 1 + len(properties_payload)
+
         variable_header_payload.extend(
             itertools.chain(struct.pack("!B", reason_code), properties_payload)
         )
 
-    payload.extend(itertools.chain(struct.pack("!B", length), variable_header_payload))
-
-    return bytes(payload)
+    return length, bytes(variable_header_payload)

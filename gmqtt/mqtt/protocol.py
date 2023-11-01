@@ -237,7 +237,7 @@ class MQTTProtocol:
             assert publish_result.packet_identifier
 
             await self._connection.write(
-                pack_puback_packet(publish_result.packet_identifier, 0)
+                pack_puback_packet(publish_result.packet_identifier, 0, {})
             )
 
     async def handle_puback_packet(

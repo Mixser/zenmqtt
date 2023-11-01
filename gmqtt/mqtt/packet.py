@@ -41,6 +41,9 @@ class PacketType(IntEnum):
 # +-------------------------------------------------------+
 
 
+FIXED_HEADER_SIZE: Final[int] = 1
+
+
 @dataclass(frozen=True)
 class FixedHeader:
     __slots__ = ("packet_type", "flags", "length")
