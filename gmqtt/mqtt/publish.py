@@ -62,16 +62,12 @@ def pack_publish_packet(
         length=payload_length,
     )
 
-    packet_payload = bytearray()
-
-    packet_payload.extend(packed_topic)
+    packet_payload = bytearray(packed_topic)
 
     if qos:
         packet_payload.extend(struct.pack("!H", packet_identifier))
 
-    packet_payload.extend(properties_bytes)
-
-    packet_payload.extend(payload)
+    packet_payload.extend(itertools.chain(properties_bytes, payload))
 
     return fixed_header + bytes(packet_payload)
 

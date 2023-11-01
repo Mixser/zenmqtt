@@ -2,10 +2,15 @@ import asyncio
 from typing import Optional, Sequence, Tuple
 
 from gmqtt.connection import create_connection
-from gmqtt.mqtt.connect import ConnectionResult
+from gmqtt.mqtt.connect import ConnectionResult, ConnectProperties
 from gmqtt.mqtt.protocol import MQTTProtocol
 from gmqtt.mqtt.publish import PublishProperties, PublishResult
-from gmqtt.mqtt.subscribe import SubscribeResult, UnsubscribeResult
+from gmqtt.mqtt.subscribe import (
+    SubscribeResult,
+    SubscriptionProperties,
+    UnsubscribeProperties,
+    UnsubscribeResult,
+)
 
 ClientId = str
 ClientConfig = dict
@@ -51,16 +56,13 @@ class MQTTClient:
         self._password = password
 
     async def connect(
-        self,
-        url: str,
+        self, url: str, properties: Optional[ConnectProperties] = None
     ) -> ConnectionResult:
         connection = await create_connection(url)
         self._protocol.set_connection(connection)
 
         return await self._protocol.authorize(
-            self.client_id,
-            self._username,
-            self._password,
+            self.client_id, self._username, self._password, properties
         )
 
     async def disconnect(self):
@@ -78,11 +80,21 @@ class MQTTClient:
             topic, message, qos=qos, retain=retain, properties=properties
         )
 
-    async def subscribe(self, topics: Sequence[Tuple[Topic, QOS]]) -> SubscribeResult:
-        return await self._protocol.subscribe(topics)
+    async def subscribe(
+        self,
+        topics: Sequence[Tuple[Topic, QOS]],
+        properties: Optional[SubscriptionProperties] = None,
+    ) -> SubscribeResult:
+        return await self._protocol.subscribe(topics, properties)
 
-    async def unsubscribe(self, topics: Sequence[Topic]) -> UnsubscribeResult:
-        return await self._protocol.unsubscribe(topics)
+    async def unsubscribe(
+        self,
+        topics: Sequence[Topic],
+        properties: Optional[UnsubscribeProperties] = None,
+    ) -> UnsubscribeResult:
+        properties = properties or {}
+
+        return await self._protocol.unsubscribe(topics, properties)
 
     @property
     def messages(self):
