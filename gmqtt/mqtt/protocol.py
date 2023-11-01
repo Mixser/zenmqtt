@@ -7,6 +7,7 @@ from typing import AsyncGenerator, Awaitable, Callable, Final, Optional, Sequenc
 from gmqtt.connection import MQTTConnection
 from gmqtt.mqtt.connect import (
     ConnectionResult,
+    ConnectProperties,
     DisconnectProperties,
     pack_connect_packet,
     pack_disconnect_packet,
@@ -142,11 +143,19 @@ class MQTTProtocol:
         )
 
     async def authorize(
-        self, client_id: str, username: Optional[str], password: Optional[str]
+        self,
+        client_id: str,
+        username: Optional[str],
+        password: Optional[str],
+        properties: Optional[ConnectProperties] = None,
     ) -> ConnectionResult:
         assert self._connection
 
-        login_packet = pack_connect_packet(client_id, username, password, True, True)
+        properties = properties or {}
+
+        login_packet = pack_connect_packet(
+            client_id, username, password, True, True, properties=properties
+        )
 
         await self._connection.write(login_packet)
 
@@ -175,9 +184,7 @@ class MQTTProtocol:
 
         properties = properties or {}
 
-        await self._connection.write(
-            pack_disconnect_packet(reason, properties)
-        )
+        await self._connection.write(pack_disconnect_packet(reason, properties))
 
         await self._connection.disconnect()
 

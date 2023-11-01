@@ -28,7 +28,8 @@ async def main():
     #     lambda: asyncio.ensure_future(client.disconnect())
     # )
 
-    await client.connect("tcp://mqtt.flespi.io:1883")
+    result = await client.connect("tcp://mqtt.flespi.io:1883")
+    print(result)
 
     result = await client.publish(
         "mitu/test/awesome",
