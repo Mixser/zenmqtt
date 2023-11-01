@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import signal
 from typing import Final
 
 from gmqtt.client import MQTTClient
@@ -12,21 +13,34 @@ FLESPI_TOKEN: Final[str] = "X6RXo4dJubdWmT3OfAElnWscaMy7kZW5TDS7wTGQVIA5puKvUcE6
 
 
 async def main():
-    client = MQTTClient("mitu-gmqtt-v2")
+    client = MQTTClient("mitu-gmqtt-v3")
     
     client.authorize(FLESPI_TOKEN, None)
+
+    loop = asyncio.get_running_loop()
+
+    loop.add_signal_handler(signal.SIGINT, lambda: asyncio.ensure_future(client.disconnect()))
+
+
+    # loop.call_at(
+    #     loop.time() + 5,
+    #     lambda: asyncio.ensure_future(client.disconnect())
+    # )
     
     await client.connect("tcp://mqtt.flespi.io:1883")
 
     result = await client.publish("mitu/test", b"Hello, world!!!!")
+    print(result)
 
-    await client.subscribe([("mitu/test/awesome", 0)])
+    subscribe_result = await client.subscribe([("mitu/test/awesome", 1)])
+    print(subscribe_result)
+
+    await client.publish("mitu/test/awesome", b"payload")
 
     async for message in client.messages:
-        print(message)
+        await client.publish("mitu/test/awesome", b"payload")
 
-    await client.disconnect()
-
+    print("Done")
 
 if __name__ == "__main__":
     loop = asyncio.new_event_loop()
