@@ -42,7 +42,7 @@ pytestmark = pytest.mark.asyncio
             True,
             False,
             {},
-            b"\x100\x00\x04MQTT\x05\xc2\x00\x00\x00\x00\tclient-id\x00\x08username\x00\x08password",
+            b"\x10\x2a\x00\x04MQTT\x05\xc2\x00\x00\x00\x00\tclient-id\x00\x08username\x00\x08password",
         ),
         (
             "client-id",
@@ -51,7 +51,7 @@ pytestmark = pytest.mark.asyncio
             True,
             True,
             {},
-            b"\x100\x00\x04MQTT\x05\xc2\x00\x01\x00\x00\tclient-id\x00\x08username\x00\x08password",
+            b"\x10\x2a\x00\x04MQTT\x05\xc2\x00\x01\x00\x00\tclient-id\x00\x08username\x00\x08password",
         ),
         (
             "client-id",

@@ -82,13 +82,17 @@ def pack_connect_packet(
 
     payload_length = 2 + 4 + 1 + 1 + 2 + 2 + len(client_id)
 
+    username_bytes = password_bytes = b""
+
     if username:
-        payload_length += 2 + len(username)
         connect_flags |= 0x80
+        username_bytes = pack_str16(username)
+        payload_length += len(username_bytes)
 
         if password:
             connect_flags |= 0x40
-            payload_length += 2 * len(password)
+            password_bytes = pack_str16(password)
+            payload_length += len(password_bytes)
 
     properties_bytes = pack_properties(cast(Properties, properties))
 
@@ -100,14 +104,10 @@ def pack_connect_packet(
             struct.pack("!H4sBBH", 4, b"MQTT", 5, connect_flags, keepalive),
             properties_bytes,
             pack_str16(client_id),
+            username_bytes,
+            password_bytes,
         )
     )
-
-    if username:
-        packet.extend(pack_str16(username))
-
-        if password:
-            packet.extend(pack_str16(password))
 
     return bytes(packet)
 
