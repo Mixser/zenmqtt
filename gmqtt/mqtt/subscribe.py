@@ -1,10 +1,25 @@
+import itertools
 import struct
 from dataclasses import dataclass
-from typing import AsyncGenerator, Sequence, Tuple, Type, TypeVar
+from typing import AsyncGenerator, Sequence, Tuple, TypedDict, cast
 
 from gmqtt.mqtt.packet import FixedHeader, PacketType, parse_variable_byte_integer
 from gmqtt.mqtt.properties import Properties, pack_properties, parse_properties
 from gmqtt.mqtt.utils import pack_str16, pack_variable_byte_integer, read
+
+
+class SubscriptionProperties(TypedDict, total=False):
+    subscription_identifier: int
+    user_property: Sequence[Tuple[str, str]]
+
+
+class SubackProperties(TypedDict, total=False):
+    reason_string: str
+    user_property: Sequence[Tuple[str, str]]
+
+
+class UnsubscribeProperties(TypedDict, total=False):
+    user_property: Sequence[Tuple[str, str]]
 
 
 @dataclass(frozen=True)
@@ -12,7 +27,7 @@ class SubscribeResult:
     __slots__ = ("packet_identifier", "properties", "reason_codes")
 
     packet_identifier: int
-    properties: Properties
+    properties: SubackProperties
     reason_codes: Sequence[int]
 
 
@@ -21,37 +36,37 @@ class UnsubscribeResult:
     __slots__ = ("packet_identifier", "properties", "reason_codes")
 
     packet_identifier: int
-    properties: Properties
+    properties: UnsubscribeProperties
     reason_codes: Sequence[int]
 
 
 def pack_subscription_packet(
-    packet_identifier: int, topics: Sequence[Tuple[str, int]]
+    packet_identifier: int,
+    topics: Sequence[Tuple[str, int]],
+    properties: SubscriptionProperties,
 ) -> bytes:
-    packet_length = 2
+    length = 2
 
-    payload = bytearray()
+    topics_bytes = bytearray()
 
     for topic, qos in topics:
-        packet_length += 2 + len(topic) + 1
+        topics_bytes.extend(itertools.chain(pack_str16(topic), struct.pack("!B", qos)))
 
-        payload.extend(pack_str16(topic))
+    length += len(topics_bytes)
 
-        payload.append(qos)
+    properties_bytes = pack_properties(cast(Properties, properties))
+    length += len(properties_bytes)
 
-    properties_bytes = pack_properties({})
-    packet_length += len(properties_bytes)
+    packet = bytearray([(PacketType.SUBSCRIBE << 4) | 0x2])
 
-    packet = bytearray()
-
-    packet.append((PacketType.SUBSCRIBE << 4) | 0x2)
-
-    packet.extend(pack_variable_byte_integer(packet_length))
-
-    packet.extend(struct.pack("!H", packet_identifier))
-
-    packet.extend(properties_bytes)
-    packet.extend(payload)
+    packet.extend(
+        itertools.chain(
+            pack_variable_byte_integer(length),
+            struct.pack("!H", packet_identifier),
+            properties_bytes,
+            topics_bytes,
+        )
+    )
 
     return bytes(packet)
 
@@ -59,50 +74,66 @@ def pack_subscription_packet(
 async def parse_suback_packet(
     fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
 ) -> SubscribeResult:
-    return await _parse_packet(SubscribeResult, fixed_header, stream)
+    packet_identifier, properties, reason_codes = await _parse_packet(
+        fixed_header, stream
+    )
+
+    return SubscribeResult(
+        packet_identifier=packet_identifier,
+        properties=cast(SubackProperties, properties),
+        reason_codes=reason_codes,
+    )
 
 
-def pack_unsubscribe_packet(packet_identifier: int, topics: Sequence[str]) -> bytes:
+def pack_unsubscribe_packet(
+    packet_identifier: int, topics: Sequence[str], properties: UnsubscribeProperties
+) -> bytes:
     length = 2
 
+    topic_bytes = bytearray()
     for topic in topics:
-        length += 2 + len(topic)
+        topic_bytes.extend(pack_str16(topic))
 
-    properties = pack_properties({})
-    length += len(properties)
+    length += len(topic_bytes)
 
-    payload = bytearray()
+    properties_bytes = pack_properties(cast(Properties, properties))
+    length += len(properties_bytes)
 
-    payload.append((PacketType.UNSUBSCRIBE << 4) | 0x2)
+    packet = bytearray([(PacketType.UNSUBSCRIBE << 4) | 0x2])
 
-    payload.extend(pack_variable_byte_integer(length))
+    packet.extend(
+        itertools.chain(
+            pack_variable_byte_integer(length),
+            struct.pack("!H", packet_identifier),
+            properties_bytes,
+            topic_bytes,
+        )
+    )
 
-    payload.extend(struct.pack("!H", packet_identifier))
-
-    payload.extend(properties)
-
-    for topic in topics:
-        payload.extend(pack_str16(topic))
-
-    return bytes(payload)
+    return bytes(packet)
 
 
 async def parse_unsubscribe_packet(
     fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
 ) -> UnsubscribeResult:
-    return await _parse_packet(UnsubscribeResult, fixed_header, stream)
+    packet_identifier, properties, reason_codes = await _parse_packet(
+        fixed_header, stream
+    )
 
-
-T = TypeVar("T", SubscribeResult, UnsubscribeResult)
+    return UnsubscribeResult(
+        packet_identifier=packet_identifier,
+        properties=cast(UnsubscribeProperties, properties),
+        reason_codes=reason_codes,
+    )
 
 
 async def _parse_packet(
-    result_class: Type[T],
     fixed_header: FixedHeader,
     stream: AsyncGenerator[bytes, None],
-) -> T:
+) -> Tuple[int, Properties, Sequence[int]]:
     packet_identifier, *_ = struct.unpack("!H", await read(stream, 2))
     property_length, length = await parse_variable_byte_integer(stream)
+
     properties = await parse_properties(stream, property_length)
 
     payload_length = fixed_header.length - length - property_length - 2
@@ -112,8 +143,8 @@ async def _parse_packet(
         reason_code, *_ = struct.unpack("!B", await anext(stream))
         reason_codes.append(reason_code)
 
-    return result_class(
-        packet_identifier=packet_identifier,
-        properties=properties,
-        reason_codes=reason_codes,
+    return (
+        packet_identifier,
+        properties,
+        reason_codes,
     )

@@ -21,6 +21,18 @@ pytestmark = pytest.mark.asyncio
             b"\x90\x04\xbe\xaf\x00\x01",
             SubscribeResult(packet_identifier=48815, properties={}, reason_codes=[1]),
         ),
+        (
+            b"\x90\x13\xbe\xaf\x0F\x26\x00\x05field\x00\x05value\x00",
+            SubscribeResult(
+                packet_identifier=0xBEAF,
+                properties={
+                    "user_property": [
+                        ("field", "value"),
+                    ]
+                },
+                reason_codes=[0],
+            ),
+        ),
     ),
 )
 async def test_parse_suback_packet(input, expected_result):
@@ -51,13 +63,14 @@ async def test_parse_unsubscribe_packet(input, expected_result):
 
 
 @pytest.mark.parametrize(
-    "packet_identifier, topics, expected_result",
+    "packet_identifier, topics, properties, expected_result",
     (
         (
             1,
             [
                 ("mitu/test", 0),
             ],
+            {},
             b"\x82\x0f\x00\x01\x00\x00\tmitu/test\x00",
         ),
         (
@@ -65,36 +78,48 @@ async def test_parse_unsubscribe_packet(input, expected_result):
             [
                 ("mitu/test", 1),
             ],
-            b"\x82\x0f\xde\xad\x00\x00\tmitu/test\x01",
+            {"user_property": [("field", "value")]},
+            b"\x82\x1e\xde\xad\x0f\x26\x00\x05field\x00\x05value\x00\tmitu/test\x01",
         ),
         (
             0xBEAF,
             [("mitu/test", 1), ("niel/test", 2)],
-            b"\x82\x1b\xbe\xaf\x00\x00\tmitu/test\x01\x00\tniel/test\x02",
+            {"user_property": [("field", "value")]},
+            b"\x82*\xbe\xaf\x0f\x26\x00\x05field\x00\x05value\x00\tmitu/test\x01\x00\tniel/test\x02",
         ),
     ),
 )
-def test_pack_subscribe_packet(packet_identifier, topics, expected_result):
-    assert pack_subscription_packet(packet_identifier, topics) == expected_result
+def test_pack_subscribe_packet(packet_identifier, topics, properties, expected_result):
+    assert (
+        pack_subscription_packet(packet_identifier, topics, properties)
+        == expected_result
+    )
 
 
 @pytest.mark.parametrize(
-    "packet_identifier, topics, expected_result",
+    "packet_identifier, topics, properties, expected_result",
     (
-        (1, ["mitu/test"], b"\xa2\x0e\x00\x01\x00\x00\tmitu/test"),
+        (1, ["mitu/test"], {}, b"\xa2\x0e\x00\x01\x00\x00\tmitu/test"),
         (
             0xDEAD,
             [
                 "mitu/test",
             ],
+            {},
             b"\xa2\x0e\xde\xad\x00\x00\tmitu/test",
         ),
         (
             0xBEAF,
             ["mitu/test", "niel/test"],
+            {},
             b"\xa2\x19\xbe\xaf\x00\x00\tmitu/test\x00\tniel/test",
         ),
     ),
 )
-def test_pack_unsubscribe_packet(packet_identifier, topics, expected_result):
-    assert pack_unsubscribe_packet(packet_identifier, topics) == expected_result
+def test_pack_unsubscribe_packet(
+    packet_identifier, topics, properties, expected_result
+):
+    assert (
+        pack_unsubscribe_packet(packet_identifier, topics, properties)
+        == expected_result
+    )
