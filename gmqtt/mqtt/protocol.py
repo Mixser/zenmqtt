@@ -1,4 +1,5 @@
 import asyncio
+import itertools
 from asyncio import Task
 from logging import getLogger
 from typing import AsyncGenerator, Awaitable, Callable, Final, Optional, Sequence, Tuple
@@ -35,6 +36,18 @@ BUFFER_SIZE: Final[int] = 1024
 READ_AT_MOST_BYTES: Final[int] = 128
 
 
+_CURRENT_ID = 0
+
+
+def get_next_id() -> int:
+    # TODO: rewrite this
+    global _CURRENT_ID
+
+    _CURRENT_ID = (_CURRENT_ID + 1) % 2**16
+
+    return _CURRENT_ID
+
+
 async def build_reader_stream(
     connection: MQTTConnection,
 ) -> AsyncGenerator[bytes, None]:
@@ -63,9 +76,13 @@ class MQTTProtocol:
 
         self._connection_future: Optional[asyncio.Future] = None
 
-        self._packet_execution_result: dict[int, asyncio.Future] = {}
+        self._publish_packet_futures: dict[int, asyncio.Future] = {}
+
+        self._command_packet_futures: dict[int, asyncio.Future] = {}
 
         self._messages_queue = messages
+
+        self._disconnected = asyncio.Event()
 
     async def __read_loop__(self) -> None:
         assert self._connection
@@ -107,6 +124,8 @@ class MQTTProtocol:
             except Exception as exc:
                 logger.error("mqtt_protocol.handle_incoming_packet.error", exc_info=exc)
 
+        self._messages_queue.put_nowait(None)
+
     def set_connection(self, connection: MQTTConnection):
         self._connection = connection
         self._connection_future = asyncio.Future()
@@ -132,21 +151,31 @@ class MQTTProtocol:
     async def handle_disconnect_packet(
         self, fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
     ) -> None:
-        _ = await parse_disconnect_packet(fixed_header, stream)
+        assert self._connection
 
-        if read_loop_task := self._read_loop_task:
-            await read_loop_task
-            self._read_loop_task = None
+        _ = await parse_disconnect_packet(fixed_header, stream)
+        await self._connection.disconnect()
+
+        for future in itertools.chain(
+            self._publish_packet_futures.values(), self._command_packet_futures.values()
+        ):
+            future.set_result(None)
 
     async def disconnect(self, reason: int):
         assert self._connection
 
-        disconnect_packet = pack_disconnect_packet(reason)
+        await self._connection.write(pack_disconnect_packet(reason))
+        await self._connection.disconnect()
 
-        await self._connection.write(disconnect_packet)
         if read_loop_task := self._read_loop_task:
             await read_loop_task
             self._read_loop_task = None
+
+        for future in itertools.chain(
+            list(self._publish_packet_futures.values()),
+            list(self._command_packet_futures.values()),
+        ):
+            future.set_result(None)
 
     async def handle_connack_packet(
         self, fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
@@ -166,20 +195,28 @@ class MQTTProtocol:
     ) -> Optional[PublishResult]:
         assert self._connection
 
-        mid = 0x01
+        if self._connection.is_closing():
+            return None
+
+        mid = get_next_id()
 
         if qos == 1:
-            self._packet_execution_result[mid] = asyncio.Future()
+            self._publish_packet_futures[mid] = asyncio.Future()
 
         publish_packet = pack_publish_packet(
-            0x01, topic, payload, qos, retain, False, properties  # TODO: generate
+            mid, topic, payload, qos, retain, False, properties  # TODO: generate
         )
+
+        if self._connection.is_closing():
+            return None
 
         await self._connection.write(publish_packet)
 
-        if puback_result_future := self._packet_execution_result.get(mid):
+        if puback_result_future := self._publish_packet_futures.get(mid):
+            if self._connection.is_closing():
+                return None
             await puback_result_future
-            return self._packet_execution_result.pop(mid).result()
+            return self._publish_packet_futures.pop(mid).result()
 
         return None
 
@@ -205,7 +242,8 @@ class MQTTProtocol:
         self, fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
     ) -> None:
         puback_result = await parse_puback_packet(fixed_header, stream)
-        self._packet_execution_result[puback_result.packet_identifier].set_result(
+
+        self._publish_packet_futures[puback_result.packet_identifier].set_result(
             puback_result
         )
 
@@ -218,36 +256,36 @@ class MQTTProtocol:
         assert self._connection
 
         packet_identifier = 0xBEAF  # TODO: implement generator of identifiers
-        self._packet_execution_result[packet_identifier] = asyncio.Future()
+        self._command_packet_futures[packet_identifier] = asyncio.Future()
 
         subscribe_packet = pack_subscription_packet(packet_identifier, topics)
 
         await self._connection.write(subscribe_packet)
 
-        await self._packet_execution_result[packet_identifier]
-        return self._packet_execution_result.pop(packet_identifier).result()
+        await self._command_packet_futures[packet_identifier]
+        return self._command_packet_futures.pop(packet_identifier).result()
 
     async def handle_suback_packet(
         self, fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
     ) -> None:
         result = await parse_suback_packet(fixed_header, stream)
-        self._packet_execution_result[result.packet_identifier].set_result(result)
+        self._command_packet_futures[result.packet_identifier].set_result(result)
 
     async def unsubscribe(self, topics: Sequence[str]) -> UnsubscribeResult:
         assert self._connection
         packet_identifier = 0xDEAD
 
-        self._packet_execution_result[packet_identifier] = asyncio.Future()
+        self._command_packet_futures[packet_identifier] = asyncio.Future()
 
         unsubscribe_packet = pack_unsubscribe_packet(packet_identifier, topics)
 
         await self._connection.write(unsubscribe_packet)
 
-        await self._packet_execution_result[packet_identifier]
-        return self._packet_execution_result.pop(packet_identifier).result()
+        await self._command_packet_futures[packet_identifier]
+        return self._command_packet_futures.pop(packet_identifier).result()
 
     async def handle_unsuback_packet(
         self, fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
     ) -> None:
         result = await parse_unsubscribe_packet(fixed_header, stream)
-        self._packet_execution_result[result.packet_identifier].set_result(result)
+        self._command_packet_futures[result.packet_identifier].set_result(result)

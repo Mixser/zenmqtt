@@ -30,3 +30,6 @@ class MQTTConnection:
 
     async def read(self, size: int) -> bytes:
         return await self._transport.read(size)
+
+    def is_closing(self) -> bool:
+        return self._transport.is_closing()
