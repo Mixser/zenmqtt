@@ -6,10 +6,13 @@ from gmqtt.mqtt.packet import PacketType, parse_fixed_header
 from gmqtt.mqtt.publish import (
     PubAckResult,
     PublishResult,
+    PubRecResult,
     pack_puback_packet,
     pack_publish_packet,
+    pack_pubrec_packet,
     parse_puback_packet,
     parse_publish_packet,
+    parse_pubrec_packet,
 )
 from tests.mqtt.utils import build_async_generator
 
@@ -144,3 +147,37 @@ async def test_parse_puback_packet(input, expected_result):
 )
 def test_pack_puback_packet(packet_identifier, reason_code, expected_result):
     assert pack_puback_packet(packet_identifier, reason_code) == expected_result
+
+
+@pytest.mark.parametrize(
+    "input, expected_result",
+    (
+        (b"P\x04\xDE\xAD\x01\x00", PubRecResult(0xDEAD, 0x1, {})),
+        (b"P\x05\xDE\xAD\x01\x01\xFF", PubRecResult(0xDEAD, 0x1, {})),
+        (b"P\x06\xDE\xAD\x02\x02\xFF\xFF", PubRecResult(0xDEAD, 0x2, {})),
+    ),
+)
+async def test_parse_pubrec_packet(input, expected_result):
+    stream = build_async_generator(input)
+
+    fixed_header = await parse_fixed_header(stream)
+
+    assert fixed_header.packet_type == PacketType.PUBREC
+
+    assert await parse_pubrec_packet(fixed_header, stream) == expected_result
+
+
+@pytest.mark.parametrize(
+    "packet_identifier, reason_code, properties, expected_result",
+    (
+        (0xDEAD, 0x1, {}, b"P\x04\xde\xad\x01\x00"),
+        (0xBEAF, 0x1, {"reason_string": "smth"}, b"P\x04\xBE\xAF\x01\x00"),
+    ),
+)
+def test_pack_pubrec_packet(
+    packet_identifier, reason_code, properties, expected_result
+):
+    assert (
+        pack_pubrec_packet(packet_identifier, reason_code, properties)
+        == expected_result
+    )

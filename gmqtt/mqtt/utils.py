@@ -38,7 +38,7 @@ def pack_str16(value: str) -> bytes:
 def pack_fixed_header(packet_type: PacketType, flags: int, length: int) -> bytes:
     result = bytearray()
 
-    result.append((packet_type << 4) | flags)
+    result.extend(struct.pack("!B", (packet_type << 4) | flags))
     result.extend(pack_variable_byte_integer(length))
 
     return bytes(result)

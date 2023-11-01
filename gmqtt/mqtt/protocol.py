@@ -20,6 +20,7 @@ from gmqtt.mqtt.publish import (
     pack_publish_packet,
     parse_puback_packet,
     parse_publish_packet,
+    parse_pubrec_packet,
 )
 from gmqtt.mqtt.subscribe import (
     SubscribeResult,
@@ -101,7 +102,7 @@ class MQTTProtocol:
             elif header.packet_type == PacketType.PUBACK:
                 handler = self.handle_puback_packet
             elif header.packet_type == PacketType.PUBREC:
-                continue
+                handler = self.handle_pubrec_packet
             elif header.packet_type == PacketType.PUBREL:
                 continue
             elif header.packet_type == PacketType.PUBCOMP:
@@ -247,10 +248,12 @@ class MQTTProtocol:
             puback_result
         )
 
-    def handle_pubrec_packet(
+    async def handle_pubrec_packet(
         self, fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
     ) -> None:
-        pass
+        _ = await parse_pubrec_packet(fixed_header, stream)
+        # TODO: here we need proceed with sending of `pubrel` packet
+        raise NotImplementedError
 
     async def subscribe(self, topics: Sequence[Tuple[str, int]]) -> SubscribeResult:
         assert self._connection

@@ -135,3 +135,48 @@ def pack_puback_packet(packet_identifier: int, reason_code: int) -> bytes:
     return struct.pack(
         "!BBHBB", PacketType.PUBACK << 4, length, packet_identifier, reason_code, 0
     )
+
+
+@dataclass(frozen=True)
+class PubRecResult:
+    packet_identifier: int
+    reason_code: int
+    properties: Properties
+
+
+async def parse_pubrec_packet(
+    fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+) -> PubRecResult:
+    packet_identifier, *_ = struct.unpack("!H", await read(stream, 2))
+    reason_code, *_ = struct.unpack("!B", await anext(stream))
+
+    property_length, size = await parse_variable_byte(stream)
+    properties = await parse_properties(stream, property_length)
+
+    assert fixed_header.length == 2 + 1 + size + property_length
+
+    return PubRecResult(
+        packet_identifier=packet_identifier,
+        reason_code=reason_code,
+        properties=properties,
+    )
+
+
+def pack_pubrec_packet(
+    packet_identifier: int, reason_code: int, properties: Properties
+) -> bytes:
+    payload = bytearray()
+
+    payload.append(PacketType.PUBREC << 4)
+
+    properties_payload = pack_properties(properties)
+
+    length = 2 + 1 + len(properties_payload)
+
+    payload.append(length)
+
+    payload.extend(struct.pack("!HB", packet_identifier, reason_code))
+
+    payload.extend(properties_payload)
+
+    return bytes(payload)
