@@ -2,7 +2,7 @@ import struct
 from dataclasses import dataclass
 from typing import AsyncGenerator, Final, Optional, Union
 
-from gmqtt.mqtt.packet import FixedHeader, PacketType, parse_variable_byte
+from gmqtt.mqtt.packet import FixedHeader, PacketType, parse_variable_byte_integer
 from gmqtt.mqtt.properties import Properties, pack_properties, parse_properties
 from gmqtt.mqtt.utils import (
     pack_fixed_header,
@@ -32,10 +32,12 @@ _SUCCESS: Final[int] = 0
 async def parse_connack_packet(
     fixed_header: FixedHeader, payload: AsyncGenerator[bytes, None]
 ) -> ConnectionResult:
-    flags, result, *_ = struct.unpack("!BB", await read(payload, 2))
-    properties = await parse_properties(payload, fixed_header.length - 2)
+    flags, code_result, *_ = struct.unpack("!BB", await read(payload, 2))
 
-    if result != _SUCCESS:
+    properties_length, length = await parse_variable_byte_integer(payload)
+    properties = await parse_properties(payload, properties_length)
+
+    if code_result != _SUCCESS:
         return ConnectionFailed()
 
     return ConnectionSuccess(flags=flags, properties=properties)
@@ -66,7 +68,13 @@ def pack_connect_packet(
             connect_flags |= 0x40
             payload_length += 2 * len(password)
 
-    properties_bytes = pack_properties({})
+    properties_bytes = pack_properties(
+        {
+            "user_property": [
+                ("message", "world"),
+            ]
+        }
+    )
 
     payload_length += len(properties_bytes)
 
@@ -117,7 +125,7 @@ async def parse_disconnect_packet(
     if not payload_length:
         properties_length = 0
     else:
-        properties_length, _ = await parse_variable_byte(stream)
+        properties_length, _ = await parse_variable_byte_integer(stream)
 
     properties = await parse_properties(stream, properties_length)
 

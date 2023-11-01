@@ -111,8 +111,8 @@ async def test_parse_publish_packet_from_bytes(input: bytes, expected_result):
             2,
             True,
             True,
-            {},
-            b"=\x1a\x00\tmitu/test\xDE\xAD\x00Hello, MQTT!",
+            {"payload_format_indicator": True},
+            b"=\x1c\x00\tmitu/test\xde\xad\x02\x01\x01Hello, MQTT!",
         ),
     ),
 )
@@ -149,7 +149,7 @@ async def test_parse_puback_packet(input, expected_result):
     (
         (0x0001, 0x0, {}, b"\x40\x02\x00\x01"),
         (0x0001, 0x1, {}, b"\x40\x03\x00\x01\x01"),
-        (0xFADE, 0x2, {"name": "value"}, b"\x40\x04\xfa\xde\x02\x00"),
+        (0xFADE, 0x2, {"user_property": [("field", "value")]}, b"\x40\x13\xfa\xde\x02\x0f&\x00\x05field\x00\x05value"),
     ),
 )
 def test_pack_puback_packet(
@@ -165,8 +165,8 @@ def test_pack_puback_packet(
     "input, expected_result",
     (
         (b"\x50\x04\xDE\xAD\x01\x00", PubRecResult(0xDEAD, 0x1, {})),
-        (b"\x50\x05\xDE\xAD\x01\x01\xFF", PubRecResult(0xDEAD, 0x1, {})),
-        (b"\x50\x06\xDE\xAD\x02\x02\xFF\xFF", PubRecResult(0xDEAD, 0x2, {})),
+        (b"\x50\x0B\xDE\xAD\x01\x07\x1f\x00\x04text", PubRecResult(0xDEAD, 0x1, {"reason_string": "text"})),
+        (b"\x50\x13\xDE\xAD\x02\x0f\x26\x00\x05field\x00\x05value", PubRecResult(0xDEAD, 0x2, {"user_property": [("field", "value")]})),
     ),
 )
 async def test_parse_pubrec_packet(input, expected_result):
@@ -183,7 +183,7 @@ async def test_parse_pubrec_packet(input, expected_result):
     "packet_identifier, reason_code, properties, expected_result",
     (
         (0xDEAD, 0x1, {}, b"\x50\x03\xde\xad\x01"),
-        (0xBEAF, 0x1, {"reason_string": "smth"}, b"\x50\x04\xBE\xAF\x01\x00"),
+        (0xBEAF, 0x1, {"reason_string": "smth"}, b"\x50\x0b\xbe\xaf\x01\x07\x1f\x00\x04smth"),
     ),
 )
 def test_pack_pubrec_packet(
@@ -199,7 +199,7 @@ def test_pack_pubrec_packet(
     "packet_identifier, reason_code, properties, expected_result",
     (
         (0xDEAD, 0x0, {}, b"\x62\x02\xde\xad"),
-        (0xDEAD, 0x0, {"name": "value"}, b"\x62\x04\xde\xad\x00\x00"),
+        (0xDEAD, 0x0, {"reason_string": "value"}, b"\x62\x0c\xde\xad\x00\x08\x1f\x00\x05value"),
         (0xBEAF, 0x1, {}, b"\x62\x03\xbe\xaf\x01"),
         (0xBEAF, 0x2, {}, b"\x62\x03\xbe\xaf\x02"),
     ),
@@ -244,7 +244,7 @@ async def test_parse_pubrel_packet(input, expected_result):
     "packet_identifier, reason_code, properties, expected_result",
     (
         (0xDEAD, 0x0, {}, b"\x70\x02\xde\xad"),
-        (0xDEAD, 0x0, {"name": "value"}, b"\x70\x04\xde\xad\x00\x00"),
+        (0xDEAD, 0x0, {"reason_string": "value"}, b"\x70\x0c\xde\xad\x00\x08\x1f\x00\x05value"),
         (0xBEAF, 0x1, {}, b"\x70\x03\xbe\xaf\x01"),
         (0xBEAF, 0x2, {}, b"\x70\x03\xbe\xaf\x02"),
     ),

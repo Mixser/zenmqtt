@@ -6,7 +6,7 @@ from gmqtt.mqtt.packet import (
     FixedHeader,
     PacketType,
     parse_fixed_header,
-    parse_variable_byte,
+    parse_variable_byte_integer,
 )
 from tests.mqtt.utils import build_async_generator
 
@@ -42,4 +42,7 @@ async def test_parse_fixed_header(input, expected_result) -> None:
     ),
 )
 async def test_parse_variable_byte(input, expected_result):
-    assert await parse_variable_byte(build_async_generator(input)) == expected_result
+    assert (
+        await parse_variable_byte_integer(build_async_generator(input))
+        == expected_result
+    )

@@ -32,7 +32,11 @@ def pack_variable_byte_integer(value: int) -> bytes:
 
 def pack_str16(value: str) -> bytes:
     encoded = value.encode()
-    return struct.pack(f"!H{len(encoded)}s", len(encoded), encoded)
+    return pack_binaries(encoded)
+
+
+def pack_binaries(value: bytes) -> bytes:
+    return struct.pack(f"!H{len(value)}s", len(value), value)
 
 
 def pack_fixed_header(packet_type: PacketType, flags: int, length: int) -> bytes:

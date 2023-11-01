@@ -13,8 +13,8 @@ from gmqtt.mqtt.connect import (
     parse_disconnect_packet,
 )
 from gmqtt.mqtt.packet import FixedHeader, PacketType, parse_fixed_header
-from gmqtt.mqtt.properties import Properties
 from gmqtt.mqtt.publish import (
+    PublishProperties,
     PublishResult,
     pack_puback_packet,
     pack_pubcomp_packet,
@@ -196,9 +196,11 @@ class MQTTProtocol:
         payload: bytes,
         qos: int = 0,
         retain: bool = False,
-        properties: Optional[Properties] = None,
+        properties: Optional[PublishProperties] = None,
     ) -> Optional[PublishResult]:
         assert self._connection
+
+        properties = properties or {}
 
         if self._connection.is_closing():
             return None
