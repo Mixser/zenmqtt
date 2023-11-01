@@ -7,6 +7,8 @@ from typing import AsyncGenerator, Awaitable, Callable, Final, Optional, Sequenc
 from gmqtt.connection import MQTTConnection
 from gmqtt.mqtt.connect import (
     ConnectionResult,
+    ConnectProperties,
+    DisconnectProperties,
     pack_connect_packet,
     pack_disconnect_packet,
     parse_connack_packet,
@@ -28,6 +30,8 @@ from gmqtt.mqtt.publish import (
 )
 from gmqtt.mqtt.subscribe import (
     SubscribeResult,
+    SubscriptionProperties,
+    UnsubscribeProperties,
     UnsubscribeResult,
     pack_subscription_packet,
     pack_unsubscribe_packet,
@@ -39,7 +43,6 @@ logger = getLogger(__name__)
 
 BUFFER_SIZE: Final[int] = 1024
 READ_AT_MOST_BYTES: Final[int] = 128
-
 
 _CURRENT_ID = 0
 
@@ -140,11 +143,19 @@ class MQTTProtocol:
         )
 
     async def authorize(
-        self, client_id: str, username: Optional[str], password: Optional[str]
+        self,
+        client_id: str,
+        username: Optional[str],
+        password: Optional[str],
+        properties: Optional[ConnectProperties] = None,
     ) -> ConnectionResult:
         assert self._connection
 
-        login_packet = pack_connect_packet(client_id, username, password, True, True)
+        properties = properties or {}
+
+        login_packet = pack_connect_packet(
+            client_id, username, password, True, True, properties=properties
+        )
 
         await self._connection.write(login_packet)
 
@@ -166,10 +177,15 @@ class MQTTProtocol:
         ):
             future.set_result(None)
 
-    async def disconnect(self, reason: int):
+    async def disconnect(
+        self, reason: int, properties: Optional[DisconnectProperties] = None
+    ):
         assert self._connection
 
-        await self._connection.write(pack_disconnect_packet(reason))
+        properties = properties or {}
+
+        await self._connection.write(pack_disconnect_packet(reason, properties))
+
         await self._connection.disconnect()
 
         if read_loop_task := self._read_loop_task:
@@ -289,13 +305,21 @@ class MQTTProtocol:
         # TODO: here we need to properly implement QOS2 flow
         # Discard stored state
 
-    async def subscribe(self, topics: Sequence[Tuple[str, int]]) -> SubscribeResult:
+    async def subscribe(
+        self,
+        topics: Sequence[Tuple[str, int]],
+        properties: Optional[SubscriptionProperties] = None,
+    ) -> SubscribeResult:
         assert self._connection
+
+        properties = properties or {}
 
         packet_identifier = 0xBEAF  # TODO: implement generator of identifiers
         self._command_packet_futures[packet_identifier] = asyncio.Future()
 
-        subscribe_packet = pack_subscription_packet(packet_identifier, topics)
+        subscribe_packet = pack_subscription_packet(
+            packet_identifier, topics, properties
+        )
 
         await self._connection.write(subscribe_packet)
 
@@ -308,13 +332,20 @@ class MQTTProtocol:
         result = await parse_suback_packet(fixed_header, stream)
         self._command_packet_futures[result.packet_identifier].set_result(result)
 
-    async def unsubscribe(self, topics: Sequence[str]) -> UnsubscribeResult:
+    async def unsubscribe(
+        self, topics: Sequence[str], properties: Optional[UnsubscribeProperties] = None
+    ) -> UnsubscribeResult:
         assert self._connection
+
+        properties = properties or {}
+
         packet_identifier = 0xDEAD
 
         self._command_packet_futures[packet_identifier] = asyncio.Future()
 
-        unsubscribe_packet = pack_unsubscribe_packet(packet_identifier, topics)
+        unsubscribe_packet = pack_unsubscribe_packet(
+            packet_identifier, topics, properties
+        )
 
         await self._connection.write(unsubscribe_packet)
 

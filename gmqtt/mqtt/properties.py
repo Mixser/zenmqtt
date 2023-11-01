@@ -384,9 +384,9 @@ async def _parse_string_property_value(
     return value.decode(), length
 
 
-async def _parse_bool_value(stream: AsyncGenerator[bytes, None]) -> bool:
-    result, _ = struct.unpack("!B", await anext(stream))
-    return bool(result)
+async def _parse_bool_value(stream: AsyncGenerator[bytes, None]) -> Tuple[bool, int]:
+    result, *_ = struct.unpack("!B", await anext(stream))
+    return bool(result), 1
 
 
 async def _parse_user_property_value(
