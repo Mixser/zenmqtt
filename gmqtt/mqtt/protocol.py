@@ -17,11 +17,14 @@ from gmqtt.mqtt.properties import Properties
 from gmqtt.mqtt.publish import (
     PublishResult,
     pack_puback_packet,
+    pack_pubcomp_packet,
     pack_publish_packet,
     pack_pubrel_packet,
     parse_puback_packet,
+    parse_pubcomp_packet,
     parse_publish_packet,
     parse_pubrec_packet,
+    parse_pubrel_packet,
 )
 from gmqtt.mqtt.subscribe import (
     SubscribeResult,
@@ -105,9 +108,9 @@ class MQTTProtocol:
             elif header.packet_type == PacketType.PUBREC:
                 handler = self.handle_pubrec_packet
             elif header.packet_type == PacketType.PUBREL:
-                continue
+                handler = self.handle_pubrel_packet
             elif header.packet_type == PacketType.PUBCOMP:
-                continue
+                handler = self.handle_pubcomp_packet
             elif header.packet_type == PacketType.SUBACK:
                 handler = self.handle_suback_packet
             elif header.packet_type == PacketType.UNSUBACK:
@@ -260,6 +263,29 @@ class MQTTProtocol:
         await self._connection.write(
             pack_pubrel_packet(pubrec_packet.packet_identifier, 0x0, {})
         )
+
+    async def handle_pubrel_packet(
+        self, fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+    ):
+        assert self._connection
+
+        pubrel_result = await parse_pubrel_packet(fixed_header, stream)
+
+        # TODO: here we need to properly implement QOS2 flow
+
+        await self._connection.write(
+            pack_pubcomp_packet(pubrel_result.packet_identifier, 0x0, {})
+        )
+
+    async def handle_pubcomp_packet(
+        self, fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+    ):
+        assert self._connection
+
+        _ = await parse_pubcomp_packet(fixed_header, stream)
+
+        # TODO: here we need to properly implement QOS2 flow
+        # Discard stored state
 
     async def subscribe(self, topics: Sequence[Tuple[str, int]]) -> SubscribeResult:
         assert self._connection
