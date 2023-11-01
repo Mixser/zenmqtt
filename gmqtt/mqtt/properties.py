@@ -7,7 +7,6 @@ from typing import (
     Callable,
     List,
     Literal,
-    NotRequired,
     Sequence,
     Tuple,
     TypedDict,
@@ -194,34 +193,34 @@ _AVAILABLE_PROPERTIES_PER_TYPE = {
 }
 
 
-class Properties(TypedDict):
-    payload_format_indicator: NotRequired[bool]
-    message_expire_level: NotRequired[int]
-    content_type: NotRequired[str]
-    response_topic: NotRequired[str]
-    correlation_data: NotRequired[bytes]
-    subscription_identifier: NotRequired[int]
-    session_expiry_interval: NotRequired[int]
-    assigned_client_identifier: NotRequired[str]
-    server_keep_alive: NotRequired[int]
-    authentication_method: NotRequired[str]
-    authentication_data: NotRequired[bytes]
-    request_problem_information: NotRequired[bool]
-    will_delay_interval: NotRequired[int]
-    request_response_information: NotRequired[bool]
-    response_information: NotRequired[str]
-    server_reference: NotRequired[str]
-    reason_string: NotRequired[str]
-    receive_maximum: NotRequired[int]
-    topic_alias_maximum: NotRequired[int]
-    topic_alias: NotRequired[int]
-    maximum_qos: NotRequired[int]
-    retain_available: NotRequired[bool]
-    user_property: NotRequired[Sequence[Tuple[str, str]]]
-    maximum_packet_size: NotRequired[int]
-    wildcard_subscription_available: NotRequired[bool]
-    subscription_identifier_available: NotRequired[bool]
-    shared_subscription_available: NotRequired[bool]
+class Properties(TypedDict, total=False):
+    payload_format_indicator: bool
+    message_expire_level: int
+    content_type: str
+    response_topic: str
+    correlation_data: bytes
+    subscription_identifier: int
+    session_expiry_interval: int
+    assigned_client_identifier: str
+    server_keep_alive: int
+    authentication_method: str
+    authentication_data: bytes
+    request_problem_information: bool
+    will_delay_interval: int
+    request_response_information: bool
+    response_information: str
+    server_reference: str
+    reason_string: str
+    receive_maximum: int
+    topic_alias_maximum: int
+    topic_alias: int
+    maximum_qos: int
+    retain_available: bool
+    user_property: Sequence[Tuple[str, str]]
+    maximum_packet_size: int
+    wildcard_subscription_available: bool
+    subscription_identifier_available: bool
+    shared_subscription_available: bool
 
 
 _MAP_PROPERTY_PARSER: dict[Property, Callable[[AsyncGenerator[bytes, None]], Any]] = {
