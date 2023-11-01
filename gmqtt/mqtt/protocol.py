@@ -7,6 +7,7 @@ from typing import AsyncGenerator, Awaitable, Callable, Final, Optional, Sequenc
 from gmqtt.connection import MQTTConnection
 from gmqtt.mqtt.connect import (
     ConnectionResult,
+    DisconnectProperties,
     pack_connect_packet,
     pack_disconnect_packet,
     parse_connack_packet,
@@ -41,7 +42,6 @@ logger = getLogger(__name__)
 
 BUFFER_SIZE: Final[int] = 1024
 READ_AT_MOST_BYTES: Final[int] = 128
-
 
 _CURRENT_ID = 0
 
@@ -168,10 +168,17 @@ class MQTTProtocol:
         ):
             future.set_result(None)
 
-    async def disconnect(self, reason: int):
+    async def disconnect(
+        self, reason: int, properties: Optional[DisconnectProperties] = None
+    ):
         assert self._connection
 
-        await self._connection.write(pack_disconnect_packet(reason))
+        properties = properties or {}
+
+        await self._connection.write(
+            pack_disconnect_packet(reason, properties)
+        )
+
         await self._connection.disconnect()
 
         if read_loop_task := self._read_loop_task:
