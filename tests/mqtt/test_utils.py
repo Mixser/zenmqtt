@@ -7,7 +7,7 @@ from gmqtt.mqtt.packet import (
     FixedHeader,
     PacketType,
     parse_fixed_header,
-    parse_variable_byte,
+    parse_variable_byte_integer,
 )
 from gmqtt.mqtt.utils import pack_fixed_header, pack_str16, pack_variable_byte_integer
 from tests.mqtt.utils import build_async_generator
@@ -17,7 +17,7 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.mark.parametrize("value", range(2048))
 async def test_pack_variable_byte_integer(value: int):
-    assert await parse_variable_byte(
+    assert await parse_variable_byte_integer(
         build_async_generator([x.to_bytes() for x in pack_variable_byte_integer(value)])
     ) == (value, ANY)
 

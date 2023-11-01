@@ -4,7 +4,7 @@ from typing import Optional, Sequence, Tuple
 from gmqtt.connection import create_connection
 from gmqtt.mqtt.connect import ConnectionResult
 from gmqtt.mqtt.protocol import MQTTProtocol
-from gmqtt.mqtt.publish import PublishResult
+from gmqtt.mqtt.publish import PublishProperties, PublishResult
 from gmqtt.mqtt.subscribe import SubscribeResult, UnsubscribeResult
 
 ClientId = str
@@ -66,8 +66,17 @@ class MQTTClient:
     async def disconnect(self):
         await self._protocol.disconnect(reason=0)
 
-    async def publish(self, topic: Topic, message: Message) -> Optional[PublishResult]:
-        return await self._protocol.publish(topic, message, qos=1)
+    async def publish(
+        self,
+        topic: Topic,
+        message: Message,
+        qos: int = 0,
+        retain: bool = False,
+        properties: Optional[PublishProperties] = None,
+    ) -> Optional[PublishResult]:
+        return await self._protocol.publish(
+            topic, message, qos=qos, retain=retain, properties=properties
+        )
 
     async def subscribe(self, topics: Sequence[Tuple[Topic, QOS]]) -> SubscribeResult:
         return await self._protocol.subscribe(topics)

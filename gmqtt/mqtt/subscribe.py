@@ -2,7 +2,7 @@ import struct
 from dataclasses import dataclass
 from typing import AsyncGenerator, Sequence, Tuple, Type, TypeVar
 
-from gmqtt.mqtt.packet import FixedHeader, PacketType, parse_variable_byte
+from gmqtt.mqtt.packet import FixedHeader, PacketType, parse_variable_byte_integer
 from gmqtt.mqtt.properties import Properties, pack_properties, parse_properties
 from gmqtt.mqtt.utils import pack_str16, pack_variable_byte_integer, read
 
@@ -102,7 +102,7 @@ async def _parse_packet(
     stream: AsyncGenerator[bytes, None],
 ) -> T:
     packet_identifier, *_ = struct.unpack("!H", await read(stream, 2))
-    property_length, length = await parse_variable_byte(stream)
+    property_length, length = await parse_variable_byte_integer(stream)
     properties = await parse_properties(stream, property_length)
 
     payload_length = fixed_header.length - length - property_length - 2
