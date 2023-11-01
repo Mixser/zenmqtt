@@ -261,18 +261,21 @@ async def _parse_publish_response_packet(
     fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
 ) -> Tuple[int, int, Properties]:
     packet_identifier, *_ = struct.unpack("!H", await read(stream, 2))
+    packet_size = 2
 
-    reason_code = property_length = size = 0
+    reason_code = 0
     properties = {}
 
     if fixed_header.length > 2:
+        packet_size += 1
         reason_code, *_ = struct.unpack("!B", await anext(stream))
 
     if fixed_header.length > 3:
         property_length, size = await parse_variable_byte(stream)
+        packet_size += property_length + size
         properties = await parse_properties(stream, property_length)
 
-    assert fixed_header.length == 2 + bool(reason_code) + size + property_length
+    assert fixed_header.length == packet_size
 
     return packet_identifier, reason_code, properties
 
