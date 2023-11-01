@@ -305,7 +305,6 @@ async def _parse_publish_response_packet(
         packet_size += property_length + size
         properties = await parse_properties(stream, property_length)
 
-    print(fixed_header.length, packet_size)
     assert fixed_header.length == packet_size
 
     return packet_identifier, reason_code, properties

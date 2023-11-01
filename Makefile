@@ -5,7 +5,7 @@ TEST=tests
 fmt/black:
 	@poetry run black $(SOURCE) $(TEST)
 
-.PHONY: fmt-istort
+.PHONY: fmt/isort
 fmt/isort:
 	@poetry run isort --profile black $(SOURCE) $(TEST)
 	
