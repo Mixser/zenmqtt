@@ -56,15 +56,16 @@ class FixedHeader:
 _MAX_VARIABLE_BYTES_LENGTH: Final[int] = 128 * 128 * 128
 
 
-async def parse_variable_byte_integer(
-    payload: AsyncGenerator[bytes, None]
-) -> Tuple[int, int]:
+AsyncDataSequence = AsyncGenerator[bytes, None]
+
+
+async def parse_variable_byte_integer(stream: AsyncDataSequence) -> Tuple[int, int]:
     value = 0
     multiplier = 1
     length = 0
 
     while True:
-        byte, *_ = struct.unpack("!B", await anext(payload))
+        byte, *_ = struct.unpack("!B", await anext(stream))
         value += (byte & 0x7F) * multiplier
         length += 1
 
@@ -77,16 +78,14 @@ async def parse_variable_byte_integer(
     return value, length
 
 
-async def parse_fixed_header(
-    payload: AsyncGenerator[bytes, None]
-) -> Optional[FixedHeader]:
-    fixed_header_raw = await anext(payload, None)
+async def parse_fixed_header(stream: AsyncDataSequence) -> Optional[FixedHeader]:
+    fixed_header_raw = await anext(stream, None)
 
     if fixed_header_raw is None:
         return None
 
     byte_1, *_ = struct.unpack("!B", fixed_header_raw)
-    length, _ = await parse_variable_byte_integer(payload)
+    length, _ = await parse_variable_byte_integer(stream)
 
     return FixedHeader(
         packet_type=(byte_1 & 0xF0) >> 4, flags=byte_1 & 0xF, length=length

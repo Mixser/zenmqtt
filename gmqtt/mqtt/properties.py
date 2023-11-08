@@ -1,19 +1,9 @@
 import itertools
 import struct
 from enum import IntEnum
-from typing import (
-    Any,
-    AsyncGenerator,
-    Callable,
-    List,
-    Literal,
-    Sequence,
-    Tuple,
-    TypedDict,
-    cast,
-)
+from typing import Any, Callable, List, Literal, Sequence, Tuple, TypedDict, cast
 
-from gmqtt.mqtt.packet import PacketType, parse_variable_byte_integer
+from gmqtt.mqtt.packet import AsyncDataSequence, PacketType, parse_variable_byte_integer
 from gmqtt.mqtt.utils import pack_binaries, pack_str16, pack_variable_byte_integer, read
 
 
@@ -223,7 +213,7 @@ class Properties(TypedDict, total=False):
     shared_subscription_available: bool
 
 
-_MAP_PROPERTY_PARSER: dict[Property, Callable[[AsyncGenerator[bytes, None]], Any]] = {
+_MAP_PROPERTY_PARSER: dict[Property, Callable[[AsyncDataSequence], Any]] = {
     Property.PAYLOAD_FORMAT_INDICATOR: lambda stream: _parse_property_value(
         stream, 1, "!B"
     ),
@@ -297,9 +287,7 @@ _MAP_PROPERTY_PACKERS = {
 }
 
 
-async def parse_properties(
-    stream: AsyncGenerator[bytes, None], length: int
-) -> Properties:
+async def parse_properties(stream: AsyncDataSequence, length: int) -> Properties:
     assert length >= 0
 
     if not length:
@@ -363,34 +351,30 @@ def pack_properties(properties: Properties) -> bytes:
 
 
 async def _parse_property_value(
-    stream: AsyncGenerator[bytes, None], bytes_num: int, format: str
+    stream: AsyncDataSequence, bytes_num: int, format: str
 ) -> Tuple[int, int]:
     value, *_ = struct.unpack(format, await read(stream, bytes_num))
 
     return value, bytes_num
 
 
-async def _parse_bytes_property_value(
-    stream: AsyncGenerator[bytes, None]
-) -> Tuple[bytes, int]:
+async def _parse_bytes_property_value(stream: AsyncDataSequence) -> Tuple[bytes, int]:
     length, *_ = struct.unpack("!H", await read(stream, 2))
     return await read(stream, length), 2 + length
 
 
-async def _parse_string_property_value(
-    stream: AsyncGenerator[bytes, None]
-) -> Tuple[str, int]:
+async def _parse_string_property_value(stream: AsyncDataSequence) -> Tuple[str, int]:
     value, length = await _parse_bytes_property_value(stream)
     return value.decode(), length
 
 
-async def _parse_bool_value(stream: AsyncGenerator[bytes, None]) -> Tuple[bool, int]:
+async def _parse_bool_value(stream: AsyncDataSequence) -> Tuple[bool, int]:
     result, *_ = struct.unpack("!B", await anext(stream))
     return bool(result), 1
 
 
 async def _parse_user_property_value(
-    stream: AsyncGenerator[bytes, None]
+    stream: AsyncDataSequence,
 ) -> Tuple[Tuple[str, str], int]:
     name, name_length = await _parse_string_property_value(stream)
     value, value_length = await _parse_string_property_value(stream)

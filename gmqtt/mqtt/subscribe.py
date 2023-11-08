@@ -1,9 +1,14 @@
 import itertools
 import struct
 from dataclasses import dataclass
-from typing import AsyncGenerator, Sequence, Tuple, TypedDict, cast
+from typing import Sequence, Tuple, TypedDict, cast
 
-from gmqtt.mqtt.packet import FixedHeader, PacketType, parse_variable_byte_integer
+from gmqtt.mqtt.packet import (
+    AsyncDataSequence,
+    FixedHeader,
+    PacketType,
+    parse_variable_byte_integer,
+)
 from gmqtt.mqtt.properties import Properties, pack_properties, parse_properties
 from gmqtt.mqtt.utils import pack_str16, pack_variable_byte_integer, read
 
@@ -72,7 +77,7 @@ def pack_subscription_packet(
 
 
 async def parse_suback_packet(
-    fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+    fixed_header: FixedHeader, stream: AsyncDataSequence
 ) -> SubscribeResult:
     packet_identifier, properties, reason_codes = await _parse_packet(
         fixed_header, stream
@@ -114,7 +119,7 @@ def pack_unsubscribe_packet(
 
 
 async def parse_unsubscribe_packet(
-    fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+    fixed_header: FixedHeader, stream: AsyncDataSequence
 ) -> UnsubscribeResult:
     packet_identifier, properties, reason_codes = await _parse_packet(
         fixed_header, stream
@@ -129,7 +134,7 @@ async def parse_unsubscribe_packet(
 
 async def _parse_packet(
     fixed_header: FixedHeader,
-    stream: AsyncGenerator[bytes, None],
+    stream: AsyncDataSequence,
 ) -> Tuple[int, Properties, Sequence[int]]:
     packet_identifier, *_ = struct.unpack("!H", await read(stream, 2))
     property_length, length = await parse_variable_byte_integer(stream)
