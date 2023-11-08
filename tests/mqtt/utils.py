@@ -1,9 +1,11 @@
-from typing import AsyncGenerator, Sequence
+from typing import Sequence
+
+from gmqtt.mqtt.packet import AsyncDataSequence
 
 
 async def build_async_generator(
     seq: Sequence[bytes] | bytes,
-) -> AsyncGenerator[bytes, None]:
+) -> AsyncDataSequence:
     for byte in seq:
         if isinstance(byte, bytes):
             yield byte

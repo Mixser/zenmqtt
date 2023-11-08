@@ -1,9 +1,14 @@
 import itertools
 import struct
 from dataclasses import dataclass
-from typing import AsyncGenerator, Optional, Sequence, Tuple, TypedDict, cast
+from typing import Optional, Sequence, Tuple, TypedDict, cast
 
-from gmqtt.mqtt.packet import FixedHeader, PacketType, parse_variable_byte_integer
+from gmqtt.mqtt.packet import (
+    AsyncDataSequence,
+    FixedHeader,
+    PacketType,
+    parse_variable_byte_integer,
+)
 from gmqtt.mqtt.properties import Properties, pack_properties, parse_properties
 from gmqtt.mqtt.utils import (
     pack_fixed_header,
@@ -42,12 +47,12 @@ class ConnectionResult:
 
 
 async def parse_connack_packet(
-    fixed_header: FixedHeader, payload: AsyncGenerator[bytes, None]
+    fixed_header: FixedHeader, stream: AsyncDataSequence
 ) -> ConnectionResult:
-    flags, result_code, *_ = struct.unpack("!BB", await read(payload, 2))
+    flags, result_code, *_ = struct.unpack("!BB", await read(stream, 2))
 
-    properties_length, length = await parse_variable_byte_integer(payload)
-    properties = await parse_properties(payload, properties_length)
+    properties_length, length = await parse_variable_byte_integer(stream)
+    properties = await parse_properties(stream, properties_length)
 
     assert fixed_header.length == 2 + length + properties_length
 
@@ -136,7 +141,7 @@ class DisconnectResult:
 
 
 async def parse_disconnect_packet(
-    fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+    fixed_header: FixedHeader, stream: AsyncDataSequence
 ) -> DisconnectResult:
     payload_length = fixed_header.length
 

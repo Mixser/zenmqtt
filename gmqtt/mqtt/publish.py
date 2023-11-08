@@ -1,9 +1,14 @@
 import itertools
 import struct
 from dataclasses import dataclass
-from typing import AsyncGenerator, Optional, Sequence, Tuple, TypedDict, cast
+from typing import Optional, Sequence, Tuple, TypedDict, cast
 
-from gmqtt.mqtt.packet import FixedHeader, PacketType, parse_variable_byte_integer
+from gmqtt.mqtt.packet import (
+    AsyncDataSequence,
+    FixedHeader,
+    PacketType,
+    parse_variable_byte_integer,
+)
 from gmqtt.mqtt.properties import Properties, pack_properties, parse_properties
 from gmqtt.mqtt.utils import pack_fixed_header, pack_str16, read
 
@@ -95,7 +100,7 @@ class PublishResult:
 
 
 async def parse_publish_packet(
-    fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+    fixed_header: FixedHeader, stream: AsyncDataSequence
 ) -> PublishResult:
     dup = (fixed_header.flags & 0x8) >> 3
     qos = (fixed_header.flags & 0x6) >> 1
@@ -141,7 +146,7 @@ class PubAckResult:
 
 
 async def parse_puback_packet(
-    fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+    fixed_header: FixedHeader, stream: AsyncDataSequence
 ) -> PubAckResult:
     packet_identifier, reason_code, properties = await _parse_publish_response_packet(
         fixed_header, stream
@@ -180,7 +185,7 @@ class PubRecResult:
 
 
 async def parse_pubrec_packet(
-    fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+    fixed_header: FixedHeader, stream: AsyncDataSequence
 ) -> PubRecResult:
     packet_identifier, reason_code, properties = await _parse_publish_response_packet(
         fixed_header, stream
@@ -217,7 +222,7 @@ class PubRelResult:
 
 
 async def parse_pubrel_packet(
-    fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+    fixed_header: FixedHeader, stream: AsyncDataSequence
 ) -> PubRelResult:
     packet_identifier, reason_code, properties = await _parse_publish_response_packet(
         fixed_header, stream
@@ -254,7 +259,7 @@ class PubCompResult:
 
 
 async def parse_pubcomp_packet(
-    fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+    fixed_header: FixedHeader, stream: AsyncDataSequence
 ) -> PubCompResult:
     packet_identifier, reason_code, properties = await _parse_publish_response_packet(
         fixed_header, stream
@@ -284,7 +289,7 @@ def pack_pubcomp_packet(
 
 
 async def _parse_publish_response_packet(
-    fixed_header: FixedHeader, stream: AsyncGenerator[bytes, None]
+    fixed_header: FixedHeader, stream: AsyncDataSequence
 ) -> Tuple[int, int, Properties]:
     packet_identifier, *_ = struct.unpack("!H", await read(stream, 2))
     packet_size = 2

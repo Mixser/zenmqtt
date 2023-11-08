@@ -1,14 +1,13 @@
 import struct
-from typing import AsyncGenerator
 
-from gmqtt.mqtt.packet import PacketType
+from gmqtt.mqtt.packet import AsyncDataSequence, PacketType
 
 
-async def read(payload: AsyncGenerator[bytes, None], size: int) -> bytes:
+async def read(stream: AsyncDataSequence, size: int) -> bytes:
     result = []
 
     for _ in range(size):
-        result.append(await anext(payload))
+        result.append(await anext(stream))
 
     return b"".join(result)
 
