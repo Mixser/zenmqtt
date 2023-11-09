@@ -179,6 +179,7 @@ def pack_puback_packet(
 
 @dataclass(frozen=True)
 class PubRecResult:
+    __slots__ = ("packet_identifier", "reason_code", "properties")
     packet_identifier: int
     reason_code: int
     properties: PubrecProperties
@@ -216,6 +217,8 @@ def pack_pubrec_packet(
 
 @dataclass(frozen=True)
 class PubRelResult:
+    __slots__ = ("packet_identifier", "reason_code", "properties")
+
     packet_identifier: int
     reason_code: int
     properties: PubrelProperties
@@ -253,6 +256,8 @@ def pack_pubrel_packet(
 
 @dataclass(frozen=True)
 class PubCompResult:
+    __slots__ = ("packet_identifier", "reason_code", "properties")
+
     packet_identifier: int
     reason_code: int
     properties: PubcompProperties
