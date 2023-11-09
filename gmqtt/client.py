@@ -5,6 +5,7 @@ from gmqtt.connection import create_connection
 from gmqtt.mqtt.connect import ConnectionResult, ConnectProperties
 from gmqtt.mqtt.protocol import MQTTProtocol
 from gmqtt.mqtt.publish import PublishProperties, PublishResult
+from gmqtt.mqtt.session import MQTTSession, build_in_memory_session
 from gmqtt.mqtt.subscribe import (
     SubscribeResult,
     SubscriptionProperties,
@@ -40,10 +41,12 @@ class AsyncMessageIterator:
 
 
 class MQTTClient:
-    def __init__(self, client_id: ClientId, config: Optional[ClientConfig] = None):
+    def __init__(self, client_id: ClientId, session: Optional[MQTTSession] = None):
         messages: asyncio.Queue[PublishResult | None] = asyncio.Queue(maxsize=50)
 
-        self._protocol = MQTTProtocol(messages)
+        session = session or build_in_memory_session()
+
+        self._protocol = MQTTProtocol(messages, session)
         self._queue = messages
 
         self.client_id = client_id
@@ -56,14 +59,26 @@ class MQTTClient:
         self._password = password
 
     async def connect(
-        self, url: str, properties: Optional[ConnectProperties] = None
+        self,
+        url: str,
+        *,
+        clean_session: bool = False,
+        keepalive: bool = False,
+        properties: Optional[ConnectProperties] = None,
     ) -> ConnectionResult:
         connection = await create_connection(url)
         self._protocol.set_connection(connection)
 
-        return await self._protocol.authorize(
-            self.client_id, self._username, self._password, properties
+        connack = await self._protocol.connect(
+            self.client_id,
+            self._username,
+            self._password,
+            clean_session,
+            keepalive,
+            properties,
         )
+
+        return connack
 
     async def disconnect(self):
         await self._protocol.disconnect(reason=0)

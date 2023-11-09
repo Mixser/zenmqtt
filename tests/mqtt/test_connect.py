@@ -69,7 +69,12 @@ def test_pack_connect_packet(
 ):
     assert (
         pack_connect_packet(
-            client_id, username, password, clean_session, keepalive, properties
+            client_id,
+            username,
+            password,
+            clean_session=clean_session,
+            keepalive=keepalive,
+            properties=properties,
         )
         == expected_value
     )
