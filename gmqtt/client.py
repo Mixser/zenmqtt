@@ -1,16 +1,23 @@
 import asyncio
 from ssl import SSLContext
-from typing import Optional, Sequence, Tuple
+from typing import Optional, Sequence
 
 from gmqtt.connection import create_connection
 from gmqtt.metrics import MetricsCollector
-from gmqtt.mqtt.connect import ConnectionResult, ConnectProperties, WillMessage
+from gmqtt.mqtt.connect import (
+    ConnectionResult,
+    ConnectProperties,
+    DisconnectProperties,
+    DisconnectResult,
+    WillMessage,
+)
 from gmqtt.mqtt.protocol import MQTTProtocol
 from gmqtt.mqtt.publish import PublishAcknowledgement, PublishProperties, PublishResult
 from gmqtt.mqtt.session import MQTTSession, build_default_session
 from gmqtt.mqtt.subscribe import (
     SubscribeResult,
     SubscriptionProperties,
+    SubscriptionRequest,
     UnsubscribeProperties,
     UnsubscribeResult,
 )
@@ -112,8 +119,22 @@ class MQTTClient:
 
         return connack
 
-    async def disconnect(self):
-        await self._protocol.disconnect(reason=0)
+    async def disconnect(
+        self, reason: int = 0, properties: Optional[DisconnectProperties] = None
+    ):
+        """
+        :param reason: reason code of DISCONNECT, e.g. 0x04 "Disconnect with
+            Will Message" asks the server to publish the will message
+        """
+        await self._protocol.disconnect(reason=reason, properties=properties)
+
+    @property
+    def server_disconnect(self) -> Optional[DisconnectResult]:
+        """
+        DISCONNECT packet (reason code and properties) if the server closed
+        the last connection with it, otherwise None; reset on connect.
+        """
+        return self._protocol.server_disconnect
 
     async def publish(
         self,
@@ -148,9 +169,15 @@ class MQTTClient:
 
     async def subscribe(
         self,
-        topics: Sequence[Tuple[Topic, QOS]],
+        topics: Sequence[SubscriptionRequest],
         properties: Optional[SubscriptionProperties] = None,
     ) -> SubscribeResult:
+        """
+        :param topics: (topic, qos) pairs, or gmqtt.mqtt.subscribe.Subscription to set
+            MQTT 5 subscription options (no_local, retain_as_published,
+            retain_handling)
+        :raises ValueError: invalid QoS or subscription options
+        """
         return await self._protocol.subscribe(topics, properties)
 
     async def unsubscribe(
