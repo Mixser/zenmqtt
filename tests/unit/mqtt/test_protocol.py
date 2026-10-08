@@ -368,3 +368,68 @@ async def test_failed_connack_is_returned():
 
     with pytest.raises(NotConnectedError):
         await protocol.publish("a/b", b"payload")
+
+
+async def test_ping():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.ping())
+    await expect(transport, PacketType.PINGREQ)
+
+    transport.feed(b"\xd0\x00")
+
+    assert await asyncio.wait_for(task, TIMEOUT) is None
+    assert protocol._ping_future is None
+
+
+async def test_concurrent_pings_share_pingreq():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol)
+
+    tasks = [asyncio.create_task(protocol.ping()) for _ in range(3)]
+    await expect(transport, PacketType.PINGREQ)
+    await asyncio.sleep(0)
+
+    assert not transport.has_sent_packets()
+
+    transport.feed(b"\xd0\x00")
+
+    await asyncio.wait_for(asyncio.gather(*tasks), TIMEOUT)
+
+
+async def test_ping_when_not_connected():
+    protocol, _, _ = build_protocol()
+
+    with pytest.raises(NotConnectedError):
+        await protocol.ping()
+
+
+async def test_pending_ping_on_connection_lost():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.ping())
+    await expect(transport, PacketType.PINGREQ)
+
+    transport.drop()
+
+    with pytest.raises(ConnectionLostError):
+        await asyncio.wait_for(task, TIMEOUT)
+
+    await wait_for_connection_lost(protocol)
+    assert protocol._ping_future is None
+
+
+async def test_unexpected_pingresp_is_ignored():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol)
+
+    transport.feed(b"\xd0\x00")
+
+    # the read loop keeps working after PINGRESP without PINGREQ
+    task = asyncio.create_task(protocol.ping())
+    await expect(transport, PacketType.PINGREQ)
+
+    transport.feed(b"\xd0\x00")
+    await asyncio.wait_for(task, TIMEOUT)
