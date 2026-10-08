@@ -9,7 +9,7 @@ from gmqtt.mqtt.connect import (
     parse_disconnect_packet,
 )
 from gmqtt.mqtt.packet import PacketType, parse_fixed_header
-from tests.mqtt.utils import build_async_generator
+from tests.unit.mqtt.utils import build_async_generator
 
 pytestmark = pytest.mark.asyncio
 

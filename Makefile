@@ -1,5 +1,6 @@
 SOURCE=gmqtt
 TEST=tests
+TEST_UNIT=$(TEST)/unit
 
 .PHONY: fmt/black
 fmt/black:
@@ -30,3 +31,7 @@ lint: lint/black lint/flake8 lint/mypy
 .PHONY: test
 test:
 	@poetry run pytest --disable-warnings --cov=$(SOURCE) $(TEST)
+
+.PHONY: test/unit
+test/unit:
+	@poetry run pytest --disable-warnings --cov=$(SOURCE) $(TEST_UNIT)

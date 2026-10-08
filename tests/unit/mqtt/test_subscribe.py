@@ -9,7 +9,7 @@ from gmqtt.mqtt.subscribe import (
     parse_suback_packet,
     parse_unsubscribe_packet,
 )
-from tests.mqtt.utils import build_async_generator
+from tests.unit.mqtt.utils import build_async_generator
 
 pytestmark = pytest.mark.asyncio
 

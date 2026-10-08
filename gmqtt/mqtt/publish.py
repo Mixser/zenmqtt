@@ -15,7 +15,7 @@ from gmqtt.mqtt.utils import pack_fixed_header, pack_str16, read
 
 class PublishProperties(TypedDict, total=False):
     payload_format_indicator: bool
-    message_expire_level: int
+    message_expiry_interval: int
     content_type: str
     response_topic: str
     subscription_identifier: int
@@ -336,3 +336,7 @@ def _pack_publish_response_variable_header(
         )
 
     return length, bytes(variable_header_payload)
+
+
+# PUBACK for QoS 1; PUBCOMP (or PUBREC with an error reason code) for QoS 2
+PublishAcknowledgement = PubAckResult | PubRecResult | PubCompResult

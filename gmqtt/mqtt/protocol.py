@@ -1,10 +1,11 @@
 import asyncio
-import itertools
 from asyncio import Task
+from collections import deque
 from logging import getLogger
-from typing import Awaitable, Callable, Final, Optional, Sequence, Tuple
+from typing import Awaitable, Callable, Final, Optional, Sequence, Tuple, cast
 
 from gmqtt.connection import MQTTConnection
+from gmqtt.exceptions import ConnectionLostError, NotConnectedError
 from gmqtt.mqtt.connect import (
     ConnectionResult,
     ConnectProperties,
@@ -21,12 +22,13 @@ from gmqtt.mqtt.packet import (
     parse_fixed_header,
 )
 from gmqtt.mqtt.publish import (
+    PublishAcknowledgement,
     PublishProperties,
     PublishResult,
-    PubrelProperties,
     pack_puback_packet,
     pack_pubcomp_packet,
     pack_publish_packet,
+    pack_pubrec_packet,
     pack_pubrel_packet,
     parse_puback_packet,
     parse_pubcomp_packet,
@@ -34,7 +36,12 @@ from gmqtt.mqtt.publish import (
     parse_pubrec_packet,
     parse_pubrel_packet,
 )
-from gmqtt.mqtt.session import MQTTSession
+from gmqtt.mqtt.session import (
+    MQTTSession,
+    OutgoingMessage,
+    OutgoingMessageState,
+    PacketIdentifier,
+)
 from gmqtt.mqtt.subscribe import (
     SubscribeResult,
     SubscriptionProperties,
@@ -50,6 +57,13 @@ logger = getLogger(__name__)
 
 BUFFER_SIZE: Final[int] = 1024
 READ_AT_MOST_BYTES: Final[int] = 128
+
+# CONNACK "Session Present" flag
+SESSION_PRESENT_FLAG: Final[int] = 0x01
+# reason codes >= 0x80 indicate failure
+FAILURE_REASON_CODE: Final[int] = 0x80
+# default value of "Receive Maximum" if the server doesn't send it
+DEFAULT_RECEIVE_MAXIMUM: Final[int] = 2**16 - 1
 
 
 async def build_data_sequence(
@@ -73,6 +87,61 @@ async def build_data_sequence(
             yield byte.to_bytes()
 
 
+class _SendQuota:
+    """
+    Flow control (MQTT 5, section 4.9): limits the number of QoS 1/2
+    publications which are not acknowledged yet by "Receive Maximum".
+    """
+
+    def __init__(self, limit: int) -> None:
+        self._available = limit
+        self._holders: set[PacketIdentifier] = set()
+        self._waiters: deque[asyncio.Future[None]] = deque()
+
+    async def acquire(self, packet_identifier: PacketIdentifier) -> None:
+        if self._available > 0 and not self._waiters:
+            self._available -= 1
+        else:
+            waiter: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+            self._waiters.append(waiter)
+
+            try:
+                await waiter
+            except asyncio.CancelledError:
+                # the slot was handed to us right before cancellation
+                if waiter.done() and not waiter.cancelled():
+                    self._wake_up_or_return()
+                raise
+
+        self._holders.add(packet_identifier)
+
+    def release(self, packet_identifier: PacketIdentifier) -> None:
+        # only messages sent within this connection hold a slot
+        if packet_identifier in self._holders:
+            self._holders.remove(packet_identifier)
+            self._wake_up_or_return()
+
+    def abort(self, exc: Exception) -> None:
+        while self._waiters:
+            if not (waiter := self._waiters.popleft()).done():
+                waiter.set_exception(exc)
+
+    def _wake_up_or_return(self) -> None:
+        while self._waiters:
+            if not (waiter := self._waiters.popleft()).done():
+                waiter.set_result(None)
+                return
+
+        self._available += 1
+
+
+def _strip_topic_alias(properties: PublishProperties) -> PublishProperties:
+    # topic aliases don't survive the reconnect
+    return cast(
+        PublishProperties, {k: v for k, v in properties.items() if k != "topic_alias"}
+    )
+
+
 class MQTTProtocol:
     def __init__(self, messages: asyncio.Queue, session: MQTTSession) -> None:
         self._session = session
@@ -80,63 +149,24 @@ class MQTTProtocol:
         self._connection: Optional[MQTTConnection] = None
         self._read_loop_task: Optional[Task[None]] = None
 
-        self._connection_future: Optional[asyncio.Future] = None
+        # True only between successful CONNACK and loss of the connection
+        self._connected = False
 
-        self._publish_packet_futures: dict[int, asyncio.Future] = {}
+        self._connection_future: Optional[asyncio.Future[ConnectionResult]] = None
 
-        self._command_packet_futures: dict[int, asyncio.Future] = {}
+        self._publish_packet_futures: dict[
+            PacketIdentifier, asyncio.Future[PublishAcknowledgement]
+        ] = {}
+
+        self._command_packet_futures: dict[PacketIdentifier, asyncio.Future] = {}
+
+        self._send_quota: Optional[_SendQuota] = None
 
         self._messages_queue = messages
 
-        self._disconnected = asyncio.Event()
-
-    async def __read_loop__(self) -> None:
-        assert self._connection
-
-        stream = build_data_sequence(self._connection)
-
-        while header := await parse_fixed_header(stream):
-            handler: Callable[[FixedHeader, AsyncDataSequence], Awaitable[None]]
-
-            logger.debug(
-                "mqtt_protocol.read_loop.new_packet_received header:%s", header
-            )
-
-            if header.packet_type == PacketType.CONNACK:
-                handler = self.handle_connack_packet
-            elif header.packet_type == PacketType.PUBLISH:
-                handler = self.handle_publish_packet
-            elif header.packet_type == PacketType.PUBACK:
-                handler = self.handle_puback_packet
-            elif header.packet_type == PacketType.PUBREC:
-                handler = self.handle_pubrec_packet
-            elif header.packet_type == PacketType.PUBREL:
-                handler = self.handle_pubrel_packet
-            elif header.packet_type == PacketType.PUBCOMP:
-                handler = self.handle_pubcomp_packet
-            elif header.packet_type == PacketType.SUBACK:
-                handler = self.handle_suback_packet
-            elif header.packet_type == PacketType.UNSUBACK:
-                handler = self.handle_unsuback_packet
-            elif header.packet_type == PacketType.PINGRESP:
-                continue
-            elif header.packet_type == PacketType.DISCONNECT:
-                handler = self.handle_disconnect_packet
-            elif header.packet_type == PacketType.AUTH:
-                continue
-            else:
-                raise ValueError(f"Invalid packet type: {header.packet_type}")
-
-            try:
-                await handler(header, stream)
-            except Exception as exc:
-                logger.error("mqtt_protocol.handle_incoming_packet.error", exc_info=exc)
-
-        await self._messages_queue.put(None)
-
     def set_connection(self, connection: MQTTConnection):
         self._connection = connection
-        self._connection_future = asyncio.Future()
+        self._connection_future = asyncio.get_running_loop().create_future()
 
         self._read_loop_task = asyncio.create_task(
             self.__read_loop__(), name="mqtt-protocol-read-loop"
@@ -152,6 +182,7 @@ class MQTTProtocol:
         properties: Optional[ConnectProperties] = None,
     ) -> ConnectionResult:
         assert self._connection
+        assert self._connection_future
 
         properties = properties or {}
 
@@ -170,12 +201,149 @@ class MQTTProtocol:
         logger.debug("mqtt_protocol.send_connect_packet")
         await self._connection.write(login_packet)
 
+        connection_result = await self._connection_future
+
+        if connection_result.result_code >= FAILURE_REASON_CODE:
+            return connection_result
+
+        if not connection_result.flags & SESSION_PRESENT_FLAG:
+            # the server has no session, so the client must discard its own
+            await self._session.reset()
+
+        # publish calls wait while the server's "Receive Maximum" is reached
+        self._send_quota = _SendQuota(
+            connection_result.properties.get("receive_maximum", DEFAULT_RECEIVE_MAXIMUM)
+        )
+
+        await self._resend_pending_messages()
+
+        self._connected = True
+
+        return connection_result
+
+    async def disconnect(
+        self, reason: int, properties: Optional[DisconnectProperties] = None
+    ):
+        assert self._connection
+
+        properties = properties or {}
+
+        if not self._connection.is_closing():
+            logger.debug("mqtt_protocol.send_disconnect_packet")
+            await self._connection.write(pack_disconnect_packet(reason, properties))
+
+            await self._connection.disconnect()
+
+        if read_loop_task := self._read_loop_task:
+            await read_loop_task
+            self._read_loop_task = None
+
+    async def publish(
+        self,
+        topic: str,
+        payload: bytes,
+        qos: int = 0,
+        retain: bool = False,
+        properties: Optional[PublishProperties] = None,
+    ) -> Optional[PublishAcknowledgement]:
+        connection = self._ensure_connected()
+        properties = properties or {}
+
+        if qos == 0:
+            logger.debug("mqtt_protocol.send_publish_packet")
+            await connection.write(
+                pack_publish_packet(0, topic, payload, qos, retain, False, properties)
+            )
+            return None
+
+        packet_identifier = await self._session.acquire_packet_identifier()
+
+        try:
+            connection = self._ensure_connected()
+
+            if self._send_quota:
+                await self._send_quota.acquire(packet_identifier)
+
+            # the message isn't stored yet, so nobody else owns the identifier
+            connection = self._ensure_connected()
+        except BaseException:
+            await self._session.release_packet_identifier(packet_identifier)
+            raise
+
+        await self._session.store_outgoing_message(
+            OutgoingMessage(
+                packet_identifier=packet_identifier,
+                topic=topic,
+                payload=payload,
+                qos=qos,
+                retain=retain,
+                properties=properties,
+                state=OutgoingMessageState.AWAITING_ACK,
+            )
+        )
+
+        # from here the message belongs to the session: if the connection was
+        # lost meanwhile, it'll be re-sent on the next connect
+        if not self._connected:
+            raise ConnectionLostError()
+
+        future: asyncio.Future[
+            PublishAcknowledgement
+        ] = asyncio.get_running_loop().create_future()
+        self._publish_packet_futures[packet_identifier] = future
+
+        logger.debug("mqtt_protocol.send_publish_packet pid:%s", packet_identifier)
+        await connection.write(
+            pack_publish_packet(
+                packet_identifier, topic, payload, qos, retain, False, properties
+            )
+        )
+
+        return await future
+
+    async def subscribe(
+        self,
+        topics: Sequence[Tuple[str, int]],
+        properties: Optional[SubscriptionProperties] = None,
+    ) -> SubscribeResult:
+        self._ensure_connected()
+
+        properties = properties or {}
+
+        packet_identifier = await self._session.acquire_packet_identifier()
+
+        subscribe_packet = pack_subscription_packet(
+            packet_identifier, topics, properties
+        )
+
+        return await self._send_command(packet_identifier, subscribe_packet)
+
+    async def unsubscribe(
+        self, topics: Sequence[str], properties: Optional[UnsubscribeProperties] = None
+    ) -> UnsubscribeResult:
+        self._ensure_connected()
+
+        properties = properties or {}
+
+        packet_identifier = await self._session.acquire_packet_identifier()
+
+        unsubscribe_packet = pack_unsubscribe_packet(
+            packet_identifier, topics, properties
+        )
+
+        return await self._send_command(packet_identifier, unsubscribe_packet)
+
+    async def handle_connack_packet(
+        self, fixed_header: FixedHeader, stream: AsyncDataSequence
+    ) -> None:
         assert self._connection_future
-        await self._connection_future
 
-        # TODO: resend packets from session
+        connection_result = await parse_connack_packet(fixed_header, stream)
 
-        return self._connection_future.result()
+        logger.debug("mqtt_protocol.handle_connack_packet packet:%s", connection_result)
+
+        if not self._connection_future.done():
+            self._connection_future.set_result(connection_result)
 
     async def handle_disconnect_packet(
         self, fixed_header: FixedHeader, stream: AsyncDataSequence
@@ -187,92 +355,8 @@ class MQTTProtocol:
             "mqtt_protocol.handle_disconnect_packet packet:%s", disconnect_packet
         )
 
+        # pending futures are failed by the read loop once the stream ends
         await self._connection.disconnect()
-
-        for future in itertools.chain(
-            self._publish_packet_futures.values(), self._command_packet_futures.values()
-        ):
-            future.set_result(None)
-
-    async def disconnect(
-        self, reason: int, properties: Optional[DisconnectProperties] = None
-    ):
-        assert self._connection
-
-        properties = properties or {}
-
-        logger.debug("mqtt_protocol.send_disconnect_packet")
-        await self._connection.write(pack_disconnect_packet(reason, properties))
-
-        await self._connection.disconnect()
-
-        if read_loop_task := self._read_loop_task:
-            await read_loop_task
-            self._read_loop_task = None
-
-        for future in itertools.chain(
-            list(self._publish_packet_futures.values()),
-            list(self._command_packet_futures.values()),
-        ):
-            future.set_result(None)
-
-    async def handle_connack_packet(
-        self, fixed_header: FixedHeader, stream: AsyncDataSequence
-    ) -> None:
-        assert self._connection_future
-
-        connection_result = await parse_connack_packet(fixed_header, stream)
-
-        logger.debug("mqtt_protocol.handle_connack_packet packet:%s", connection_result)
-
-        self._connection_future.set_result(connection_result)
-
-    async def publish(
-        self,
-        topic: str,
-        payload: bytes,
-        qos: int = 0,
-        retain: bool = False,
-        properties: Optional[PublishProperties] = None,
-    ) -> Optional[PublishResult]:
-        assert self._connection
-        packet_identifier = -1
-        properties = properties or {}
-
-        if self._connection.is_closing():
-            return None
-
-        if qos > 0:
-            packet_identifier = await self._session.acquire_packet_identifier()
-            self._publish_packet_futures[packet_identifier] = asyncio.Future()
-
-            await self._session.register_outgoing_publish_packet(
-                packet_identifier, topic, payload, qos, retain, properties
-            )
-
-        publish_packet = pack_publish_packet(
-            packet_identifier,
-            topic,
-            payload,
-            qos,
-            retain,
-            False,
-            properties,  # TODO: generate
-        )
-
-        if self._connection.is_closing():
-            return None
-
-        logger.debug("mqtt_protocol.send_publish_packet")
-        await self._connection.write(publish_packet)
-
-        if puback_result_future := self._publish_packet_futures.get(packet_identifier):
-            if self._connection.is_closing():
-                return None
-            await puback_result_future
-            return self._publish_packet_futures.pop(packet_identifier).result()
-
-        return None
 
     async def handle_publish_packet(
         self, fixed_header: FixedHeader, stream: AsyncDataSequence
@@ -281,21 +365,38 @@ class MQTTProtocol:
 
         publish_result = await parse_publish_packet(fixed_header, stream)
 
-        await self._messages_queue.put(publish_result)
-
         logger.debug("mqtt_protocol.handle_publish_packet packet:%s", publish_result)
 
-        if publish_result.qos:
-            assert publish_result.packet_identifier
+        if not publish_result.qos:
+            await self._deliver_message(publish_result)
+            return
+
+        packet_identifier = publish_result.packet_identifier
+        assert packet_identifier
+
+        if publish_result.qos == 1:
+            await self._deliver_message(publish_result)
 
             logger.debug(
-                "mqtt_protocol.handle_publish_packet.send_puback_packet packet:%s",
-                publish_result,
+                "mqtt_protocol.handle_publish_packet.send_puback_packet pid:%s",
+                packet_identifier,
+            )
+            await self._connection.write(pack_puback_packet(packet_identifier, 0, {}))
+            return
+
+        if await self._session.register_incoming_message(packet_identifier):
+            await self._deliver_message(publish_result)
+        else:
+            logger.debug(
+                "mqtt_protocol.handle_publish_packet.duplicate pid:%s",
+                packet_identifier,
             )
 
-            await self._connection.write(
-                pack_puback_packet(publish_result.packet_identifier, 0, {})
-            )
+        logger.debug(
+            "mqtt_protocol.handle_publish_packet.send_pubrec_packet pid:%s",
+            packet_identifier,
+        )
+        await self._connection.write(pack_pubrec_packet(packet_identifier, 0, {}))
 
     async def handle_puback_packet(
         self, fixed_header: FixedHeader, stream: AsyncDataSequence
@@ -304,14 +405,9 @@ class MQTTProtocol:
 
         logger.debug("mqtt_protocol.handle_puback_packet packet:%s", puback_result)
 
-        self._publish_packet_futures[puback_result.packet_identifier].set_result(
-            puback_result
+        await self._complete_outgoing_message(
+            puback_result.packet_identifier, puback_result
         )
-
-        await self._session.handle_publish_packet_acknowledge(
-            puback_result.packet_identifier
-        )
-        await self._session.release_packet_identifier(puback_result.packet_identifier)
 
     async def handle_pubrec_packet(
         self, fixed_header: FixedHeader, stream: AsyncDataSequence
@@ -319,23 +415,18 @@ class MQTTProtocol:
         assert self._connection
 
         pubrec_packet = await parse_pubrec_packet(fixed_header, stream)
+        packet_identifier = pubrec_packet.packet_identifier
 
         logger.debug("mqtt_protocol.handle_pubrec_packet packet:%s", pubrec_packet)
 
-        # TODO: implement real reason_code and properties
-        reason_code = 0x0
-        properties: PubrelProperties = {}
+        if pubrec_packet.reason_code >= FAILURE_REASON_CODE:
+            # the server rejected the message, the flow ends here
+            await self._complete_outgoing_message(packet_identifier, pubrec_packet)
+            return
 
-        await self._session.handle_publish_packet_acknowledge(
-            pubrec_packet.packet_identifier
-        )
-        await self._session.register_outgoing_pubrel_packet(
-            pubrec_packet.packet_identifier, reason_code, properties
-        )
+        await self._session.mark_outgoing_message_released(packet_identifier)
 
-        await self._connection.write(
-            pack_pubrel_packet(pubrec_packet.packet_identifier, reason_code, properties)
-        )
+        await self._connection.write(pack_pubrel_packet(packet_identifier, 0x0, {}))
 
     async def handle_pubrel_packet(
         self, fixed_header: FixedHeader, stream: AsyncDataSequence
@@ -346,7 +437,7 @@ class MQTTProtocol:
 
         logger.debug("mqtt_protocol.handle_pubrel_packet packet:%s", pubrel_result)
 
-        # TODO: implement real reason_code and properties
+        await self._session.complete_incoming_message(pubrel_result.packet_identifier)
 
         await self._connection.write(
             pack_pubcomp_packet(pubrel_result.packet_identifier, 0x0, {})
@@ -355,38 +446,13 @@ class MQTTProtocol:
     async def handle_pubcomp_packet(
         self, fixed_header: FixedHeader, stream: AsyncDataSequence
     ):
-        assert self._connection
-
         pubcomp_packet = await parse_pubcomp_packet(fixed_header, stream)
 
         logger.debug("mqtt_protocol.handle_pubcomp_packet packet:%s", pubcomp_packet)
 
-        await self._session.handle_pubrel_packet_acknowledge(
-            pubcomp_packet.packet_identifier
+        await self._complete_outgoing_message(
+            pubcomp_packet.packet_identifier, pubcomp_packet
         )
-        await self._session.release_packet_identifier(pubcomp_packet.packet_identifier)
-
-    async def subscribe(
-        self,
-        topics: Sequence[Tuple[str, int]],
-        properties: Optional[SubscriptionProperties] = None,
-    ) -> SubscribeResult:
-        assert self._connection
-
-        properties = properties or {}
-
-        packet_identifier = await self._session.acquire_packet_identifier()
-
-        self._command_packet_futures[packet_identifier] = asyncio.Future()
-
-        subscribe_packet = pack_subscription_packet(
-            packet_identifier, topics, properties
-        )
-
-        await self._connection.write(subscribe_packet)
-
-        await self._command_packet_futures[packet_identifier]
-        return self._command_packet_futures.pop(packet_identifier).result()
 
     async def handle_suback_packet(
         self, fixed_header: FixedHeader, stream: AsyncDataSequence
@@ -395,30 +461,7 @@ class MQTTProtocol:
 
         logger.debug("mqtt_protocol.handle_suback_packet packet:%s", suback_packet)
 
-        self._command_packet_futures[suback_packet.packet_identifier].set_result(
-            suback_packet
-        )
-        await self._session.release_packet_identifier(suback_packet.packet_identifier)
-
-    async def unsubscribe(
-        self, topics: Sequence[str], properties: Optional[UnsubscribeProperties] = None
-    ) -> UnsubscribeResult:
-        assert self._connection
-
-        properties = properties or {}
-
-        packet_identifier = await self._session.acquire_packet_identifier()
-
-        self._command_packet_futures[packet_identifier] = asyncio.Future()
-
-        unsubscribe_packet = pack_unsubscribe_packet(
-            packet_identifier, topics, properties
-        )
-
-        await self._connection.write(unsubscribe_packet)
-
-        await self._command_packet_futures[packet_identifier]
-        return self._command_packet_futures.pop(packet_identifier).result()
+        await self._complete_command(suback_packet.packet_identifier, suback_packet)
 
     async def handle_unsuback_packet(
         self, fixed_header: FixedHeader, stream: AsyncDataSequence
@@ -427,7 +470,162 @@ class MQTTProtocol:
 
         logger.debug("mqtt_protocol.handle_unsuback_packet packet:%s", unsuback_packet)
 
-        self._command_packet_futures[unsuback_packet.packet_identifier].set_result(
-            unsuback_packet
-        )
-        await self._session.release_packet_identifier(unsuback_packet.packet_identifier)
+        await self._complete_command(unsuback_packet.packet_identifier, unsuback_packet)
+
+    async def __read_loop__(self) -> None:
+        assert self._connection
+
+        stream = build_data_sequence(self._connection)
+
+        try:
+            while header := await parse_fixed_header(stream):
+                handler: Callable[[FixedHeader, AsyncDataSequence], Awaitable[None]]
+
+                logger.debug(
+                    "mqtt_protocol.read_loop.new_packet_received header:%s", header
+                )
+
+                if header.packet_type == PacketType.CONNACK:
+                    handler = self.handle_connack_packet
+                elif header.packet_type == PacketType.PUBLISH:
+                    handler = self.handle_publish_packet
+                elif header.packet_type == PacketType.PUBACK:
+                    handler = self.handle_puback_packet
+                elif header.packet_type == PacketType.PUBREC:
+                    handler = self.handle_pubrec_packet
+                elif header.packet_type == PacketType.PUBREL:
+                    handler = self.handle_pubrel_packet
+                elif header.packet_type == PacketType.PUBCOMP:
+                    handler = self.handle_pubcomp_packet
+                elif header.packet_type == PacketType.SUBACK:
+                    handler = self.handle_suback_packet
+                elif header.packet_type == PacketType.UNSUBACK:
+                    handler = self.handle_unsuback_packet
+                elif header.packet_type == PacketType.PINGRESP:
+                    continue
+                elif header.packet_type == PacketType.DISCONNECT:
+                    handler = self.handle_disconnect_packet
+                elif header.packet_type == PacketType.AUTH:
+                    continue
+                else:
+                    raise ValueError(f"Invalid packet type: {header.packet_type}")
+
+                try:
+                    await handler(header, stream)
+                except Exception as exc:
+                    logger.error(
+                        "mqtt_protocol.handle_incoming_packet.error", exc_info=exc
+                    )
+        except Exception as exc:
+            logger.error("mqtt_protocol.read_loop.error", exc_info=exc)
+        finally:
+            await self._handle_connection_lost()
+
+    async def _handle_connection_lost(self) -> None:
+        logger.debug("mqtt_protocol.handle_connection_lost")
+
+        # everything up to the first await is synchronous, so no new
+        # futures can be registered after the snapshot below
+        self._connected = False
+        exc = ConnectionLostError()
+
+        if self._connection_future and not self._connection_future.done():
+            self._connection_future.set_exception(exc)
+
+        publish_futures = list(self._publish_packet_futures.values())
+        self._publish_packet_futures.clear()
+
+        command_futures = dict(self._command_packet_futures)
+        self._command_packet_futures.clear()
+
+        for future in [*publish_futures, *command_futures.values()]:
+            if not future.done():
+                future.set_exception(exc)
+
+        if self._send_quota:
+            # messages waiting for the quota weren't stored nor sent
+            self._send_quota.abort(NotConnectedError())
+            self._send_quota = None
+
+        # publish packets stay in the session, commands aren't re-sent
+        for packet_identifier in command_futures:
+            await self._session.release_packet_identifier(packet_identifier)
+
+        await self._messages_queue.put(None)
+
+        if self._connection and not self._connection.is_closing():
+            await self._connection.disconnect()
+
+    def _ensure_connected(self) -> MQTTConnection:
+        if not self._connected or not self._connection or self._connection.is_closing():
+            raise NotConnectedError()
+
+        return self._connection
+
+    async def _resend_pending_messages(self) -> None:
+        assert self._connection
+
+        for message in await self._session.get_pending_outgoing_messages():
+            packet_identifier = message.packet_identifier
+
+            if message.state == OutgoingMessageState.AWAITING_ACK:
+                if self._send_quota:
+                    await self._send_quota.acquire(packet_identifier)
+
+                packet = pack_publish_packet(
+                    packet_identifier,
+                    message.topic,
+                    message.payload,
+                    message.qos,
+                    message.retain,
+                    True,
+                    _strip_topic_alias(message.properties),
+                )
+            else:
+                packet = pack_pubrel_packet(packet_identifier, 0x0, {})
+
+            logger.debug(
+                "mqtt_protocol.resend_pending_message pid:%s state:%s",
+                packet_identifier,
+                message.state.name,
+            )
+            await self._connection.write(packet)
+
+    async def _complete_outgoing_message(
+        self, packet_identifier: PacketIdentifier, result: PublishAcknowledgement
+    ) -> None:
+        await self._session.complete_outgoing_message(packet_identifier)
+
+        if self._send_quota:
+            self._send_quota.release(packet_identifier)
+
+        # there is no future for messages re-sent from the previous connection
+        future = self._publish_packet_futures.pop(packet_identifier, None)
+
+        if future and not future.done():
+            future.set_result(result)
+
+    async def _deliver_message(self, publish_result: PublishResult) -> None:
+        await self._messages_queue.put(publish_result)
+
+    async def _send_command(self, packet_identifier: PacketIdentifier, packet: bytes):
+        try:
+            connection = self._ensure_connected()
+        except NotConnectedError:
+            await self._session.release_packet_identifier(packet_identifier)
+            raise
+
+        future: asyncio.Future = asyncio.get_running_loop().create_future()
+        self._command_packet_futures[packet_identifier] = future
+
+        await connection.write(packet)
+
+        return await future
+
+    async def _complete_command(self, packet_identifier: PacketIdentifier, result):
+        await self._session.release_packet_identifier(packet_identifier)
+
+        future = self._command_packet_futures.pop(packet_identifier, None)
+
+        if future and not future.done():
+            future.set_result(result)
