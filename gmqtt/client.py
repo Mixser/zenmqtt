@@ -81,6 +81,10 @@ class MQTTClient:
         will: Optional[WillMessage] = None,
     ) -> ConnectionResult:
         """
+        :param clean_session: discard the session on the server and the client;
+            to re-send QoS 1/2 messages after a reconnect use False together
+            with properties={"session_expiry_interval": <seconds>}, otherwise
+            the server drops the session when the connection is closed
         :param keepalive: seconds between control packets sent by the client,
             the client sends PINGREQ when idle; 0 disables keep alive
         :param will: the message the server publishes if the client goes away
@@ -115,9 +119,12 @@ class MQTTClient:
         """
         Returns None for QoS 0, otherwise the final acknowledgement packet.
 
+        :raises ValueError: QoS isn't 0, 1 or 2
+        :raises QoSNotSupportedError: QoS is higher than the server's "Maximum QoS"
         :raises NotConnectedError: the client isn't connected
         :raises ConnectionLostError: the connection was lost before the
             acknowledgement; the message will be re-sent on the next connect
+            only if the server keeps the session, see connect(clean_session)
         """
         return await self._protocol.publish(
             topic, message, qos=qos, retain=retain, properties=properties

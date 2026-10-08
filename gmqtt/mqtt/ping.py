@@ -1,3 +1,4 @@
+from gmqtt.exceptions import MalformedPacketError
 from gmqtt.mqtt.packet import AsyncDataSequence, FixedHeader, PacketType
 from gmqtt.mqtt.utils import pack_fixed_header
 
@@ -15,4 +16,4 @@ async def parse_pingresp_packet(
     assert fixed_header.packet_type == PacketType.PINGRESP
 
     if fixed_header.flags != 0x00 or fixed_header.length != 0:
-        raise ValueError(f"Malformed PINGRESP packet: {fixed_header}")
+        raise MalformedPacketError(f"Malformed PINGRESP packet: {fixed_header}")

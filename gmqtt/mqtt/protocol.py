@@ -5,7 +5,12 @@ from logging import getLogger
 from typing import Awaitable, Callable, Final, Optional, Sequence, Tuple, cast
 
 from gmqtt.connection import MQTTConnection
-from gmqtt.exceptions import ConnectionLostError, NotConnectedError
+from gmqtt.exceptions import (
+    ConnectionLostError,
+    MalformedPacketError,
+    NotConnectedError,
+    QoSNotSupportedError,
+)
 from gmqtt.metrics import MetricsCollector
 from gmqtt.mqtt.connect import (
     ConnectionResult,
@@ -68,6 +73,10 @@ SESSION_PRESENT_FLAG: Final[int] = 0x01
 FAILURE_REASON_CODE: Final[int] = 0x80
 # default value of "Receive Maximum" if the server doesn't send it
 DEFAULT_RECEIVE_MAXIMUM: Final[int] = 2**16 - 1
+# default value of "Maximum QoS" if the server doesn't send it
+DEFAULT_MAXIMUM_QOS: Final[int] = 2
+# DISCONNECT reason code
+MALFORMED_PACKET_REASON_CODE: Final[int] = 0x81
 
 
 async def build_data_sequence(
@@ -192,6 +201,8 @@ class MQTTProtocol:
 
         self._send_quota: Optional[_SendQuota] = None
 
+        self._maximum_qos = DEFAULT_MAXIMUM_QOS
+
         self._messages_queue = messages
 
     def set_connection(self, connection: MQTTConnection):
@@ -248,7 +259,18 @@ class MQTTProtocol:
 
         if not connection_result.flags & SESSION_PRESENT_FLAG:
             # the server has no session, so the client must discard its own
+            if pending := await self._session.get_pending_outgoing_messages():
+                logger.warning(
+                    "mqtt_protocol.session_not_present.discard_pending_messages "
+                    "count:%s, set session_expiry_interval > 0 to keep them",
+                    len(pending),
+                )
+
             await self._session.reset()
+
+        self._maximum_qos = connection_result.properties.get(
+            "maximum_qos", DEFAULT_MAXIMUM_QOS
+        )
 
         # publish calls wait while the server's "Receive Maximum" is reached
         self._send_quota = _SendQuota(
@@ -297,8 +319,16 @@ class MQTTProtocol:
         retain: bool = False,
         properties: Optional[PublishProperties] = None,
     ) -> Optional[PublishAcknowledgement]:
+        if qos not in (0, 1, 2):
+            raise ValueError(f"Invalid QoS: {qos}")
+
         connection = self._ensure_connected()
         properties = properties or {}
+
+        if qos > self._maximum_qos:
+            raise QoSNotSupportedError(
+                f"QoS {qos} is higher than server's maximum QoS {self._maximum_qos}"
+            )
 
         if qos == 0:
             logger.debug("mqtt_protocol.send_publish_packet")
@@ -627,6 +657,14 @@ class MQTTProtocol:
 
                 try:
                     await handler(header, stream)
+                except MalformedPacketError as exc:
+                    logger.error("mqtt_protocol.malformed_packet", exc_info=exc)
+                    await self._write(
+                        self._connection,
+                        pack_disconnect_packet(MALFORMED_PACKET_REASON_CODE, {}),
+                    )
+                    await self._connection.disconnect()
+                    break
                 except Exception as exc:
                     logger.error(
                         "mqtt_protocol.handle_incoming_packet.error", exc_info=exc
