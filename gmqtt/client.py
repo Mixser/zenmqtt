@@ -105,6 +105,15 @@ class MQTTClient:
             topic, message, qos=qos, retain=retain, properties=properties
         )
 
+    async def ping(self) -> None:
+        """
+        Sends PINGREQ and waits for PINGRESP.
+
+        :raises NotConnectedError: the client isn't connected
+        :raises ConnectionLostError: the connection was lost before PINGRESP
+        """
+        await self._protocol.ping()
+
     async def subscribe(
         self,
         topics: Sequence[Tuple[Topic, QOS]],

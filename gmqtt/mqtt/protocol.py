@@ -21,6 +21,7 @@ from gmqtt.mqtt.packet import (
     PacketType,
     parse_fixed_header,
 )
+from gmqtt.mqtt.ping import pack_pingreq_packet, parse_pingresp_packet
 from gmqtt.mqtt.publish import (
     PublishAcknowledgement,
     PublishProperties,
@@ -159,6 +160,9 @@ class MQTTProtocol:
         ] = {}
 
         self._command_packet_futures: dict[PacketIdentifier, asyncio.Future] = {}
+
+        # PINGRESP has no packet identifier, so only one PINGREQ is in flight
+        self._ping_future: Optional[asyncio.Future[None]] = None
 
         self._send_quota: Optional[_SendQuota] = None
 
@@ -333,6 +337,24 @@ class MQTTProtocol:
 
         return await self._send_command(packet_identifier, unsubscribe_packet)
 
+    async def ping(self) -> None:
+        connection = self._ensure_connected()
+
+        # concurrent callers share the in-flight PINGREQ
+        if (future := self._ping_future) is None:
+            future = asyncio.get_running_loop().create_future()
+            self._ping_future = future
+
+            logger.debug("mqtt_protocol.send_pingreq_packet")
+            try:
+                await connection.write(pack_pingreq_packet())
+            except BaseException:
+                self._ping_future = None
+                raise
+
+        # cancellation of one caller must not affect the others
+        await asyncio.shield(future)
+
     async def handle_connack_packet(
         self, fixed_header: FixedHeader, stream: AsyncDataSequence
     ) -> None:
@@ -344,6 +366,18 @@ class MQTTProtocol:
 
         if not self._connection_future.done():
             self._connection_future.set_result(connection_result)
+
+    async def handle_pingresp_packet(
+        self, fixed_header: FixedHeader, stream: AsyncDataSequence
+    ) -> None:
+        await parse_pingresp_packet(fixed_header, stream)
+
+        logger.debug("mqtt_protocol.handle_pingresp_packet")
+
+        future, self._ping_future = self._ping_future, None
+
+        if future and not future.done():
+            future.set_result(None)
 
     async def handle_disconnect_packet(
         self, fixed_header: FixedHeader, stream: AsyncDataSequence
@@ -502,7 +536,7 @@ class MQTTProtocol:
                 elif header.packet_type == PacketType.UNSUBACK:
                     handler = self.handle_unsuback_packet
                 elif header.packet_type == PacketType.PINGRESP:
-                    continue
+                    handler = self.handle_pingresp_packet
                 elif header.packet_type == PacketType.DISCONNECT:
                     handler = self.handle_disconnect_packet
                 elif header.packet_type == PacketType.AUTH:
@@ -538,8 +572,10 @@ class MQTTProtocol:
         command_futures = dict(self._command_packet_futures)
         self._command_packet_futures.clear()
 
-        for future in [*publish_futures, *command_futures.values()]:
-            if not future.done():
+        ping_future, self._ping_future = self._ping_future, None
+
+        for future in [*publish_futures, *command_futures.values(), ping_future]:
+            if future and not future.done():
                 future.set_exception(exc)
 
         if self._send_quota:
