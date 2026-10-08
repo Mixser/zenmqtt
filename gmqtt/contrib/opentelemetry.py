@@ -130,6 +130,16 @@ class OpenTelemetryMetrics(MetricsCollector):
             description="Time from sending PINGREQ to receiving PINGRESP",
             explicit_bucket_boundaries_advisory=_DURATION_BUCKETS,
         )
+        self._reconnect_attempts = meter.create_counter(
+            "gmqtt.reconnect.attempts",
+            unit="{attempt}",
+            description="Number of automatic reconnect attempts",
+        )
+        self._reconnect_give_ups = meter.create_counter(
+            "gmqtt.reconnect.give_ups",
+            unit="{event}",
+            description="Number of times automatic reconnect stopped for good",
+        )
         self._ping_timeouts = meter.create_counter(
             "gmqtt.ping.timeouts",
             unit="{timeout}",
@@ -194,6 +204,12 @@ class OpenTelemetryMetrics(MetricsCollector):
 
     def on_ping(self, duration: float) -> None:
         self._ping_duration.record(duration, self._attributes)
+
+    def on_reconnect_attempt(self, attempt: int, delay: float) -> None:
+        self._reconnect_attempts.add(1, self._attributes)
+
+    def on_reconnect_gave_up(self) -> None:
+        self._reconnect_give_ups.add(1, self._attributes)
 
     def on_ping_timeout(self) -> None:
         self._ping_timeouts.add(1, self._attributes)

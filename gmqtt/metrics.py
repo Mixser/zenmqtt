@@ -51,6 +51,15 @@ class MetricsCollector:
     def on_ping(self, duration: float) -> None:
         """PINGRESP is received, duration is measured from sending PINGREQ"""
 
+    def on_reconnect_attempt(self, attempt: int, delay: float) -> None:
+        """
+        Automatic reconnect starts an attempt (1, 2, ...) after the delay;
+        a successful attempt is followed by on_connect
+        """
+
+    def on_reconnect_gave_up(self) -> None:
+        """Automatic reconnect stopped: no attempts left or a non-retryable error"""
+
     def on_ping_timeout(self) -> None:
         """Keep alive closes the connection because PINGRESP didn't come in time"""
 
