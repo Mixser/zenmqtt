@@ -34,15 +34,15 @@ async def close_protocols():
     while _protocols:
         protocol = _protocols.pop()
 
-        if protocol._connection:
+        if protocol._context.connection:
             await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
 
 
-def build_protocol(manual_ack: bool = True):
+def build_protocol():
     session = InMemorySession()
     messages: asyncio.Queue = asyncio.Queue()
 
-    protocol = MQTTProtocol(messages, session, manual_ack=manual_ack)
+    protocol = MQTTProtocol(messages, session)
     _protocols.append(protocol)
 
     return protocol, session, messages
@@ -159,7 +159,7 @@ async def test_rejected_message(qos):
         assert not await session.has_incoming_message(1)
 
     assert ack.reason_code == 0x99
-    assert protocol._incoming_inflight == set()
+    assert protocol._incoming.inflight == set()
 
 
 async def test_not_acknowledged_messages_count_to_receive_maximum():
@@ -234,17 +234,3 @@ async def test_ack_validation():
         await protocol.ack(message, reason_code=0x10)
 
     await expect_nothing_sent(transport)
-
-
-async def test_ack_without_manual_ack():
-    protocol, _, messages = build_protocol(manual_ack=False)
-    transport = await connect(protocol)
-
-    transport.feed(pack_publish(1, qos=1))
-    message = await receive(messages)
-
-    # acknowledged automatically
-    await expect_puback(transport)
-
-    with pytest.raises(RuntimeError):
-        await protocol.ack(message)

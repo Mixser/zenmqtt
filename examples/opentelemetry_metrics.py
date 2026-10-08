@@ -48,7 +48,8 @@ async def main():
             await client.publish(TOPIC, f"message {i}".encode(), qos=qos)
 
     received = 0
-    async for _ in client.messages:
+    async for message in client.messages:
+        await client.ack(message)
         received += 1
 
         if received == 30:

@@ -15,9 +15,7 @@ from opentelemetry.util.types import AttributeValue
 
 from gmqtt.metrics import MetricsCollector
 from gmqtt.mqtt.packet import PacketType
-
-# reason codes >= 0x80 indicate failure
-_FAILURE_REASON_CODE = 0x80
+from gmqtt.mqtt.reason_codes import FAILURE_REASON_CODE
 
 # recommended by the semantic conventions for durations in seconds
 _DURATION_BUCKETS = (
@@ -159,7 +157,7 @@ class OpenTelemetryMetrics(MetricsCollector):
 
         self._connect_duration.record(duration, attributes)
 
-        if reason_code < _FAILURE_REASON_CODE:
+        if reason_code < FAILURE_REASON_CODE:
             self._active_connections.add(1, self._attributes)
 
     def on_connection_closed(self, lost: bool) -> None:
@@ -244,7 +242,7 @@ class OpenTelemetryMetrics(MetricsCollector):
         }
 
         # one reason code per topic, the operation failed if any topic failed
-        if failed := [code for code in reason_codes if code >= _FAILURE_REASON_CODE]:
+        if failed := [code for code in reason_codes if code >= FAILURE_REASON_CODE]:
             attributes["error.type"] = _format_reason_code(failed[0])
 
         self._operation_duration.record(duration, attributes)
@@ -255,7 +253,7 @@ class OpenTelemetryMetrics(MetricsCollector):
             "mqtt.reason_code": reason_code,
         }
 
-        if reason_code >= _FAILURE_REASON_CODE:
+        if reason_code >= FAILURE_REASON_CODE:
             attributes["error.type"] = _format_reason_code(reason_code)
 
         return attributes

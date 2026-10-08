@@ -42,6 +42,8 @@ async def main():
 
     async for message in client.messages:
         print("received:", message.topic, message.qos, message.payload)
+        # QoS 1/2 messages must be acknowledged after they are processed
+        await client.ack(message)
         received += 1
 
         if received == 3:

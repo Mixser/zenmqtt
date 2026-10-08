@@ -139,7 +139,7 @@ async def close_protocols():
     while _protocols:
         protocol = _protocols.pop()
 
-        if protocol._connection:
+        if protocol._context.connection:
             await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
 
 
@@ -158,6 +158,12 @@ async def expect(transport: FakeTransport, packet_type: PacketType):
     assert fixed_header.packet_type == packet_type
 
     return fixed_header, stream
+
+
+async def receive_and_ack(protocol: MQTTProtocol, messages: asyncio.Queue):
+    message = await asyncio.wait_for(messages.get(), TIMEOUT)
+    await protocol.ack(message)
+    return message
 
 
 async def expect_publish(transport: FakeTransport):
@@ -304,8 +310,10 @@ async def test_incoming_qos1_message():
 
     transport.feed(pack_publish_packet(7, "a/b", b"payload", 1, False, False, {}))
 
+    message = await receive_and_ack(protocol, messages)
+    assert message.payload == b"payload"
+
     await expect(transport, PacketType.PUBACK)
-    assert (await asyncio.wait_for(messages.get(), TIMEOUT)).payload == b"payload"
 
 
 async def test_incoming_qos2_duplicate_is_delivered_once():
@@ -315,15 +323,17 @@ async def test_incoming_qos2_duplicate_is_delivered_once():
     packet = pack_publish_packet(7, "a/b", b"payload", 2, False, False, {})
 
     transport.feed(packet)
+    await receive_and_ack(protocol, messages)
     await expect(transport, PacketType.PUBREC)
 
+    # the duplicate is acknowledged without delivery
     transport.feed(pack_publish_packet(7, "a/b", b"payload", 2, False, True, {}))
     await expect(transport, PacketType.PUBREC)
 
     transport.feed(pack_pubrel_packet(7, 0, {}))
     await expect(transport, PacketType.PUBCOMP)
 
-    assert messages.qsize() == 1
+    assert messages.empty()
     # the flow is completed, so the identifier may be reused by the server
     assert await session.register_incoming_message(7)
 
@@ -408,7 +418,7 @@ async def test_ping():
     transport.feed(b"\xd0\x00")
 
     assert await asyncio.wait_for(task, TIMEOUT) is None
-    assert protocol._ping_future is None
+    assert protocol._keep_alive.ping_future is None
 
 
 async def test_concurrent_pings_share_pingreq():
@@ -446,7 +456,7 @@ async def test_pending_ping_on_connection_lost():
         await asyncio.wait_for(task, TIMEOUT)
 
     await wait_for_connection_lost(protocol)
-    assert protocol._ping_future is None
+    assert protocol._keep_alive.ping_future is None
 
 
 async def test_unexpected_pingresp_is_ignored():
@@ -542,7 +552,7 @@ async def test_keep_alive_closes_connection_without_pingresp():
     await asyncio.wait_for(protocol._read_loop_task, 2)
 
     assert transport.is_closing()
-    assert protocol._keep_alive_task is None
+    assert protocol._keep_alive.task is None
     assert await asyncio.wait_for(messages.get(), TIMEOUT) is None
 
 
@@ -562,20 +572,20 @@ async def test_keep_alive_disabled():
     protocol, _, _ = build_protocol()
     await connect_with_keep_alive(protocol, keepalive=0)
 
-    assert protocol._keep_alive_task is None
+    assert protocol._keep_alive.task is None
 
 
 async def test_keep_alive_stops_on_disconnect():
     protocol, _, _ = build_protocol()
     await connect_with_keep_alive(protocol, keepalive=1)
 
-    keep_alive_task = protocol._keep_alive_task
+    keep_alive_task = protocol._keep_alive.task
     assert keep_alive_task
 
     await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
 
     assert keep_alive_task.cancelled()
-    assert protocol._keep_alive_task is None
+    assert protocol._keep_alive.task is None
 
 
 async def test_auth_packet_is_skipped():
@@ -594,7 +604,7 @@ async def test_auth_packet_is_skipped():
 
     # PINGRESP is parsed correctly only if the AUTH body was skipped
     await asyncio.wait_for(task, TIMEOUT)
-    assert protocol._connected
+    assert protocol.is_connected
 
 
 class RecordingMetrics(MetricsCollector):
@@ -691,16 +701,21 @@ async def test_metrics_publish():
 
 async def test_metrics_incoming_messages():
     metrics = RecordingMetrics()
-    protocol, _, _ = build_protocol(metrics)
+    protocol, _, messages = build_protocol(metrics)
     transport = await connect(protocol)
 
     transport.feed(pack_publish_packet(0, "a/b", b"0", 0, False, False, {}))
     transport.feed(pack_publish_packet(1, "a/b", b"1", 1, False, False, {}))
+    await receive_and_ack(protocol, messages)
+    await receive_and_ack(protocol, messages)
     await expect(transport, PacketType.PUBACK)
 
-    for _ in range(2):
-        transport.feed(pack_publish_packet(2, "a/b", b"2", 2, False, False, {}))
-        await expect(transport, PacketType.PUBREC)
+    transport.feed(pack_publish_packet(2, "a/b", b"2", 2, False, False, {}))
+    await receive_and_ack(protocol, messages)
+    await expect(transport, PacketType.PUBREC)
+
+    transport.feed(pack_publish_packet(2, "a/b", b"2", 2, False, True, {}))
+    await expect(transport, PacketType.PUBREC)
 
     assert metrics.get("on_message_received") == [
         (0, False),
@@ -1007,10 +1022,11 @@ async def test_pubrel_with_unknown_packet_identifier():
 
 
 async def test_pubrel_with_known_packet_identifier():
-    protocol, _, _ = build_protocol()
+    protocol, _, messages = build_protocol()
     transport = await connect(protocol)
 
     transport.feed(pack_publish_packet(7, "a/b", b"payload", 2, False, False, {}))
+    await receive_and_ack(protocol, messages)
     await expect(transport, PacketType.PUBREC)
 
     transport.feed(pack_pubrel_packet(7, 0, {}))
@@ -1022,8 +1038,10 @@ async def test_pubrel_with_known_packet_identifier():
 async def test_client_receive_maximum():
     protocol, _, messages = build_protocol()
     transport = await connect(protocol, {"receive_maximum": 1})
+    payloads = []
 
     transport.feed(pack_publish_packet(1, "a/b", b"1", 2, False, False, {}))
+    payloads.append((await receive_and_ack(protocol, messages)).payload)
     await expect(transport, PacketType.PUBREC)
 
     # the re-sent message keeps its slot
@@ -1035,9 +1053,11 @@ async def test_client_receive_maximum():
     await expect(transport, PacketType.PUBCOMP)
 
     transport.feed(pack_publish_packet(2, "a/b", b"2", 1, False, False, {}))
+    payloads.append((await receive_and_ack(protocol, messages)).payload)
     await expect(transport, PacketType.PUBACK)
 
     transport.feed(pack_publish_packet(3, "a/b", b"3", 2, False, False, {}))
+    payloads.append((await receive_and_ack(protocol, messages)).payload)
     await expect(transport, PacketType.PUBREC)
 
     # the slot is held by the QoS 2 message
@@ -1045,27 +1065,27 @@ async def test_client_receive_maximum():
     await expect_disconnect(transport, 0x93)
     await wait_for_connection_lost(protocol)
 
-    payloads = []
-    while (message := await asyncio.wait_for(messages.get(), TIMEOUT)) is not None:
-        payloads.append(message.payload)
-
+    assert await asyncio.wait_for(messages.get(), TIMEOUT) is None
     assert payloads == [b"1", b"2", b"3"]
 
 
 async def test_client_receive_maximum_is_reset_on_reconnect():
-    protocol, _, _ = build_protocol()
+    protocol, _, messages = build_protocol()
     transport = await connect(protocol, {"receive_maximum": 1})
 
     transport.feed(pack_publish_packet(1, "a/b", b"1", 2, False, False, {}))
+    await receive_and_ack(protocol, messages)
     await expect(transport, PacketType.PUBREC)
 
     transport.drop()
     await wait_for_connection_lost(protocol)
+    assert await asyncio.wait_for(messages.get(), TIMEOUT) is None
 
     transport = await connect(protocol, {"receive_maximum": 1}, session_present=True)
 
     # a new message before the server re-sends PUBREL for the old one
     transport.feed(pack_publish_packet(2, "a/b", b"2", 2, False, False, {}))
+    await receive_and_ack(protocol, messages)
     await expect(transport, PacketType.PUBREC)
 
     transport.feed(pack_pubrel_packet(1, 0, {}))

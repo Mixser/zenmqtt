@@ -36,7 +36,7 @@ async def close_protocols():
     while _protocols:
         protocol = _protocols.pop()
 
-        if protocol._connection:
+        if protocol._context.connection:
             await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
 
 
@@ -93,26 +93,10 @@ async def test_control_packets_are_handled_while_queue_is_full():
     assert isinstance(await asyncio.wait_for(task, TIMEOUT), PubAckResult)
 
 
-async def test_message_is_acknowledged_when_its_put_into_queue():
-    protocol, _, messages = build_protocol()
-    transport = await connect(protocol)
-
-    await feed(transport, pack_publish(0, 0, b"filler"), pack_publish(1, 1, b"1"))
-
-    # the QoS 1 message waits for the application
-    await expect_nothing_sent(transport)
-
-    assert (await receive(messages)).payload == b"filler"
-
-    puback = await parse_puback_packet(*await expect(transport, PacketType.PUBACK))
-    assert puback.packet_identifier == 1
-    assert (await receive(messages)).payload == b"1"
-
-
 async def test_slow_consumer_is_reported(caplog):
     metrics = RecordingMetrics()
     protocol, _, messages = build_protocol(metrics=metrics)
-    protocol._buffered_messages_warning = 2
+    protocol._incoming.buffered_messages_warning = 2
     transport = await connect(protocol)
 
     with caplog.at_level(logging.WARNING, logger="gmqtt.mqtt.protocol"):
@@ -130,25 +114,6 @@ async def test_slow_consumer_is_reported(caplog):
 
     # reported once more when the buffer falls below the threshold
     assert metrics.get("on_messages_buffered")[3:] == [(3,), (2,), (1,)]
-
-
-async def test_acks_follow_delivery_order():
-    protocol, _, messages = build_protocol()
-    transport = await connect(protocol)
-
-    await feed(transport, *(pack_publish(i, 1, b"%d" % i) for i in range(1, 6)))
-
-    assert [(await receive(messages)).payload for _ in range(5)] == [
-        b"1",
-        b"2",
-        b"3",
-        b"4",
-        b"5",
-    ]
-
-    for packet_identifier in range(1, 6):
-        puback = await parse_puback_packet(*await expect(transport, PacketType.PUBACK))
-        assert puback.packet_identifier == packet_identifier
 
 
 async def test_acks_keep_the_order_with_duplicates():
@@ -169,40 +134,17 @@ async def test_acks_keep_the_order_with_duplicates():
     await expect_nothing_sent(transport)
 
     await receive(messages)
+    message = await receive(messages)
+    assert message.payload == b"1"
+    await expect_nothing_sent(transport)
+
+    await protocol.ack(message)
 
     puback = await parse_puback_packet(*await expect(transport, PacketType.PUBACK))
     pubrec = await parse_pubrec_packet(*await expect(transport, PacketType.PUBREC))
     assert (puback.packet_identifier, pubrec.packet_identifier) == (1, 2)
 
     # the duplicate isn't delivered
-    assert (await receive(messages)).payload == b"1"
-    await asyncio.sleep(0.01)
-    assert messages.empty()
-
-
-async def test_connection_lost_while_qos2_message_is_handed_over():
-    protocol, _, messages = build_protocol(wait_across_reconnect=True)
-    transport = await connect(protocol)
-
-    await feed(transport, pack_publish(0, 0, b"filler"), pack_publish(5, 2, b"5"))
-
-    # the QoS 2 message waits for space in the queue, PUBREC isn't sent
-    transport.drop()
-    await wait_for_connection_lost(protocol)
-
-    transport = await connect(protocol, session_present=True)
-
-    # the server re-sends the message, it was registered before the handover
-    await feed(transport, pack_publish(5, 2, b"5", dup=True))
-
-    assert (await receive(messages)).payload == b"filler"
-    assert (await receive(messages)).payload == b"5"
-
-    # PUBREC of the duplicate is sent after the original is handed over
-    pubrec = await parse_pubrec_packet(*await expect(transport, PacketType.PUBREC))
-    assert pubrec.packet_identifier == 5
-
-    # delivered once
     await asyncio.sleep(0.01)
     assert messages.empty()
 

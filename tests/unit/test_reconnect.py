@@ -557,8 +557,8 @@ async def test_callback_errors_dont_break_reconnect(broker):
     await asyncio.wait_for(client.wait_connected(), TIMEOUT)
 
 
-async def test_manual_ack_across_reconnect(broker):
-    client = build_client(manual_ack=True)
+async def test_ack_across_reconnect(broker):
+    client = build_client()
     transport, _ = await connect(client, broker)
     messages = client.messages
 
