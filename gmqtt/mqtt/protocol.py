@@ -12,6 +12,7 @@ from gmqtt.exceptions import (
     ProtocolError,
     ReceiveMaximumExceededError,
     ServerLimitError,
+    SessionLostError,
     TopicAliasInvalidError,
 )
 from gmqtt.metrics import MetricsCollector
@@ -173,9 +174,17 @@ class MQTTProtocol:
         messages: asyncio.Queue,
         session: MQTTSession,
         metrics: Optional[MetricsCollector] = None,
+        wait_across_reconnect: bool = False,
     ) -> None:
+        """
+        :param wait_across_reconnect: used with automatic reconnect: QoS 1/2
+            publish calls keep waiting for the acknowledgement when the
+            connection is lost, and the messages queue isn't closed; call
+            close() when the client stops for good
+        """
         self._session = session
         self._metrics = metrics or MetricsCollector()
+        self._wait_across_reconnect = wait_across_reconnect
 
         self._connection: Optional[MQTTConnection] = None
         self._read_loop_task: Optional[Task[None]] = None
@@ -294,6 +303,8 @@ class MQTTProtocol:
 
             await self._session.reset()
 
+            self._fail_publish_futures(SessionLostError())
+
         self._server_limits = ServerLimits.from_connack(connection_result.properties)
 
         # publish calls wait while the server's "Receive Maximum" is reached
@@ -397,7 +408,7 @@ class MQTTProtocol:
 
         # from here the message belongs to the session: if the connection was
         # lost meanwhile, it'll be re-sent on the next connect
-        if not self._connected:
+        if not self._connected and not self._wait_across_reconnect:
             raise ConnectionLostError()
 
         future: asyncio.Future[
@@ -405,11 +416,43 @@ class MQTTProtocol:
         ] = asyncio.get_running_loop().create_future()
         self._publish_packet_futures[packet_identifier] = future
 
-        logger.debug("mqtt_protocol.send_publish_packet pid:%s", packet_identifier)
-        self._publish_sent_at[packet_identifier] = (qos, self._now())
-        await self._write(connection, packet)
+        if self._connected:
+            logger.debug("mqtt_protocol.send_publish_packet pid:%s", packet_identifier)
+            self._publish_sent_at[packet_identifier] = (qos, self._now())
+
+            try:
+                await self._write(connection, packet)
+            except Exception:
+                if not self._wait_across_reconnect:
+                    raise
+
+                logger.debug(
+                    "mqtt_protocol.send_publish_packet.failed pid:%s, "
+                    "it'll be re-sent after reconnect",
+                    packet_identifier,
+                )
 
         return await future
+
+    @property
+    def is_connected(self) -> bool:
+        """True between successful CONNACK and loss of the connection."""
+        return self._connected
+
+    async def wait_closed(self) -> None:
+        """Waits until the current connection is closed and handled."""
+        if read_loop_task := self._read_loop_task:
+            await asyncio.shield(read_loop_task)
+
+    async def close(self, exc: Exception) -> None:
+        """
+        Used with wait_across_reconnect when the client stops for good: fails
+        publish calls which wait for acknowledgements and closes the messages
+        queue.
+        """
+        self._fail_publish_futures(exc)
+
+        await self._messages_queue.put(None)
 
     async def subscribe(
         self,
@@ -758,8 +801,13 @@ class MQTTProtocol:
         if self._connection_future and not self._connection_future.done():
             self._connection_future.set_exception(exc)
 
-        publish_futures = list(self._publish_packet_futures.values())
-        self._publish_packet_futures.clear()
+        # with reconnect, QoS 1/2 messages are re-sent from the session and
+        # publish calls get the acknowledgement of the re-sent message
+        publish_futures = []
+
+        if not self._wait_across_reconnect:
+            publish_futures = list(self._publish_packet_futures.values())
+            self._publish_packet_futures.clear()
 
         command_futures = dict(self._command_packet_futures)
         self._command_packet_futures.clear()
@@ -779,7 +827,8 @@ class MQTTProtocol:
         for packet_identifier in command_futures:
             await self._session.release_packet_identifier(packet_identifier)
 
-        await self._messages_queue.put(None)
+        if not self._wait_across_reconnect:
+            await self._messages_queue.put(None)
 
         if self._connection and not self._connection.is_closing():
             await self._connection.disconnect()
@@ -854,6 +903,13 @@ class MQTTProtocol:
                         exc,
                     )
                     await self._session.complete_outgoing_message(packet_identifier)
+
+                    if future := self._publish_packet_futures.pop(
+                        packet_identifier, None
+                    ):
+                        if not future.done():
+                            future.set_exception(exc)
+
                     continue
 
                 if self._send_quota:
@@ -888,6 +944,14 @@ class MQTTProtocol:
 
         if future and not future.done():
             future.set_result(result)
+
+    def _fail_publish_futures(self, exc: Exception) -> None:
+        futures = list(self._publish_packet_futures.values())
+        self._publish_packet_futures.clear()
+
+        for future in futures:
+            if not future.done():
+                future.set_exception(exc)
 
     def _resolve_topic_alias(self, publish_result: PublishResult) -> PublishResult:
         topic_alias = publish_result.properties.get("topic_alias")

@@ -133,8 +133,14 @@ def test_other_events(metrics, reader):
     metrics.on_messages_resent(3)
     metrics.on_ping(0.01)
     metrics.on_ping_timeout()
+    metrics.on_reconnect_attempt(1, 0.5)
+    metrics.on_reconnect_attempt(2, 1.0)
+    metrics.on_reconnect_gave_up()
 
     data = collect(reader)
+
+    assert data["gmqtt.reconnect.attempts"][0][1].value == 2
+    assert data["gmqtt.reconnect.give_ups"][0][1].value == 1
 
     assert data["gmqtt.send_quota.wait.duration"][0][1].sum == 0.5
     assert data["gmqtt.messages.resent"][0][1].value == 3

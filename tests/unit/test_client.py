@@ -41,7 +41,7 @@ async def connect(client: MQTTClient, transport: FakeTransport, connack: bytes):
 
 
 async def test_assigned_client_identifier_is_used_for_next_connect():
-    client = MQTTClient("")
+    client = MQTTClient("", reconnect=None)
 
     transport = FakeTransport()
     sent_client_id = await connect(

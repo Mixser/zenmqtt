@@ -29,6 +29,17 @@ class ConnectionLostError(MQTTConnectionError):
         self.server_disconnect = server_disconnect
 
 
+class SessionLostError(ConnectionLostError):
+    """
+    The server didn't keep the session after reconnect, so the pending QoS 1/2
+    message was discarded and won't be delivered.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.args = ("The server didn't keep the session, the message was discarded",)
+
+
 class ServerLimitError(ValueError):
     """
     The operation breaks a limit which the server sent in CONNACK;

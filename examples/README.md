@@ -3,7 +3,7 @@
 | Example | Shows |
 |---|---|
 | [publish_subscribe.py](publish_subscribe.py) | connect, subscribe, publish with QoS 0/1/2, read messages |
-| [persistent_session.py](persistent_session.py) | persistent session, reconnect, re-sending of in-flight messages |
+| [persistent_session.py](persistent_session.py) | persistent session, automatic reconnect, re-sending of in-flight messages |
 | [sqlite_session.py](sqlite_session.py) | custom session storage based on `BaseSession`, survives app restarts |
 | [opentelemetry_metrics.py](opentelemetry_metrics.py) | client metrics with OpenTelemetry (needs `gmqtt[otel]` and `opentelemetry-sdk`) |
 
