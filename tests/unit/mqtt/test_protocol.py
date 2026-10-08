@@ -550,3 +550,22 @@ async def test_keep_alive_stops_on_disconnect():
 
     assert keep_alive_task.cancelled()
     assert protocol._keep_alive_task is None
+
+
+async def test_auth_packet_is_skipped():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol)
+
+    # AUTH with reason code 0x18 (Continue authentication) and
+    # authentication method property, then PINGRESP right after it
+    auth_body = b"\x18\x07\x15\x00\x04SCRA"
+    transport.feed(bytes([PacketType.AUTH << 4, len(auth_body)]) + auth_body)
+
+    task = asyncio.create_task(protocol.ping())
+    await expect(transport, PacketType.PINGREQ)
+
+    transport.feed(b"\xd0\x00")
+
+    # PINGRESP is parsed correctly only if the AUTH body was skipped
+    await asyncio.wait_for(task, TIMEOUT)
+    assert protocol._connected

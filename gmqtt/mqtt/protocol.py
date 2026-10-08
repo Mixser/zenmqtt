@@ -54,6 +54,7 @@ from gmqtt.mqtt.subscribe import (
     parse_suback_packet,
     parse_unsubscribe_packet,
 )
+from gmqtt.mqtt.utils import read
 
 logger = getLogger(__name__)
 
@@ -522,6 +523,17 @@ class MQTTProtocol:
 
         await self._complete_command(unsuback_packet.packet_identifier, unsuback_packet)
 
+    async def handle_unsupported_packet(
+        self, fixed_header: FixedHeader, stream: AsyncDataSequence
+    ) -> None:
+        # the body must be read anyway, otherwise the stream goes out of sync
+        await read(stream, fixed_header.length)
+
+        logger.warning(
+            "mqtt_protocol.handle_unsupported_packet type:%s",
+            PacketType(fixed_header.packet_type).name,
+        )
+
     async def __read_loop__(self) -> None:
         assert self._connection
 
@@ -556,7 +568,7 @@ class MQTTProtocol:
                 elif header.packet_type == PacketType.DISCONNECT:
                     handler = self.handle_disconnect_packet
                 elif header.packet_type == PacketType.AUTH:
-                    continue
+                    handler = self.handle_unsupported_packet
                 else:
                     raise ValueError(f"Invalid packet type: {header.packet_type}")
 
