@@ -93,6 +93,9 @@ class WillMessage:
 
 MAX_KEEP_ALIVE: Final[int] = 2**16 - 1
 
+# CONNACK "Session Present" flag
+SESSION_PRESENT_FLAG: Final[int] = 0x01
+
 # CONNECT flags
 _CLEAN_START_FLAG: Final[int] = 0x02
 _WILL_FLAG: Final[int] = 0x04

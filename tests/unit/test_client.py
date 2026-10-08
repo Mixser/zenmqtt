@@ -7,7 +7,7 @@ from gmqtt.client import MQTTClient
 from gmqtt.connection import register_implementation
 from gmqtt.mqtt.packet import PacketType
 from gmqtt.mqtt.utils import read
-from tests.unit.mqtt.test_protocol import TIMEOUT, FakeTransport, pack_connack
+from tests.unit.mqtt.protocol.helpers import TIMEOUT, FakeTransport, pack_connack
 
 pytestmark = pytest.mark.asyncio
 

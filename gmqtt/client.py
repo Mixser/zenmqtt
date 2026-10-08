@@ -9,14 +9,16 @@ from gmqtt.connection import create_connection
 from gmqtt.exceptions import ConnectionLostError, MQTTConnectionError, NotConnectedError
 from gmqtt.metrics import MetricsCollector
 from gmqtt.mqtt.connect import (
+    SESSION_PRESENT_FLAG,
     ConnectionResult,
     ConnectProperties,
     DisconnectProperties,
     DisconnectResult,
     WillMessage,
 )
-from gmqtt.mqtt.protocol import FAILURE_REASON_CODE, SESSION_PRESENT_FLAG, MQTTProtocol
+from gmqtt.mqtt.protocol import MQTTProtocol
 from gmqtt.mqtt.publish import PublishAcknowledgement, PublishProperties, PublishResult
+from gmqtt.mqtt.reason_codes import FAILURE_REASON_CODE
 from gmqtt.mqtt.session import MQTTSession, build_default_session
 from gmqtt.mqtt.subscribe import (
     SubscribeResult,
@@ -89,7 +91,6 @@ class MQTTClient:
         session: Optional[MQTTSession] = None,
         metrics: Optional[MetricsCollector] = None,
         reconnect: Optional[ReconnectPolicy] = DEFAULT_RECONNECT_POLICY,
-        manual_ack: bool = False,
     ):
         """
         :param session: storage of in-flight QoS 1/2 messages, in-memory by default
@@ -97,9 +98,6 @@ class MQTTClient:
             e.g. gmqtt.contrib.opentelemetry.OpenTelemetryMetrics
         :param reconnect: automatic reconnect after the connection is lost,
             None disables it; see connect() for details
-        :param manual_ack: incoming QoS 1/2 messages must be acknowledged by
-            ack() after they are processed; by default they are acknowledged
-            when they are put into the messages queue
         """
         messages: asyncio.Queue[PublishResult | None] = asyncio.Queue(maxsize=50)
 
@@ -113,7 +111,6 @@ class MQTTClient:
             session,
             self._metrics,
             wait_across_reconnect=reconnect is not None,
-            manual_ack=manual_ack,
         )
         self._messages = messages
 
@@ -359,9 +356,9 @@ class MQTTClient:
 
     async def ack(self, message: PublishResult, reason_code: int = 0) -> None:
         """
-        Acknowledges a processed message when the client is created with
-        manual_ack=True: sends PUBACK for QoS 1 and PUBREC for QoS 2, does
-        nothing for QoS 0.
+        Acknowledges a processed message: sends PUBACK for QoS 1 and PUBREC for
+        QoS 2, does nothing for QoS 0. Every QoS 1/2 message from
+        client.messages must be acknowledged.
 
         Acks are sent in the order the messages were received (MQTT 5, 4.6),
         so an ack waits for acks of earlier messages. Not acknowledged messages
@@ -372,7 +369,6 @@ class MQTTClient:
         :param reason_code: 0, or >= 0x80 to reject the message, e.g. 0x80
             (Unspecified error) or 0x99 (Payload format invalid); the server
             doesn't send a rejected message again
-        :raises RuntimeError: manual ack isn't enabled
         """
         await self._protocol.ack(message, reason_code)
 
@@ -380,14 +376,15 @@ class MQTTClient:
     def messages(self):
         """
         Incoming messages; with automatic reconnect the iteration continues
-        across reconnects and ends when the client stops.
+        across reconnects and ends when the client stops. QoS 1/2 messages must
+        be acknowledged by ack() after they are processed.
 
         Messages wait in a buffer while the application reads previous ones,
-        so control packets (PINGRESP, PUBACK, ...) are handled anyway. QoS 1/2
-        messages are acknowledged when they are taken from the buffer (in auto
-        ack mode), so their number is limited by "receive_maximum" of connect
-        properties; QoS 0 messages aren't limited. While 1000 or more messages
-        wait, a warning is logged and metrics get on_messages_buffered events.
+        so control packets (PINGRESP, PUBACK, ...) are handled anyway. The
+        number of QoS 1/2 messages which aren't acknowledged is limited by
+        "receive_maximum" of connect properties; QoS 0 messages aren't
+        limited. While 1000 or more messages wait, a warning is logged and
+        metrics get on_messages_buffered events.
         """
         return AsyncMessageIterator(self._messages)
 

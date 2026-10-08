@@ -1,10 +1,10 @@
 """
-Manual ack: acknowledge a message only after it's processed.
+Ack: acknowledge a message only after it's processed.
 
-With manual_ack=True the client sends PUBACK (QoS 1) or PUBREC (QoS 2) when
-client.ack() is called, not when the message is received. If the application
-fails before the ack, the server sends the message again (after reconnect or
-restart, if the session is kept).
+The client sends PUBACK (QoS 1) or PUBREC (QoS 2) when client.ack() is called,
+not when the message is received. If the application fails before the ack,
+the server sends the message again (after reconnect or restart, if the
+session is kept). A message can be rejected with a reason code >= 0x80.
 
 Messages which aren't acknowledged count to "receive_maximum": when it's
 reached, the server stops sending QoS 1/2 messages until the client acks.
@@ -20,7 +20,7 @@ MQTT_URL = os.environ.get("MQTT_URL", "tcp://localhost:1883")
 MQTT_USERNAME = os.environ.get("MQTT_USERNAME")
 MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
 
-TOPIC = "gmqtt/examples/manual-ack"
+TOPIC = "gmqtt/examples/ack"
 
 # reason code of a rejected message, the server doesn't send it again
 PAYLOAD_FORMAT_INVALID = 0x99
@@ -37,7 +37,7 @@ async def process(message: PublishResult) -> None:
 
 
 async def main():
-    client = MQTTClient("gmqtt-example-manual-ack", manual_ack=True)
+    client = MQTTClient("gmqtt-example-ack")
 
     if MQTT_USERNAME:
         client.authorize(MQTT_USERNAME, MQTT_PASSWORD)

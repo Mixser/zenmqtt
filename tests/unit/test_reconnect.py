@@ -14,7 +14,7 @@ from gmqtt.mqtt.publish import PubAckResult, pack_puback_packet, pack_publish_pa
 from gmqtt.mqtt.subscribe import Subscription
 from gmqtt.mqtt.utils import read
 from gmqtt.reconnect import ReconnectPolicy
-from tests.unit.mqtt.test_protocol import (
+from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
     FakeTransport,
     RecordingMetrics,
@@ -557,8 +557,8 @@ async def test_callback_errors_dont_break_reconnect(broker):
     await asyncio.wait_for(client.wait_connected(), TIMEOUT)
 
 
-async def test_manual_ack_across_reconnect(broker):
-    client = build_client(manual_ack=True)
+async def test_ack_across_reconnect(broker):
+    client = build_client()
     transport, _ = await connect(client, broker)
     messages = client.messages
 

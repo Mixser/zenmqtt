@@ -1,10 +1,9 @@
+"""Acknowledgement of incoming messages by ack()."""
 import asyncio
 
 import pytest
-import pytest_asyncio
 
 from gmqtt.mqtt.packet import PacketType
-from gmqtt.mqtt.protocol import MQTTProtocol
 from gmqtt.mqtt.publish import (
     pack_publish_packet,
     pack_pubrel_packet,
@@ -12,53 +11,20 @@ from gmqtt.mqtt.publish import (
     parse_pubcomp_packet,
     parse_pubrec_packet,
 )
-from gmqtt.mqtt.session import InMemorySession
-from tests.unit.mqtt.test_protocol import (
+from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
     FakeTransport,
+    build_protocol,
     connect,
     expect,
     expect_disconnect,
+    expect_nothing_sent,
+    pack_publish,
+    receive,
     wait_for_connection_lost,
 )
 
 pytestmark = pytest.mark.asyncio
-
-_protocols: list[MQTTProtocol] = []
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def close_protocols():
-    yield
-
-    while _protocols:
-        protocol = _protocols.pop()
-
-        if protocol._connection:
-            await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
-
-
-def build_protocol(manual_ack: bool = True):
-    session = InMemorySession()
-    messages: asyncio.Queue = asyncio.Queue()
-
-    protocol = MQTTProtocol(messages, session, manual_ack=manual_ack)
-    _protocols.append(protocol)
-
-    return protocol, session, messages
-
-
-def pack_publish(packet_identifier: int, qos: int, payload: bytes = b"x") -> bytes:
-    return pack_publish_packet(packet_identifier, "a/b", payload, qos, False, False, {})
-
-
-async def receive(messages: asyncio.Queue):
-    return await asyncio.wait_for(messages.get(), TIMEOUT)
-
-
-async def expect_nothing_sent(transport: FakeTransport) -> None:
-    await asyncio.sleep(0.01)
-    assert not transport.has_sent_packets()
 
 
 async def expect_puback(transport: FakeTransport):
@@ -159,7 +125,7 @@ async def test_rejected_message(qos):
         assert not await session.has_incoming_message(1)
 
     assert ack.reason_code == 0x99
-    assert protocol._incoming_inflight == set()
+    assert protocol._incoming.inflight == set()
 
 
 async def test_not_acknowledged_messages_count_to_receive_maximum():
@@ -234,17 +200,3 @@ async def test_ack_validation():
         await protocol.ack(message, reason_code=0x10)
 
     await expect_nothing_sent(transport)
-
-
-async def test_ack_without_manual_ack():
-    protocol, _, messages = build_protocol(manual_ack=False)
-    transport = await connect(protocol)
-
-    transport.feed(pack_publish(1, qos=1))
-    message = await receive(messages)
-
-    # acknowledged automatically
-    await expect_puback(transport)
-
-    with pytest.raises(RuntimeError):
-        await protocol.ack(message)
