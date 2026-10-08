@@ -9,7 +9,7 @@ from gmqtt.exceptions import (
     ConnectionLostError,
     MalformedPacketError,
     NotConnectedError,
-    QoSNotSupportedError,
+    ServerLimitError,
 )
 from gmqtt.metrics import MetricsCollector
 from gmqtt.mqtt.connect import (
@@ -22,6 +22,7 @@ from gmqtt.mqtt.connect import (
     parse_connack_packet,
     parse_disconnect_packet,
 )
+from gmqtt.mqtt.limits import DEFAULT_SERVER_LIMITS, ServerLimits
 from gmqtt.mqtt.packet import (
     AsyncDataSequence,
     FixedHeader,
@@ -73,8 +74,6 @@ SESSION_PRESENT_FLAG: Final[int] = 0x01
 FAILURE_REASON_CODE: Final[int] = 0x80
 # default value of "Receive Maximum" if the server doesn't send it
 DEFAULT_RECEIVE_MAXIMUM: Final[int] = 2**16 - 1
-# default value of "Maximum QoS" if the server doesn't send it
-DEFAULT_MAXIMUM_QOS: Final[int] = 2
 # DISCONNECT reason code
 MALFORMED_PACKET_REASON_CODE: Final[int] = 0x81
 
@@ -201,7 +200,8 @@ class MQTTProtocol:
 
         self._send_quota: Optional[_SendQuota] = None
 
-        self._maximum_qos = DEFAULT_MAXIMUM_QOS
+        # limits of the server from the last CONNACK
+        self._server_limits: ServerLimits = DEFAULT_SERVER_LIMITS
 
         self._messages_queue = messages
 
@@ -268,9 +268,7 @@ class MQTTProtocol:
 
             await self._session.reset()
 
-        self._maximum_qos = connection_result.properties.get(
-            "maximum_qos", DEFAULT_MAXIMUM_QOS
-        )
+        self._server_limits = ServerLimits.from_connack(connection_result.properties)
 
         # publish calls wait while the server's "Receive Maximum" is reached
         self._send_quota = _SendQuota(
@@ -325,24 +323,29 @@ class MQTTProtocol:
         connection = self._ensure_connected()
         properties = properties or {}
 
-        if qos > self._maximum_qos:
-            raise QoSNotSupportedError(
-                f"QoS {qos} is higher than server's maximum QoS {self._maximum_qos}"
-            )
+        # all limits are checked before the packet identifier is acquired
+        self._server_limits.check_publish(qos, retain, properties)
 
         if qos == 0:
+            packet = pack_publish_packet(
+                0, topic, payload, qos, retain, False, properties
+            )
+            self._server_limits.check_packet_size(packet)
+
             logger.debug("mqtt_protocol.send_publish_packet")
             sent_at = self._now()
-            await self._write(
-                connection,
-                pack_publish_packet(0, topic, payload, qos, retain, False, properties),
-            )
+            await self._write(connection, packet)
             self._metrics.on_publish_completed(0, 0, self._now() - sent_at)
             return None
 
         packet_identifier = await self._session.acquire_packet_identifier()
 
         try:
+            packet = pack_publish_packet(
+                packet_identifier, topic, payload, qos, retain, False, properties
+            )
+            self._server_limits.check_packet_size(packet)
+
             connection = self._ensure_connected()
 
             if self._send_quota:
@@ -378,12 +381,7 @@ class MQTTProtocol:
 
         logger.debug("mqtt_protocol.send_publish_packet pid:%s", packet_identifier)
         self._publish_sent_at[packet_identifier] = (qos, self._now())
-        await self._write(
-            connection,
-            pack_publish_packet(
-                packet_identifier, topic, payload, qos, retain, False, properties
-            ),
-        )
+        await self._write(connection, packet)
 
         return await future
 
@@ -395,6 +393,8 @@ class MQTTProtocol:
         self._ensure_connected()
 
         properties = properties or {}
+
+        self._server_limits.check_subscribe(topics, properties)
 
         packet_identifier = await self._session.acquire_packet_identifier()
 
@@ -766,9 +766,7 @@ class MQTTProtocol:
             packet_identifier = message.packet_identifier
 
             if message.state == OutgoingMessageState.AWAITING_ACK:
-                if self._send_quota:
-                    await self._acquire_send_quota(self._send_quota, packet_identifier)
-
+                properties = _strip_topic_alias(message.properties)
                 packet = pack_publish_packet(
                     packet_identifier,
                     message.topic,
@@ -776,8 +774,27 @@ class MQTTProtocol:
                     message.qos,
                     message.retain,
                     True,
-                    _strip_topic_alias(message.properties),
+                    properties,
                 )
+
+                try:
+                    self._server_limits.check_publish(
+                        message.qos, message.retain, properties
+                    )
+                    self._server_limits.check_packet_size(packet)
+                except ServerLimitError as exc:
+                    # the server would close the connection on every re-send
+                    logger.warning(
+                        "mqtt_protocol.resend_pending_message.discard pid:%s "
+                        "reason:%s",
+                        packet_identifier,
+                        exc,
+                    )
+                    await self._session.complete_outgoing_message(packet_identifier)
+                    continue
+
+                if self._send_quota:
+                    await self._acquire_send_quota(self._send_quota, packet_identifier)
             else:
                 packet = pack_pubrel_packet(packet_identifier, 0x0, {})
 
@@ -814,8 +831,9 @@ class MQTTProtocol:
 
     async def _send_command(self, packet_identifier: PacketIdentifier, packet: bytes):
         try:
+            self._server_limits.check_packet_size(packet)
             connection = self._ensure_connected()
-        except NotConnectedError:
+        except (NotConnectedError, ServerLimitError):
             await self._session.release_packet_identifier(packet_identifier)
             raise
 

@@ -9,7 +9,9 @@ import pytest_asyncio
 from gmqtt.connection import MQTTConnection, MQTTConnectionTransport
 from gmqtt.exceptions import (
     ConnectionLostError,
+    FeatureNotSupportedError,
     NotConnectedError,
+    PacketTooLargeError,
     QoSNotSupportedError,
 )
 from gmqtt.metrics import MetricsCollector
@@ -88,6 +90,10 @@ def pack_connack(
 
 def receive_maximum(value: int) -> bytes:
     return struct.pack("!BH", 0x21, value)
+
+
+def topic_alias_maximum(value: int) -> bytes:
+    return struct.pack("!BH", 0x22, value)
 
 
 async def connect(protocol: MQTTProtocol, **connack_kwargs) -> FakeTransport:
@@ -214,7 +220,7 @@ async def test_publish_when_not_connected():
 
 async def test_connection_lost_then_resend_with_session_present():
     protocol, session, _ = build_protocol()
-    transport = await connect(protocol)
+    transport = await connect(protocol, properties=topic_alias_maximum(10))
 
     qos2_task = asyncio.create_task(protocol.publish("a/b", b"first", qos=2))
     qos2_publish = await expect_publish(transport)
@@ -886,3 +892,204 @@ async def test_nothing_is_logged_when_session_is_empty(caplog):
         await connect(protocol, session_present=False)
 
     assert "discard_pending_messages" not in caplog.text
+
+
+def maximum_packet_size(value: int) -> bytes:
+    return struct.pack("!BL", 0x27, value)
+
+
+def server_flag(code: int, value: bool) -> bytes:
+    return struct.pack("!BB", code, int(value))
+
+
+RETAIN_AVAILABLE = 0x25
+WILDCARD_SUBSCRIPTION_AVAILABLE = 0x28
+SUBSCRIPTION_IDENTIFIER_AVAILABLE = 0x29
+SHARED_SUBSCRIPTION_AVAILABLE = 0x2A
+
+
+async def assert_nothing_leaked(transport: FakeTransport, session: InMemorySession):
+    await asyncio.sleep(0)
+
+    assert not transport.has_sent_packets()
+    assert session._acquired_packet_identifiers == set()
+    assert await session.get_pending_outgoing_messages() == []
+
+
+@pytest.mark.parametrize("qos", (0, 1, 2))
+async def test_publish_bigger_than_maximum_packet_size(qos):
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol, properties=maximum_packet_size(30))
+
+    with pytest.raises(PacketTooLargeError):
+        await asyncio.wait_for(protocol.publish("a/b", b"x" * 30, qos=qos), TIMEOUT)
+
+    await assert_nothing_leaked(transport, session)
+
+    # a packet of exactly maximum size is sent
+    empty = pack_publish_packet(1, "a/b", b"", qos, False, False, {})
+    payload = b"x" * (30 - len(empty))
+    task = asyncio.create_task(protocol.publish("a/b", payload, qos=qos))
+    publish = await expect_publish(transport)
+    assert publish.payload == payload
+
+    if qos == 1:
+        transport.feed(pack_puback_packet(publish.packet_identifier, 0, {}))
+    elif qos == 2:
+        transport.feed(pack_pubrec_packet(publish.packet_identifier, 0x80, {}))
+
+    await asyncio.wait_for(task, TIMEOUT)
+
+
+async def test_publish_retain_not_available():
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol, properties=server_flag(RETAIN_AVAILABLE, False))
+
+    for qos in (0, 1):
+        with pytest.raises(FeatureNotSupportedError):
+            await asyncio.wait_for(
+                protocol.publish("a/b", b"payload", qos=qos, retain=True), TIMEOUT
+            )
+
+    await assert_nothing_leaked(transport, session)
+
+    await protocol.publish("a/b", b"payload", qos=0, retain=False)
+    await expect_publish(transport)
+
+
+async def test_publish_topic_alias_limits():
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol)
+
+    # the server didn't send "Topic Alias Maximum", so aliases aren't allowed
+    with pytest.raises(FeatureNotSupportedError):
+        await protocol.publish("a/b", b"payload", properties={"topic_alias": 1})
+
+    await assert_nothing_leaked(transport, session)
+
+    transport.drop()
+    await wait_for_connection_lost(protocol)
+
+    transport = await connect(protocol, properties=topic_alias_maximum(2))
+
+    for topic_alias in (0, 3):
+        with pytest.raises(FeatureNotSupportedError):
+            await asyncio.wait_for(
+                protocol.publish(
+                    "a/b", b"payload", qos=1, properties={"topic_alias": topic_alias}
+                ),
+                TIMEOUT,
+            )
+
+    await assert_nothing_leaked(transport, session)
+
+    await protocol.publish("a/b", b"payload", properties={"topic_alias": 2})
+    publish = await expect_publish(transport)
+    assert publish.properties["topic_alias"] == 2
+
+
+@pytest.mark.parametrize(
+    "connack_properties, topics, properties",
+    (
+        (
+            server_flag(WILDCARD_SUBSCRIPTION_AVAILABLE, False),
+            [("a/b", 0), ("a/+", 0)],
+            {},
+        ),
+        (
+            server_flag(SHARED_SUBSCRIPTION_AVAILABLE, False),
+            [("$share/group/a/b", 0)],
+            {},
+        ),
+        (
+            server_flag(SUBSCRIPTION_IDENTIFIER_AVAILABLE, False),
+            [("a/b", 0)],
+            {"subscription_identifier": 1},
+        ),
+    ),
+)
+async def test_subscribe_feature_not_available(connack_properties, topics, properties):
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol, properties=connack_properties)
+
+    with pytest.raises(FeatureNotSupportedError):
+        await asyncio.wait_for(protocol.subscribe(topics, properties), TIMEOUT)
+
+    await assert_nothing_leaked(transport, session)
+
+
+async def test_subscribe_and_unsubscribe_bigger_than_maximum_packet_size():
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol, properties=maximum_packet_size(20))
+
+    with pytest.raises(PacketTooLargeError):
+        await asyncio.wait_for(protocol.subscribe([("a" * 20, 0)]), TIMEOUT)
+
+    with pytest.raises(PacketTooLargeError):
+        await asyncio.wait_for(protocol.unsubscribe(["a" * 20]), TIMEOUT)
+
+    await assert_nothing_leaked(transport, session)
+
+
+async def test_limits_are_reset_on_reconnect():
+    protocol, _, _ = build_protocol()
+    transport = await connect(
+        protocol,
+        properties=server_flag(RETAIN_AVAILABLE, False) + maximum_packet_size(20),
+    )
+
+    transport.drop()
+    await wait_for_connection_lost(protocol)
+
+    # the new CONNACK has no limits
+    transport = await connect(protocol)
+
+    await protocol.publish("a/b", b"x" * 100, qos=0, retain=True)
+    publish = await expect_publish(transport)
+    assert publish.retain
+
+
+async def test_resend_discards_messages_which_break_new_limits(caplog):
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol)
+
+    big = asyncio.create_task(protocol.publish("a/b", b"x" * 100, qos=1))
+    big_publish = await expect_publish(transport)
+
+    retained = asyncio.create_task(protocol.publish("a/b", b"r", qos=1, retain=True))
+    retained_publish = await expect_publish(transport)
+
+    small = asyncio.create_task(protocol.publish("a/b", b"small", qos=1))
+    small_publish = await expect_publish(transport)
+
+    transport.drop()
+    await wait_for_connection_lost(protocol)
+
+    for task in (big, retained, small):
+        with pytest.raises(ConnectionLostError):
+            await task
+
+    with caplog.at_level(logging.WARNING, logger="gmqtt.mqtt.protocol"):
+        transport = await connect(
+            protocol,
+            session_present=True,
+            properties=maximum_packet_size(50) + server_flag(RETAIN_AVAILABLE, False),
+        )
+
+    # only the message which fits the new limits is re-sent
+    resent = await expect_publish(transport)
+    assert resent.packet_identifier == small_publish.packet_identifier
+    assert not transport.has_sent_packets()
+
+    for publish in (big_publish, retained_publish):
+        assert f"discard pid:{publish.packet_identifier}" in caplog.text
+
+    transport.feed(pack_puback_packet(small_publish.packet_identifier, 0, {}))
+
+    ping = asyncio.create_task(protocol.ping())
+    await expect(transport, PacketType.PINGREQ)
+    transport.feed(b"\xd0\x00")
+    await asyncio.wait_for(ping, TIMEOUT)
+
+    assert await session.get_pending_outgoing_messages() == []
+    assert session._acquired_packet_identifiers == set()

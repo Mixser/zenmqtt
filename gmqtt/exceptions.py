@@ -16,8 +16,26 @@ class ConnectionLostError(MQTTConnectionError):
     """
 
 
-class QoSNotSupportedError(ValueError):
+class ServerLimitError(ValueError):
+    """
+    The operation breaks a limit which the server sent in CONNACK;
+    nothing is sent to the server.
+    """
+
+
+class QoSNotSupportedError(ServerLimitError):
     """QoS of the message is higher than "Maximum QoS" of the server."""
+
+
+class PacketTooLargeError(ServerLimitError):
+    """The packet is bigger than "Maximum Packet Size" of the server."""
+
+
+class FeatureNotSupportedError(ServerLimitError):
+    """
+    The server doesn't support the feature: retained messages, topic aliases,
+    wildcard, shared subscriptions or subscription identifiers.
+    """
 
 
 class MalformedPacketError(ValueError):
