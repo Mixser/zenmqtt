@@ -102,8 +102,15 @@ class MQTTSession(Protocol):
         self, packet_identifier: PacketIdentifier
     ) -> bool:
         """
-        Called on incoming PUBLISH with QoS 2.
+        Called on incoming PUBLISH with QoS 2 when PUBREC is sent.
         Returns False if the message was already received (duplicate).
+        """
+        ...
+
+    async def has_incoming_message(self, packet_identifier: PacketIdentifier) -> bool:
+        """
+        True if PUBREC was sent for the incoming QoS 2 message and PUBREL
+        isn't received yet.
         """
         ...
 
@@ -215,6 +222,9 @@ class BaseSession(MQTTSession, abc.ABC):
 
         await self._save_incoming_message(packet_identifier)
         return True
+
+    async def has_incoming_message(self, packet_identifier: PacketIdentifier) -> bool:
+        return await self._has_incoming_message(packet_identifier)
 
     async def complete_incoming_message(
         self, packet_identifier: PacketIdentifier

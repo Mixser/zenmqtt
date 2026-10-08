@@ -555,3 +555,29 @@ async def test_callback_errors_dont_break_reconnect(broker):
 
     await broker.accept()
     await asyncio.wait_for(client.wait_connected(), TIMEOUT)
+
+
+async def test_manual_ack_across_reconnect(broker):
+    client = build_client(manual_ack=True)
+    transport, _ = await connect(client, broker)
+    messages = client.messages
+
+    transport.feed(pack_publish_packet(1, "a/b", b"1", 1, False, False, {}))
+    message = await asyncio.wait_for(anext(messages), TIMEOUT)
+
+    # lost before the message is processed
+    transport.drop()
+    transport, _ = await broker.accept(pack_connack(session_present=True))
+    await asyncio.wait_for(client.wait_connected(), TIMEOUT)
+
+    # the ack of the old delivery is ignored
+    await client.ack(message)
+    await asyncio.sleep(0.01)
+    assert not transport.has_sent_packets()
+
+    transport.feed(pack_publish_packet(1, "a/b", b"1", 1, False, True, {}))
+    redelivered = await asyncio.wait_for(anext(messages), TIMEOUT)
+    assert redelivered.dup
+
+    await client.ack(redelivered)
+    await expect(transport, PacketType.PUBACK)
