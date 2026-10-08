@@ -4,7 +4,8 @@ from typing import Optional, Sequence, Tuple
 from gmqtt.connection import create_connection
 from gmqtt.mqtt.connect import ConnectionResult, ConnectProperties
 from gmqtt.mqtt.protocol import MQTTProtocol
-from gmqtt.mqtt.publish import PublishProperties, PublishResult
+from gmqtt.mqtt.publish import PublishAcknowledgement, PublishProperties, PublishResult
+from gmqtt.mqtt.session import MQTTSession, build_default_session
 from gmqtt.mqtt.subscribe import (
     SubscribeResult,
     SubscriptionProperties,
@@ -40,11 +41,16 @@ class AsyncMessageIterator:
 
 
 class MQTTClient:
-    def __init__(self, client_id: ClientId, config: Optional[ClientConfig] = None):
+    def __init__(self, client_id: ClientId, session: Optional[MQTTSession] = None):
+        """
+        :param session: storage of in-flight QoS 1/2 messages, in-memory by default
+        """
         messages: asyncio.Queue[PublishResult | None] = asyncio.Queue(maxsize=50)
 
-        self._protocol = MQTTProtocol(messages)
-        self._queue = messages
+        session = session or build_default_session()
+
+        self._protocol = MQTTProtocol(messages, session)
+        self._messages = messages
 
         self.client_id = client_id
 
@@ -56,14 +62,26 @@ class MQTTClient:
         self._password = password
 
     async def connect(
-        self, url: str, properties: Optional[ConnectProperties] = None
+        self,
+        url: str,
+        *,
+        clean_session: bool = False,
+        keepalive: bool = False,
+        properties: Optional[ConnectProperties] = None,
     ) -> ConnectionResult:
         connection = await create_connection(url)
         self._protocol.set_connection(connection)
 
-        return await self._protocol.authorize(
-            self.client_id, self._username, self._password, properties
+        connack = await self._protocol.connect(
+            self.client_id,
+            self._username,
+            self._password,
+            clean_session,
+            keepalive,
+            properties,
         )
+
+        return connack
 
     async def disconnect(self):
         await self._protocol.disconnect(reason=0)
@@ -75,7 +93,14 @@ class MQTTClient:
         qos: int = 0,
         retain: bool = False,
         properties: Optional[PublishProperties] = None,
-    ) -> Optional[PublishResult]:
+    ) -> Optional[PublishAcknowledgement]:
+        """
+        Returns None for QoS 0, otherwise the final acknowledgement packet.
+
+        :raises NotConnectedError: the client isn't connected
+        :raises ConnectionLostError: the connection was lost before the
+            acknowledgement; the message will be re-sent on the next connect
+        """
         return await self._protocol.publish(
             topic, message, qos=qos, retain=retain, properties=properties
         )
@@ -98,4 +123,4 @@ class MQTTClient:
 
     @property
     def messages(self):
-        return AsyncMessageIterator(self._queue)
+        return AsyncMessageIterator(self._messages)

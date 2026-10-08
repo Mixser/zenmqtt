@@ -1,0 +1,370 @@
+import asyncio
+import struct
+
+import pytest
+import pytest_asyncio
+
+from gmqtt.connection import MQTTConnection, MQTTConnectionTransport
+from gmqtt.exceptions import ConnectionLostError, NotConnectedError
+from gmqtt.mqtt.packet import PacketType, parse_fixed_header
+from gmqtt.mqtt.protocol import MQTTProtocol
+from gmqtt.mqtt.publish import (
+    PubAckResult,
+    PubCompResult,
+    PubRecResult,
+    pack_puback_packet,
+    pack_pubcomp_packet,
+    pack_publish_packet,
+    pack_pubrec_packet,
+    pack_pubrel_packet,
+    parse_publish_packet,
+    parse_pubrel_packet,
+)
+from gmqtt.mqtt.session import InMemorySession, OutgoingMessageState
+from tests.unit.mqtt.utils import build_async_generator
+
+pytestmark = pytest.mark.asyncio
+
+TIMEOUT = 1
+
+
+class FakeTransport(MQTTConnectionTransport):
+    def __init__(self) -> None:
+        self._incoming: asyncio.Queue[bytes] = asyncio.Queue()
+        self._sent: asyncio.Queue[bytes] = asyncio.Queue()
+        self._closing = False
+
+    async def write(self, payload: bytes) -> None:
+        self._sent.put_nowait(payload)
+
+    async def read(self, size: int = -1) -> bytes:
+        return await self._incoming.get()
+
+    def is_closing(self) -> bool:
+        return self._closing
+
+    async def close(self) -> None:
+        self._closing = True
+        self._incoming.put_nowait(b"")
+
+    def feed(self, payload: bytes) -> None:
+        self._incoming.put_nowait(payload)
+
+    def drop(self) -> None:
+        # the server side went away without DISCONNECT
+        self._incoming.put_nowait(b"")
+
+    async def next_packet(self):
+        payload = await asyncio.wait_for(self._sent.get(), TIMEOUT)
+
+        stream = build_async_generator(payload)
+        fixed_header = await parse_fixed_header(stream)
+        assert fixed_header
+
+        return fixed_header, stream
+
+    def has_sent_packets(self) -> bool:
+        return not self._sent.empty()
+
+
+def pack_connack(
+    session_present: bool = False, reason_code: int = 0, properties: bytes = b""
+):
+    payload = (
+        struct.pack("!BBB", int(session_present), reason_code, len(properties))
+        + properties
+    )
+    return bytes([PacketType.CONNACK << 4, len(payload)]) + payload
+
+
+def receive_maximum(value: int) -> bytes:
+    return struct.pack("!BH", 0x21, value)
+
+
+async def connect(protocol: MQTTProtocol, **connack_kwargs) -> FakeTransport:
+    transport = FakeTransport()
+    protocol.set_connection(MQTTConnection(transport))
+
+    task = asyncio.create_task(protocol.connect("client-id", None, None))
+
+    fixed_header, _ = await transport.next_packet()
+    assert fixed_header.packet_type == PacketType.CONNECT
+
+    transport.feed(pack_connack(**connack_kwargs))
+    await asyncio.wait_for(task, TIMEOUT)
+
+    return transport
+
+
+async def wait_for_connection_lost(protocol: MQTTProtocol):
+    assert protocol._read_loop_task
+    await asyncio.wait_for(protocol._read_loop_task, TIMEOUT)
+
+
+_protocols: list[MQTTProtocol] = []
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def close_protocols():
+    yield
+
+    while _protocols:
+        protocol = _protocols.pop()
+
+        if protocol._connection:
+            await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
+
+
+def build_protocol():
+    session = InMemorySession()
+    messages: asyncio.Queue = asyncio.Queue()
+
+    protocol = MQTTProtocol(messages, session)
+    _protocols.append(protocol)
+
+    return protocol, session, messages
+
+
+async def expect(transport: FakeTransport, packet_type: PacketType):
+    fixed_header, stream = await transport.next_packet()
+    assert fixed_header.packet_type == packet_type
+
+    return fixed_header, stream
+
+
+async def expect_publish(transport: FakeTransport):
+    return await parse_publish_packet(*await expect(transport, PacketType.PUBLISH))
+
+
+async def test_qos1_publish_flow():
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.publish("a/b", b"payload", qos=1))
+
+    publish = await expect_publish(transport)
+    assert publish.qos == 1 and not publish.dup
+    assert len(await session.get_pending_outgoing_messages()) == 1
+
+    transport.feed(pack_puback_packet(publish.packet_identifier, 0, {}))
+
+    result = await asyncio.wait_for(task, TIMEOUT)
+
+    assert isinstance(result, PubAckResult)
+    assert await session.get_pending_outgoing_messages() == []
+    assert session._acquired_packet_identifiers == set()
+
+
+async def test_qos2_publish_flow():
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.publish("a/b", b"payload", qos=2))
+
+    publish = await expect_publish(transport)
+    transport.feed(pack_pubrec_packet(publish.packet_identifier, 0, {}))
+
+    pubrel = await parse_pubrel_packet(*await expect(transport, PacketType.PUBREL))
+    assert pubrel.packet_identifier == publish.packet_identifier
+
+    (pending,) = await session.get_pending_outgoing_messages()
+    assert pending.state == OutgoingMessageState.AWAITING_COMP
+
+    transport.feed(pack_pubcomp_packet(publish.packet_identifier, 0, {}))
+
+    result = await asyncio.wait_for(task, TIMEOUT)
+
+    assert isinstance(result, PubCompResult)
+    assert await session.get_pending_outgoing_messages() == []
+    assert session._acquired_packet_identifiers == set()
+
+
+async def test_qos2_publish_rejected_by_pubrec():
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.publish("a/b", b"payload", qos=2))
+
+    publish = await expect_publish(transport)
+    transport.feed(pack_pubrec_packet(publish.packet_identifier, 0x87, {}))
+
+    result = await asyncio.wait_for(task, TIMEOUT)
+
+    assert isinstance(result, PubRecResult)
+    assert result.reason_code == 0x87
+    assert not transport.has_sent_packets()
+    assert await session.get_pending_outgoing_messages() == []
+
+
+async def test_publish_when_not_connected():
+    protocol, _, _ = build_protocol()
+
+    with pytest.raises(NotConnectedError):
+        await protocol.publish("a/b", b"payload", qos=1)
+
+
+async def test_connection_lost_then_resend_with_session_present():
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol)
+
+    qos2_task = asyncio.create_task(protocol.publish("a/b", b"first", qos=2))
+    qos2_publish = await expect_publish(transport)
+
+    qos1_task = asyncio.create_task(
+        protocol.publish("a/b", b"second", qos=1, properties={"topic_alias": 1})
+    )
+    qos1_publish = await expect_publish(transport)
+
+    transport.feed(pack_pubrec_packet(qos2_publish.packet_identifier, 0, {}))
+    await expect(transport, PacketType.PUBREL)
+
+    transport.drop()
+    await wait_for_connection_lost(protocol)
+
+    for task in (qos2_task, qos1_task):
+        with pytest.raises(ConnectionLostError):
+            await task
+
+    transport = await connect(protocol, session_present=True)
+
+    # the original order is kept: PUBREL for the first message, then PUBLISH
+    pubrel = await parse_pubrel_packet(*await expect(transport, PacketType.PUBREL))
+    assert pubrel.packet_identifier == qos2_publish.packet_identifier
+
+    resent = await expect_publish(transport)
+    assert resent.dup
+    assert resent.packet_identifier == qos1_publish.packet_identifier
+    assert resent.payload == b"second"
+    assert "topic_alias" not in resent.properties
+
+    transport.feed(pack_pubcomp_packet(qos2_publish.packet_identifier, 0, {}))
+    transport.feed(pack_puback_packet(qos1_publish.packet_identifier, 0, {}))
+
+    # acks arrive for messages without futures; the session gets clean anyway
+    task = asyncio.create_task(protocol.publish("a/b", b"third", qos=1))
+    publish = await expect_publish(transport)
+    transport.feed(pack_puback_packet(publish.packet_identifier, 0, {}))
+    await asyncio.wait_for(task, TIMEOUT)
+
+    assert await session.get_pending_outgoing_messages() == []
+    assert session._acquired_packet_identifiers == set()
+
+
+async def test_reconnect_without_session_present_discards_session():
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.publish("a/b", b"payload", qos=1))
+    await expect_publish(transport)
+
+    transport.drop()
+    await wait_for_connection_lost(protocol)
+
+    with pytest.raises(ConnectionLostError):
+        await task
+
+    transport = await connect(protocol, session_present=False)
+
+    assert not transport.has_sent_packets()
+    assert await session.get_pending_outgoing_messages() == []
+    assert session._acquired_packet_identifiers == set()
+
+
+async def test_incoming_qos1_message():
+    protocol, _, messages = build_protocol()
+    transport = await connect(protocol)
+
+    transport.feed(pack_publish_packet(7, "a/b", b"payload", 1, False, False, {}))
+
+    await expect(transport, PacketType.PUBACK)
+    assert messages.get_nowait().payload == b"payload"
+
+
+async def test_incoming_qos2_duplicate_is_delivered_once():
+    protocol, session, messages = build_protocol()
+    transport = await connect(protocol)
+
+    packet = pack_publish_packet(7, "a/b", b"payload", 2, False, False, {})
+
+    transport.feed(packet)
+    await expect(transport, PacketType.PUBREC)
+
+    transport.feed(pack_publish_packet(7, "a/b", b"payload", 2, False, True, {}))
+    await expect(transport, PacketType.PUBREC)
+
+    transport.feed(pack_pubrel_packet(7, 0, {}))
+    await expect(transport, PacketType.PUBCOMP)
+
+    assert messages.qsize() == 1
+    # the flow is completed, so the identifier may be reused by the server
+    assert await session.register_incoming_message(7)
+
+
+async def test_pending_subscribe_on_connection_lost():
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.subscribe([("a/b", 1)]))
+    await expect(transport, PacketType.SUBSCRIBE)
+
+    transport.drop()
+
+    with pytest.raises(ConnectionLostError):
+        await asyncio.wait_for(task, TIMEOUT)
+
+    await wait_for_connection_lost(protocol)
+    assert session._acquired_packet_identifiers == set()
+
+
+async def test_disconnect_with_pending_publish():
+    protocol, session, messages = build_protocol()
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.publish("a/b", b"payload", qos=1))
+    await expect_publish(transport)
+
+    await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
+    await expect(transport, PacketType.DISCONNECT)
+
+    with pytest.raises(ConnectionLostError):
+        await task
+
+    assert len(await session.get_pending_outgoing_messages()) == 1
+    assert messages.get_nowait() is None
+
+
+async def test_flow_control_limits_inflight_messages():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol, properties=receive_maximum(1))
+
+    first = asyncio.create_task(protocol.publish("a/b", b"first", qos=1))
+    first_publish = await expect_publish(transport)
+
+    second = asyncio.create_task(protocol.publish("a/b", b"second", qos=1))
+    await asyncio.sleep(0.01)
+    assert not transport.has_sent_packets()
+
+    transport.feed(pack_puback_packet(first_publish.packet_identifier, 0, {}))
+    await asyncio.wait_for(first, TIMEOUT)
+
+    second_publish = await expect_publish(transport)
+    assert second_publish.payload == b"second"
+
+    transport.feed(pack_puback_packet(second_publish.packet_identifier, 0, {}))
+    await asyncio.wait_for(second, TIMEOUT)
+
+
+async def test_failed_connack_is_returned():
+    protocol, _, _ = build_protocol()
+    transport = FakeTransport()
+    protocol.set_connection(MQTTConnection(transport))
+
+    task = asyncio.create_task(protocol.connect("client-id", None, None))
+    await expect(transport, PacketType.CONNECT)
+    transport.feed(pack_connack(reason_code=0x87))
+
+    result = await asyncio.wait_for(task, TIMEOUT)
+    assert result.result_code == 0x87
+
+    with pytest.raises(NotConnectedError):
+        await protocol.publish("a/b", b"payload")

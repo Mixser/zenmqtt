@@ -74,6 +74,7 @@ def pack_connect_packet(
     client_id: str,
     username: Optional[str],
     password: Optional[str],
+    *,
     clean_session: bool,
     keepalive: bool,
     properties: ConnectProperties,

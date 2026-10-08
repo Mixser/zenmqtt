@@ -54,7 +54,7 @@ class Property(IntEnum):
 
 PropertyName = Literal[
     "payload_format_indicator",
-    "message_expire_level",
+    "message_expiry_interval",
     "content_type",
     "response_topic",
     "correlation_data",
@@ -84,7 +84,7 @@ PropertyName = Literal[
 
 _NAME_TO_CODE_MAP = {
     "payload_format_indicator": 1,
-    "message_expire_level": 2,
+    "message_expiry_interval": 2,
     "content_type": 3,
     "response_topic": 8,
     "correlation_data": 9,
@@ -185,7 +185,7 @@ _AVAILABLE_PROPERTIES_PER_TYPE = {
 
 class Properties(TypedDict, total=False):
     payload_format_indicator: bool
-    message_expire_level: int
+    message_expiry_interval: int
     content_type: str
     response_topic: str
     correlation_data: bytes

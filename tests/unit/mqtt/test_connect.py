@@ -9,7 +9,7 @@ from gmqtt.mqtt.connect import (
     parse_disconnect_packet,
 )
 from gmqtt.mqtt.packet import PacketType, parse_fixed_header
-from tests.mqtt.utils import build_async_generator
+from tests.unit.mqtt.utils import build_async_generator
 
 pytestmark = pytest.mark.asyncio
 
@@ -69,7 +69,12 @@ def test_pack_connect_packet(
 ):
     assert (
         pack_connect_packet(
-            client_id, username, password, clean_session, keepalive, properties
+            client_id,
+            username,
+            password,
+            clean_session=clean_session,
+            keepalive=keepalive,
+            properties=properties,
         )
         == expected_value
     )

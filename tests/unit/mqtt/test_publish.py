@@ -20,7 +20,7 @@ from gmqtt.mqtt.publish import (
     parse_pubrec_packet,
     parse_pubrel_packet,
 )
-from tests.mqtt.utils import build_async_generator
+from tests.unit.mqtt.utils import build_async_generator
 
 pytestmark = pytest.mark.asyncio
 
