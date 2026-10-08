@@ -14,7 +14,7 @@ from gmqtt.mqtt.publish import PubAckResult, pack_puback_packet, pack_publish_pa
 from gmqtt.mqtt.subscribe import Subscription
 from gmqtt.mqtt.utils import read
 from gmqtt.reconnect import ReconnectPolicy
-from tests.unit.mqtt.test_protocol import (
+from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
     FakeTransport,
     RecordingMetrics,

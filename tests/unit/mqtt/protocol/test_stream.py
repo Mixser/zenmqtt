@@ -1,3 +1,4 @@
+"""Byte stream of the connection."""
 import asyncio
 import logging
 
@@ -6,7 +7,7 @@ import pytest
 from gmqtt.connection import MQTTConnection
 from gmqtt.mqtt.packet import PacketType
 from gmqtt.mqtt.protocol.stream import build_data_sequence
-from tests.unit.mqtt.test_protocol import (
+from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
     FakeTransport,
     build_protocol,

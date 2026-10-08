@@ -1,60 +1,31 @@
+"""The read loop doesn't wait for a slow application."""
 import asyncio
 import logging
 
 import pytest
-import pytest_asyncio
 
 from gmqtt.mqtt.packet import PacketType
-from gmqtt.mqtt.protocol import MQTTProtocol
 from gmqtt.mqtt.publish import (
     PubAckResult,
     pack_puback_packet,
-    pack_publish_packet,
     parse_puback_packet,
     parse_pubrec_packet,
 )
-from gmqtt.mqtt.session import InMemorySession
-from tests.unit.mqtt.test_protocol import (
+from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
     FakeTransport,
     RecordingMetrics,
+    build_protocol,
     connect,
     expect,
+    expect_nothing_sent,
     expect_publish,
+    pack_publish,
+    receive,
     wait_for_connection_lost,
 )
 
 pytestmark = pytest.mark.asyncio
-
-_protocols: list[MQTTProtocol] = []
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def close_protocols():
-    yield
-
-    while _protocols:
-        protocol = _protocols.pop()
-
-        if protocol._context.connection:
-            await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
-
-
-def build_protocol(**kwargs):
-    """The messages queue holds one message, like a slow application."""
-    session = InMemorySession()
-    messages: asyncio.Queue = asyncio.Queue(maxsize=1)
-
-    protocol = MQTTProtocol(messages, session, **kwargs)
-    _protocols.append(protocol)
-
-    return protocol, session, messages
-
-
-def pack_publish(
-    packet_identifier: int, qos: int, payload: bytes, dup: bool = False
-) -> bytes:
-    return pack_publish_packet(packet_identifier, "a/b", payload, qos, False, dup, {})
 
 
 async def feed(transport: FakeTransport, *packets: bytes) -> None:
@@ -64,17 +35,8 @@ async def feed(transport: FakeTransport, *packets: bytes) -> None:
         await asyncio.sleep(0.01)
 
 
-async def receive(messages: asyncio.Queue):
-    return await asyncio.wait_for(messages.get(), TIMEOUT)
-
-
-async def expect_nothing_sent(transport: FakeTransport) -> None:
-    await asyncio.sleep(0.01)
-    assert not transport.has_sent_packets()
-
-
 async def test_control_packets_are_handled_while_queue_is_full():
-    protocol, _, _ = build_protocol()
+    protocol, _, _ = build_protocol(queue_size=1)
     transport = await connect(protocol)
 
     # nobody reads the messages
@@ -95,7 +57,7 @@ async def test_control_packets_are_handled_while_queue_is_full():
 
 async def test_slow_consumer_is_reported(caplog):
     metrics = RecordingMetrics()
-    protocol, _, messages = build_protocol(metrics=metrics)
+    protocol, _, messages = build_protocol(queue_size=1, metrics=metrics)
     protocol._incoming.buffered_messages_warning = 2
     transport = await connect(protocol)
 
@@ -117,7 +79,7 @@ async def test_slow_consumer_is_reported(caplog):
 
 
 async def test_acks_keep_the_order_with_duplicates():
-    protocol, session, messages = build_protocol()
+    protocol, session, messages = build_protocol(queue_size=1)
     transport = await connect(protocol)
 
     # PUBREC for message 2 was sent before, PUBREL is not received yet
@@ -150,7 +112,7 @@ async def test_acks_keep_the_order_with_duplicates():
 
 
 async def test_connection_lost_drops_buffered_qos1_and_keeps_qos0():
-    protocol, _, messages = build_protocol()
+    protocol, _, messages = build_protocol(queue_size=1)
     transport = await connect(protocol)
 
     await feed(

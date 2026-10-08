@@ -1,10 +1,9 @@
+"""Acknowledgement of incoming messages by ack()."""
 import asyncio
 
 import pytest
-import pytest_asyncio
 
 from gmqtt.mqtt.packet import PacketType
-from gmqtt.mqtt.protocol import MQTTProtocol
 from gmqtt.mqtt.publish import (
     pack_publish_packet,
     pack_pubrel_packet,
@@ -12,53 +11,20 @@ from gmqtt.mqtt.publish import (
     parse_pubcomp_packet,
     parse_pubrec_packet,
 )
-from gmqtt.mqtt.session import InMemorySession
-from tests.unit.mqtt.test_protocol import (
+from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
     FakeTransport,
+    build_protocol,
     connect,
     expect,
     expect_disconnect,
+    expect_nothing_sent,
+    pack_publish,
+    receive,
     wait_for_connection_lost,
 )
 
 pytestmark = pytest.mark.asyncio
-
-_protocols: list[MQTTProtocol] = []
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def close_protocols():
-    yield
-
-    while _protocols:
-        protocol = _protocols.pop()
-
-        if protocol._context.connection:
-            await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
-
-
-def build_protocol():
-    session = InMemorySession()
-    messages: asyncio.Queue = asyncio.Queue()
-
-    protocol = MQTTProtocol(messages, session)
-    _protocols.append(protocol)
-
-    return protocol, session, messages
-
-
-def pack_publish(packet_identifier: int, qos: int, payload: bytes = b"x") -> bytes:
-    return pack_publish_packet(packet_identifier, "a/b", payload, qos, False, False, {})
-
-
-async def receive(messages: asyncio.Queue):
-    return await asyncio.wait_for(messages.get(), TIMEOUT)
-
-
-async def expect_nothing_sent(transport: FakeTransport) -> None:
-    await asyncio.sleep(0.01)
-    assert not transport.has_sent_packets()
 
 
 async def expect_puback(transport: FakeTransport):
