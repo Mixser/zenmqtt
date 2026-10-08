@@ -56,8 +56,8 @@ class FakeTransport(MQTTConnectionTransport):
         # the server side went away without DISCONNECT
         self._incoming.put_nowait(b"")
 
-    async def next_packet(self):
-        payload = await asyncio.wait_for(self._sent.get(), TIMEOUT)
+    async def next_packet(self, timeout: float = TIMEOUT):
+        payload = await asyncio.wait_for(self._sent.get(), timeout)
 
         stream = build_async_generator(payload)
         fixed_header = await parse_fixed_header(stream)
@@ -454,3 +454,99 @@ async def test_connect_with_will():
 
     transport.feed(pack_connack())
     await asyncio.wait_for(task, TIMEOUT)
+
+
+def server_keep_alive(value: int) -> bytes:
+    return struct.pack("!BH", 0x13, value)
+
+
+async def connect_with_keep_alive(
+    protocol: MQTTProtocol, keepalive: int, **connack_kwargs
+) -> FakeTransport:
+    transport = FakeTransport()
+    protocol.set_connection(MQTTConnection(transport))
+
+    task = asyncio.create_task(
+        protocol.connect("client-id", None, None, keepalive=keepalive)
+    )
+
+    await expect(transport, PacketType.CONNECT)
+
+    transport.feed(pack_connack(**connack_kwargs))
+    await asyncio.wait_for(task, TIMEOUT)
+
+    return transport
+
+
+async def test_keep_alive_sends_pingreq_when_idle():
+    protocol, _, _ = build_protocol()
+    transport = await connect_with_keep_alive(protocol, keepalive=1)
+
+    for _ in range(2):
+        fixed_header, _ = await transport.next_packet(timeout=2)
+        assert fixed_header.packet_type == PacketType.PINGREQ
+
+        transport.feed(b"\xd0\x00")
+
+
+async def test_keep_alive_is_postponed_by_other_packets():
+    protocol, _, _ = build_protocol()
+    transport = await connect_with_keep_alive(protocol, keepalive=1)
+
+    await asyncio.sleep(0.6)
+    await protocol.publish("a/b", b"payload", qos=0)
+    await expect(transport, PacketType.PUBLISH)
+
+    # 1.2s after CONNECT, but only 0.6s after PUBLISH
+    await asyncio.sleep(0.6)
+    assert not transport.has_sent_packets()
+
+    fixed_header, _ = await transport.next_packet(timeout=1)
+    assert fixed_header.packet_type == PacketType.PINGREQ
+
+
+async def test_keep_alive_closes_connection_without_pingresp():
+    protocol, _, messages = build_protocol()
+    transport = await connect_with_keep_alive(protocol, keepalive=1)
+
+    fixed_header, _ = await transport.next_packet(timeout=2)
+    assert fixed_header.packet_type == PacketType.PINGREQ
+
+    assert protocol._read_loop_task
+    await asyncio.wait_for(protocol._read_loop_task, 2)
+
+    assert transport.is_closing()
+    assert protocol._keep_alive_task is None
+    assert messages.get_nowait() is None
+
+
+async def test_server_keep_alive_overrides_client_value():
+    protocol, _, _ = build_protocol()
+    transport = await connect_with_keep_alive(
+        protocol, keepalive=0, properties=server_keep_alive(1)
+    )
+
+    fixed_header, _ = await transport.next_packet(timeout=2)
+    assert fixed_header.packet_type == PacketType.PINGREQ
+
+    transport.feed(b"\xd0\x00")
+
+
+async def test_keep_alive_disabled():
+    protocol, _, _ = build_protocol()
+    await connect_with_keep_alive(protocol, keepalive=0)
+
+    assert protocol._keep_alive_task is None
+
+
+async def test_keep_alive_stops_on_disconnect():
+    protocol, _, _ = build_protocol()
+    await connect_with_keep_alive(protocol, keepalive=1)
+
+    keep_alive_task = protocol._keep_alive_task
+    assert keep_alive_task
+
+    await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
+
+    assert keep_alive_task.cancelled()
+    assert protocol._keep_alive_task is None

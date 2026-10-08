@@ -90,6 +90,8 @@ class WillMessage:
     properties: WillProperties
 
 
+MAX_KEEP_ALIVE: Final[int] = 2**16 - 1
+
 # CONNECT flags
 _CLEAN_START_FLAG: Final[int] = 0x02
 _WILL_FLAG: Final[int] = 0x04
@@ -105,10 +107,13 @@ def pack_connect_packet(
     password: Optional[str],
     *,
     clean_session: bool,
-    keepalive: bool,
+    keepalive: int,
     properties: ConnectProperties,
     will: Optional[WillMessage] = None,
 ) -> bytes:
+    if not 0 <= keepalive <= MAX_KEEP_ALIVE:
+        raise ValueError(f"Invalid keep alive: {keepalive}")
+
     connect_flags = 0
 
     if clean_session:

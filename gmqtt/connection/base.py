@@ -1,4 +1,5 @@
-from typing import Protocol
+import asyncio
+from typing import Optional, Protocol
 
 
 class MQTTConnectionTransport(Protocol):
@@ -22,8 +23,13 @@ class MQTTConnection:
     ) -> None:
         self._transport = transport
 
+        # loop time of the last write, used by keep alive
+        self.last_write_at: Optional[float] = None
+
     async def write(self, payload: bytes) -> None:
         await self._transport.write(payload)
+
+        self.last_write_at = asyncio.get_running_loop().time()
 
     async def disconnect(self) -> None:
         await self._transport.close()

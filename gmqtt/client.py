@@ -23,6 +23,8 @@ Message = bytes
 
 QOS = int
 
+DEFAULT_KEEP_ALIVE = 60
+
 
 class AsyncMessageIterator:
     def __init__(self, queue: asyncio.Queue):
@@ -66,11 +68,13 @@ class MQTTClient:
         url: str,
         *,
         clean_session: bool = False,
-        keepalive: bool = False,
+        keepalive: int = DEFAULT_KEEP_ALIVE,
         properties: Optional[ConnectProperties] = None,
         will: Optional[WillMessage] = None,
     ) -> ConnectionResult:
         """
+        :param keepalive: seconds between control packets sent by the client,
+            the client sends PINGREQ when idle; 0 disables keep alive
         :param will: the message the server publishes if the client goes away
             without DISCONNECT
         """
