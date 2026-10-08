@@ -2,6 +2,7 @@ import asyncio
 from typing import Optional, Sequence, Tuple
 
 from gmqtt.connection import create_connection
+from gmqtt.metrics import MetricsCollector
 from gmqtt.mqtt.connect import ConnectionResult, ConnectProperties, WillMessage
 from gmqtt.mqtt.protocol import MQTTProtocol
 from gmqtt.mqtt.publish import PublishAcknowledgement, PublishProperties, PublishResult
@@ -43,15 +44,22 @@ class AsyncMessageIterator:
 
 
 class MQTTClient:
-    def __init__(self, client_id: ClientId, session: Optional[MQTTSession] = None):
+    def __init__(
+        self,
+        client_id: ClientId,
+        session: Optional[MQTTSession] = None,
+        metrics: Optional[MetricsCollector] = None,
+    ):
         """
         :param session: storage of in-flight QoS 1/2 messages, in-memory by default
+        :param metrics: receives events of the client to build metrics,
+            e.g. gmqtt.contrib.opentelemetry.OpenTelemetryMetrics
         """
         messages: asyncio.Queue[PublishResult | None] = asyncio.Queue(maxsize=50)
 
         session = session or build_default_session()
 
-        self._protocol = MQTTProtocol(messages, session)
+        self._protocol = MQTTProtocol(messages, session, metrics)
         self._messages = messages
 
         self.client_id = client_id

@@ -1,11 +1,13 @@
 import asyncio
 import struct
+from typing import Optional
 
 import pytest
 import pytest_asyncio
 
 from gmqtt.connection import MQTTConnection, MQTTConnectionTransport
 from gmqtt.exceptions import ConnectionLostError, NotConnectedError
+from gmqtt.metrics import MetricsCollector
 from gmqtt.mqtt.connect import WillMessage
 from gmqtt.mqtt.packet import PacketType, parse_fixed_header
 from gmqtt.mqtt.protocol import MQTTProtocol
@@ -117,11 +119,11 @@ async def close_protocols():
             await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
 
 
-def build_protocol():
+def build_protocol(metrics: Optional[MetricsCollector] = None):
     session = InMemorySession()
     messages: asyncio.Queue = asyncio.Queue()
 
-    protocol = MQTTProtocol(messages, session)
+    protocol = MQTTProtocol(messages, session, metrics)
     _protocols.append(protocol)
 
     return protocol, session, messages
@@ -569,3 +571,216 @@ async def test_auth_packet_is_skipped():
     # PINGRESP is parsed correctly only if the AUTH body was skipped
     await asyncio.wait_for(task, TIMEOUT)
     assert protocol._connected
+
+
+class RecordingMetrics(MetricsCollector):
+    def __init__(self) -> None:
+        self.events: list[tuple] = []
+
+    def __getattribute__(self, name):
+        if name.startswith("on_"):
+            return lambda *args, **kwargs: self.events.append((name, args, kwargs))
+
+        return super().__getattribute__(name)
+
+    def get(self, name: str) -> list[tuple]:
+        return [args for event, args, _ in self.events if event == name]
+
+
+def pack_suback(packet_identifier: int, *reason_codes: int) -> bytes:
+    payload = struct.pack("!HB", packet_identifier, 0) + bytes(reason_codes)
+    return bytes([PacketType.SUBACK << 4, len(payload)]) + payload
+
+
+async def test_metrics_connect_and_disconnect():
+    metrics = RecordingMetrics()
+    protocol, _, _ = build_protocol(metrics)
+    transport = await connect(protocol)
+
+    [(reason_code, duration)] = metrics.get("on_connect")
+    assert reason_code == 0 and duration >= 0
+
+    assert metrics.get("on_packet_received") == [
+        (PacketType.CONNACK, len(pack_connack()))
+    ]
+    [(packet_type, size)] = metrics.get("on_packet_sent")
+    assert packet_type == PacketType.CONNECT and size > 0
+
+    await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
+    await expect(transport, PacketType.DISCONNECT)
+
+    assert metrics.get("on_packet_sent")[-1] == (PacketType.DISCONNECT, 4)
+    assert ("on_connection_closed", (), {"lost": False}) in metrics.events
+
+
+async def test_metrics_connection_lost():
+    metrics = RecordingMetrics()
+    protocol, _, _ = build_protocol(metrics)
+    transport = await connect(protocol)
+
+    transport.drop()
+    await wait_for_connection_lost(protocol)
+
+    assert ("on_connection_closed", (), {"lost": True}) in metrics.events
+
+
+async def test_metrics_failed_connect_is_not_closed_connection():
+    metrics = RecordingMetrics()
+    protocol, _, _ = build_protocol(metrics)
+    await connect(protocol, reason_code=0x87)
+
+    assert [code for code, _ in metrics.get("on_connect")] == [0x87]
+
+    await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
+
+    assert metrics.get("on_connection_closed") == []
+
+
+async def test_metrics_publish():
+    metrics = RecordingMetrics()
+    protocol, _, _ = build_protocol(metrics)
+    transport = await connect(protocol)
+
+    await protocol.publish("a/b", b"payload", qos=0)
+    await expect_publish(transport)
+
+    task = asyncio.create_task(protocol.publish("a/b", b"payload", qos=1))
+    publish = await expect_publish(transport)
+    transport.feed(pack_puback_packet(publish.packet_identifier, 0x10, {}))
+    await asyncio.wait_for(task, TIMEOUT)
+
+    task = asyncio.create_task(protocol.publish("a/b", b"payload", qos=2))
+    publish = await expect_publish(transport)
+    transport.feed(pack_pubrec_packet(publish.packet_identifier, 0, {}))
+    await expect(transport, PacketType.PUBREL)
+    transport.feed(pack_pubcomp_packet(publish.packet_identifier, 0, {}))
+    await asyncio.wait_for(task, TIMEOUT)
+
+    completed = metrics.get("on_publish_completed")
+    assert [(qos, reason_code) for qos, reason_code, _ in completed] == [
+        (0, 0),
+        (1, 0x10),
+        (2, 0),
+    ]
+    assert all(duration >= 0 for _, _, duration in completed)
+
+
+async def test_metrics_incoming_messages():
+    metrics = RecordingMetrics()
+    protocol, _, _ = build_protocol(metrics)
+    transport = await connect(protocol)
+
+    transport.feed(pack_publish_packet(0, "a/b", b"0", 0, False, False, {}))
+    transport.feed(pack_publish_packet(1, "a/b", b"1", 1, False, False, {}))
+    await expect(transport, PacketType.PUBACK)
+
+    for _ in range(2):
+        transport.feed(pack_publish_packet(2, "a/b", b"2", 2, False, False, {}))
+        await expect(transport, PacketType.PUBREC)
+
+    assert metrics.get("on_message_received") == [
+        (0, False),
+        (1, False),
+        (2, False),
+        (2, True),
+    ]
+
+
+async def test_metrics_ping():
+    metrics = RecordingMetrics()
+    protocol, _, _ = build_protocol(metrics)
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.ping())
+    await expect(transport, PacketType.PINGREQ)
+    transport.feed(b"\xd0\x00")
+    await asyncio.wait_for(task, TIMEOUT)
+
+    [(duration,)] = metrics.get("on_ping")
+    assert duration >= 0
+
+
+async def test_metrics_ping_timeout():
+    metrics = RecordingMetrics()
+    protocol, _, _ = build_protocol(metrics)
+    await connect_with_keep_alive(protocol, keepalive=1)
+
+    assert protocol._read_loop_task
+    await asyncio.wait_for(protocol._read_loop_task, 3)
+
+    assert metrics.get("on_ping_timeout") == [()]
+    assert ("on_connection_closed", (), {"lost": True}) in metrics.events
+
+
+async def test_metrics_subscribe_and_unsubscribe():
+    metrics = RecordingMetrics()
+    protocol, _, _ = build_protocol(metrics)
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.subscribe([("a/b", 1), ("c/d", 2)]))
+    _, stream = await expect(transport, PacketType.SUBSCRIBE)
+    (packet_identifier,) = struct.unpack("!H", await read(stream, 2))
+    transport.feed(pack_suback(packet_identifier, 0x01, 0x80))
+    await asyncio.wait_for(task, TIMEOUT)
+
+    task = asyncio.create_task(protocol.unsubscribe(["a/b"]))
+    _, stream = await expect(transport, PacketType.UNSUBSCRIBE)
+    (packet_identifier,) = struct.unpack("!H", await read(stream, 2))
+    unsuback = struct.pack("!HBB", packet_identifier, 0, 0)
+    transport.feed(bytes([PacketType.UNSUBACK << 4, len(unsuback)]) + unsuback)
+    await asyncio.wait_for(task, TIMEOUT)
+
+    [(reason_codes, _)] = metrics.get("on_subscribe_completed")
+    assert reason_codes == [0x01, 0x80]
+
+    [(reason_codes, _)] = metrics.get("on_unsubscribe_completed")
+    assert reason_codes == [0x00]
+
+
+async def test_metrics_send_quota_wait():
+    metrics = RecordingMetrics()
+    protocol, _, _ = build_protocol(metrics)
+    transport = await connect(protocol, properties=receive_maximum(1))
+
+    first = asyncio.create_task(protocol.publish("a/b", b"first", qos=1))
+    first_publish = await expect_publish(transport)
+
+    second = asyncio.create_task(protocol.publish("a/b", b"second", qos=1))
+    await asyncio.sleep(0.01)
+
+    transport.feed(pack_puback_packet(first_publish.packet_identifier, 0, {}))
+    second_publish = await expect_publish(transport)
+    transport.feed(pack_puback_packet(second_publish.packet_identifier, 0, {}))
+    await asyncio.wait_for(asyncio.gather(first, second), TIMEOUT)
+
+    [(duration,)] = metrics.get("on_send_quota_wait")
+    assert duration >= 0.01
+
+
+async def test_metrics_messages_resent():
+    metrics = RecordingMetrics()
+    protocol, _, _ = build_protocol(metrics)
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.publish("a/b", b"payload", qos=1))
+    publish = await expect_publish(transport)
+
+    transport.drop()
+    await wait_for_connection_lost(protocol)
+
+    with pytest.raises(ConnectionLostError):
+        await task
+
+    transport = await connect(protocol, session_present=True)
+    await expect_publish(transport)
+
+    assert metrics.get("on_messages_resent") == [(1,)]
+
+    # the re-sent message is completed by its acknowledgement
+    transport.feed(pack_puback_packet(publish.packet_identifier, 0, {}))
+    ping = asyncio.create_task(protocol.ping())
+    await expect(transport, PacketType.PINGREQ)
+    transport.feed(b"\xd0\x00")
+    await asyncio.wait_for(ping, TIMEOUT)
+
+    assert [qos for qos, _, _ in metrics.get("on_publish_completed")] == [1]
