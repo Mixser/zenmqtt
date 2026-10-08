@@ -2,7 +2,7 @@ import asyncio
 from typing import Optional, Sequence, Tuple
 
 from gmqtt.connection import create_connection
-from gmqtt.mqtt.connect import ConnectionResult, ConnectProperties
+from gmqtt.mqtt.connect import ConnectionResult, ConnectProperties, WillMessage
 from gmqtt.mqtt.protocol import MQTTProtocol
 from gmqtt.mqtt.publish import PublishAcknowledgement, PublishProperties, PublishResult
 from gmqtt.mqtt.session import MQTTSession, build_default_session
@@ -68,7 +68,12 @@ class MQTTClient:
         clean_session: bool = False,
         keepalive: bool = False,
         properties: Optional[ConnectProperties] = None,
+        will: Optional[WillMessage] = None,
     ) -> ConnectionResult:
+        """
+        :param will: the message the server publishes if the client goes away
+            without DISCONNECT
+        """
         connection = await create_connection(url)
         self._protocol.set_connection(connection)
 
@@ -79,6 +84,7 @@ class MQTTClient:
             clean_session,
             keepalive,
             properties,
+            will,
         )
 
         return connack

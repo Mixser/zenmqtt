@@ -6,6 +6,7 @@ import pytest_asyncio
 
 from gmqtt.connection import MQTTConnection, MQTTConnectionTransport
 from gmqtt.exceptions import ConnectionLostError, NotConnectedError
+from gmqtt.mqtt.connect import WillMessage
 from gmqtt.mqtt.packet import PacketType, parse_fixed_header
 from gmqtt.mqtt.protocol import MQTTProtocol
 from gmqtt.mqtt.publish import (
@@ -21,6 +22,7 @@ from gmqtt.mqtt.publish import (
     parse_pubrel_packet,
 )
 from gmqtt.mqtt.session import InMemorySession, OutgoingMessageState
+from gmqtt.mqtt.utils import read
 from tests.unit.mqtt.utils import build_async_generator
 
 pytestmark = pytest.mark.asyncio
@@ -432,4 +434,23 @@ async def test_unexpected_pingresp_is_ignored():
     await expect(transport, PacketType.PINGREQ)
 
     transport.feed(b"\xd0\x00")
+    await asyncio.wait_for(task, TIMEOUT)
+
+
+async def test_connect_with_will():
+    protocol, _, _ = build_protocol()
+    transport = FakeTransport()
+    protocol.set_connection(MQTTConnection(transport))
+
+    will = WillMessage("a/b", b"bye", qos=1, retain=False, properties={})
+    task = asyncio.create_task(protocol.connect("client-id", None, None, will=will))
+
+    fixed_header, stream = await expect(transport, PacketType.CONNECT)
+    packet = await read(stream, fixed_header.length)
+
+    connect_flags = packet[7]
+    assert connect_flags & 0x04  # will flag
+    assert packet.endswith(b"\x00\x03a/b\x00\x03bye")
+
+    transport.feed(pack_connack())
     await asyncio.wait_for(task, TIMEOUT)

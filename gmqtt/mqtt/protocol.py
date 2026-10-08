@@ -10,6 +10,7 @@ from gmqtt.mqtt.connect import (
     ConnectionResult,
     ConnectProperties,
     DisconnectProperties,
+    WillMessage,
     pack_connect_packet,
     pack_disconnect_packet,
     parse_connack_packet,
@@ -184,6 +185,7 @@ class MQTTProtocol:
         clean_session: bool = False,
         keepalive: bool = False,
         properties: Optional[ConnectProperties] = None,
+        will: Optional[WillMessage] = None,
     ) -> ConnectionResult:
         assert self._connection
         assert self._connection_future
@@ -200,6 +202,7 @@ class MQTTProtocol:
             clean_session=clean_session,
             keepalive=keepalive,
             properties=properties,
+            will=will,
         )
 
         logger.debug("mqtt_protocol.send_connect_packet")

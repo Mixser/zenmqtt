@@ -3,6 +3,7 @@ import pytest
 from gmqtt.mqtt.connect import (
     ConnectionResult,
     DisconnectResult,
+    WillMessage,
     pack_connect_packet,
     pack_disconnect_packet,
     parse_connack_packet,
@@ -78,6 +79,88 @@ def test_pack_connect_packet(
         )
         == expected_value
     )
+
+
+def test_pack_connect_packet_with_non_ascii_client_id():
+    client_id = "клиент"
+
+    assert (
+        pack_connect_packet(
+            client_id,
+            None,
+            None,
+            clean_session=False,
+            keepalive=False,
+            properties={},
+        )
+        == b"\x10\x19\x00\x04MQTT\x05\x00\x00\x00\x00\x00\x0c" + client_id.encode()
+    )
+
+
+@pytest.mark.parametrize(
+    "username, password, clean_session, will, expected_value",
+    (
+        (
+            None,
+            None,
+            False,
+            WillMessage("a/b", b"bye", qos=1, retain=True, properties={}),
+            b"\x10\x21\x00\x04MQTT\x05\x2c\x00\x00\x00"
+            b"\x00\tclient-id\x00\x00\x03a/b\x00\x03bye",
+        ),
+        (
+            None,
+            None,
+            False,
+            WillMessage(
+                "a/b",
+                b"bye",
+                qos=0,
+                retain=False,
+                properties={"will_delay_interval": 10},
+            ),
+            b"\x10\x26\x00\x04MQTT\x05\x04\x00\x00\x00"
+            b"\x00\tclient-id\x05\x18\x00\x00\x00\x0a\x00\x03a/b\x00\x03bye",
+        ),
+        (
+            "username",
+            "password",
+            True,
+            WillMessage("a/b", b"bye", qos=2, retain=False, properties={}),
+            b"\x10\x35\x00\x04MQTT\x05\xd6\x00\x00\x00"
+            b"\x00\tclient-id\x00\x00\x03a/b\x00\x03bye"
+            b"\x00\x08username\x00\x08password",
+        ),
+    ),
+)
+def test_pack_connect_packet_with_will(
+    username, password, clean_session, will, expected_value
+):
+    assert (
+        pack_connect_packet(
+            "client-id",
+            username,
+            password,
+            clean_session=clean_session,
+            keepalive=False,
+            properties={},
+            will=will,
+        )
+        == expected_value
+    )
+
+
+def test_pack_connect_packet_with_invalid_will_qos():
+    with pytest.raises(ValueError):
+        pack_connect_packet(
+            "client-id",
+            None,
+            None,
+            clean_session=False,
+            keepalive=False,
+            properties={},
+            will=WillMessage("a/b", b"bye", qos=3, retain=False, properties={}),
+        )
 
 
 @pytest.mark.parametrize(
