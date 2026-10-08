@@ -165,6 +165,8 @@ class MQTTProtocol:
         # PINGRESP has no packet identifier, so only one PINGREQ is in flight
         self._ping_future: Optional[asyncio.Future[None]] = None
 
+        self._keep_alive_task: Optional[Task[None]] = None
+
         self._send_quota: Optional[_SendQuota] = None
 
         self._messages_queue = messages
@@ -183,10 +185,14 @@ class MQTTProtocol:
         username: Optional[str],
         password: Optional[str],
         clean_session: bool = False,
-        keepalive: bool = False,
+        keepalive: int = 0,
         properties: Optional[ConnectProperties] = None,
         will: Optional[WillMessage] = None,
     ) -> ConnectionResult:
+        """
+        :param keepalive: seconds between control packets sent by the client,
+            0 disables keep alive; "Server Keep Alive" from CONNACK overrides it
+        """
         assert self._connection
         assert self._connection_future
 
@@ -225,6 +231,13 @@ class MQTTProtocol:
         await self._resend_pending_messages()
 
         self._connected = True
+
+        keepalive = connection_result.properties.get("server_keep_alive", keepalive)
+
+        if keepalive:
+            self._keep_alive_task = asyncio.create_task(
+                self._keep_alive_loop(keepalive), name="mqtt-protocol-keep-alive"
+            )
 
         return connection_result
 
@@ -566,6 +579,10 @@ class MQTTProtocol:
         self._connected = False
         exc = ConnectionLostError()
 
+        if self._keep_alive_task:
+            self._keep_alive_task.cancel()
+            self._keep_alive_task = None
+
         if self._connection_future and not self._connection_future.done():
             self._connection_future.set_exception(exc)
 
@@ -594,6 +611,32 @@ class MQTTProtocol:
 
         if self._connection and not self._connection.is_closing():
             await self._connection.disconnect()
+
+    async def _keep_alive_loop(self, keepalive: int) -> None:
+        """
+        Sends PINGREQ if the client didn't send any packet within the keep alive
+        period, and closes the connection if PINGRESP doesn't come in time.
+        """
+        connection = self._ensure_connected()
+        loop = asyncio.get_running_loop()
+
+        while True:
+            last_write_at = connection.last_write_at or loop.time()
+            delay = last_write_at + keepalive - loop.time()
+
+            if delay > 0:
+                await asyncio.sleep(delay)
+                continue
+
+            try:
+                await asyncio.wait_for(self.ping(), keepalive)
+            except asyncio.TimeoutError:
+                logger.warning("mqtt_protocol.keep_alive.pingresp_timeout")
+                # the read loop handles the lost connection
+                await connection.disconnect()
+                return
+            except (NotConnectedError, ConnectionLostError):
+                return
 
     def _ensure_connected(self) -> MQTTConnection:
         if not self._connected or not self._connection or self._connection.is_closing():

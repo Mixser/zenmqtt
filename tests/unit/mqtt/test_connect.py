@@ -150,6 +150,30 @@ def test_pack_connect_packet_with_will(
     )
 
 
+@pytest.mark.parametrize("keepalive", (-1, 2**16))
+def test_pack_connect_packet_with_invalid_keep_alive(keepalive):
+    with pytest.raises(ValueError):
+        pack_connect_packet(
+            "client-id",
+            None,
+            None,
+            clean_session=False,
+            keepalive=keepalive,
+            properties={},
+        )
+
+
+def test_pack_connect_packet_with_keep_alive():
+    assert pack_connect_packet(
+        "client-id",
+        None,
+        None,
+        clean_session=False,
+        keepalive=60,
+        properties={},
+    ) == (b"\x10\x16\x00\x04MQTT\x05\x00\x00\x3c\x00\x00\tclient-id")
+
+
 def test_pack_connect_packet_with_invalid_will_qos():
     with pytest.raises(ValueError):
         pack_connect_packet(
