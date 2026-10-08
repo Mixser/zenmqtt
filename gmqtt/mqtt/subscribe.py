@@ -97,6 +97,10 @@ def pack_subscription_options(subscription: Subscription) -> int:
     return options
 
 
+def to_subscription(request: SubscriptionRequest) -> Subscription:
+    return request if isinstance(request, Subscription) else Subscription(*request)
+
+
 def pack_subscription_packet(
     packet_identifier: int,
     topics: Sequence[SubscriptionRequest],
@@ -107,9 +111,7 @@ def pack_subscription_packet(
     topics_bytes = bytearray()
 
     for request in topics:
-        subscription = (
-            request if isinstance(request, Subscription) else Subscription(*request)
-        )
+        subscription = to_subscription(request)
 
         topics_bytes.extend(
             itertools.chain(

@@ -148,7 +148,9 @@ class MQTTClient:
         Returns None for QoS 0, otherwise the final acknowledgement packet.
 
         :raises ValueError: QoS isn't 0, 1 or 2
-        :raises QoSNotSupportedError: QoS is higher than the server's "Maximum QoS"
+        :raises ServerLimitError: the message breaks a limit of the server from
+            CONNACK: QoSNotSupportedError, PacketTooLargeError or
+            FeatureNotSupportedError (retain, topic alias); nothing is sent
         :raises NotConnectedError: the client isn't connected
         :raises ConnectionLostError: the connection was lost before the
             acknowledgement; the message will be re-sent on the next connect
