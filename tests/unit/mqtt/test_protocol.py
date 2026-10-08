@@ -886,3 +886,59 @@ async def test_nothing_is_logged_when_session_is_empty(caplog):
         await connect(protocol, session_present=False)
 
     assert "discard_pending_messages" not in caplog.text
+
+
+async def test_disconnect_with_reason():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol)
+
+    await asyncio.wait_for(
+        protocol.disconnect(reason=0x04, properties={"reason_string": "bye"}),
+        TIMEOUT,
+    )
+
+    fixed_header, stream = await expect(transport, PacketType.DISCONNECT)
+    assert await parse_disconnect_packet(fixed_header, stream) == DisconnectResult(
+        0x04, {"reason_string": "bye"}
+    )
+
+
+async def test_server_disconnect_is_exposed():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.subscribe([("a/b", 1)]))
+    await expect(transport, PacketType.SUBSCRIBE)
+
+    # 0x8B "Server shutting down"
+    transport.feed(b"\xe0\x01\x8b")
+
+    with pytest.raises(ConnectionLostError) as exc_info:
+        await asyncio.wait_for(task, TIMEOUT)
+
+    expected = DisconnectResult(0x8B, {})
+
+    assert exc_info.value.server_disconnect == expected
+    assert protocol.server_disconnect == expected
+
+    await wait_for_connection_lost(protocol)
+
+    # the next connection starts without it
+    await connect(protocol)
+    assert protocol.server_disconnect is None
+
+
+async def test_server_disconnect_is_none_when_connection_dropped():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.subscribe([("a/b", 1)]))
+    await expect(transport, PacketType.SUBSCRIBE)
+
+    transport.drop()
+
+    with pytest.raises(ConnectionLostError) as exc_info:
+        await asyncio.wait_for(task, TIMEOUT)
+
+    assert exc_info.value.server_disconnect is None
+    assert protocol.server_disconnect is None
