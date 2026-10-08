@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 from asyncio import Task
 from collections import deque
 from logging import getLogger
@@ -7,9 +8,11 @@ from typing import Awaitable, Callable, Final, Optional, Sequence, Tuple, cast
 from gmqtt.connection import MQTTConnection
 from gmqtt.exceptions import (
     ConnectionLostError,
-    MalformedPacketError,
     NotConnectedError,
+    ProtocolError,
+    ReceiveMaximumExceededError,
     ServerLimitError,
+    TopicAliasInvalidError,
 )
 from gmqtt.metrics import MetricsCollector
 from gmqtt.mqtt.connect import (
@@ -76,8 +79,8 @@ SESSION_PRESENT_FLAG: Final[int] = 0x01
 FAILURE_REASON_CODE: Final[int] = 0x80
 # default value of "Receive Maximum" if the server doesn't send it
 DEFAULT_RECEIVE_MAXIMUM: Final[int] = 2**16 - 1
-# DISCONNECT reason code
-MALFORMED_PACKET_REASON_CODE: Final[int] = 0x81
+# PUBREL/PUBCOMP reason code for an unknown packet identifier
+PACKET_IDENTIFIER_NOT_FOUND: Final[int] = 0x92
 
 
 async def build_data_sequence(
@@ -208,6 +211,14 @@ class MQTTProtocol:
         # limits of the server from the last CONNACK
         self._server_limits: ServerLimits = DEFAULT_SERVER_LIMITS
 
+        # limits for incoming messages sent by the client in CONNECT
+        self._receive_maximum = DEFAULT_RECEIVE_MAXIMUM
+        self._topic_alias_maximum = 0
+
+        # per connection state of incoming messages
+        self._incoming_topic_aliases: dict[int, str] = {}
+        self._incoming_inflight: set[PacketIdentifier] = set()
+
         self._messages_queue = messages
 
     def set_connection(self, connection: MQTTConnection):
@@ -215,6 +226,10 @@ class MQTTProtocol:
         self._connection_future = asyncio.get_running_loop().create_future()
         self._disconnecting = False
         self.server_disconnect = None
+
+        # topic aliases and the receive quota don't survive the reconnect
+        self._incoming_topic_aliases = {}
+        self._incoming_inflight = set()
 
         self._read_loop_task = asyncio.create_task(
             self.__read_loop__(), name="mqtt-protocol-read-loop"
@@ -238,6 +253,11 @@ class MQTTProtocol:
         assert self._connection_future
 
         properties = properties or {}
+
+        self._receive_maximum = properties.get(
+            "receive_maximum", DEFAULT_RECEIVE_MAXIMUM
+        )
+        self._topic_alias_maximum = properties.get("topic_alias_maximum", 0)
 
         if clean_session:
             await self._session.reset()
@@ -495,7 +515,9 @@ class MQTTProtocol:
     ) -> None:
         assert self._connection
 
-        publish_result = await parse_publish_packet(fixed_header, stream)
+        publish_result = self._resolve_topic_alias(
+            await parse_publish_packet(fixed_header, stream)
+        )
 
         logger.debug("mqtt_protocol.handle_publish_packet packet:%s", publish_result)
 
@@ -506,6 +528,17 @@ class MQTTProtocol:
 
         packet_identifier = publish_result.packet_identifier
         assert packet_identifier
+
+        # QoS 1 is acknowledged right away, QoS 2 is in flight until PUBREL;
+        # a re-sent QoS 2 message already holds its slot
+        if packet_identifier not in self._incoming_inflight:
+            if len(self._incoming_inflight) >= self._receive_maximum:
+                raise ReceiveMaximumExceededError(
+                    f"More than {self._receive_maximum} incoming messages in flight"
+                )
+
+            if publish_result.qos == 2:
+                self._incoming_inflight.add(packet_identifier)
 
         if publish_result.qos == 1:
             self._metrics.on_message_received(1, False)
@@ -564,10 +597,16 @@ class MQTTProtocol:
             await self._complete_outgoing_message(packet_identifier, pubrec_packet)
             return
 
-        await self._session.mark_outgoing_message_released(packet_identifier)
+        if await self._session.mark_outgoing_message_released(packet_identifier):
+            reason_code = 0x0
+        else:
+            logger.warning(
+                "mqtt_protocol.handle_pubrec_packet.unknown pid:%s", packet_identifier
+            )
+            reason_code = PACKET_IDENTIFIER_NOT_FOUND
 
         await self._write(
-            self._connection, pack_pubrel_packet(packet_identifier, 0x0, {})
+            self._connection, pack_pubrel_packet(packet_identifier, reason_code, {})
         )
 
     async def handle_pubrel_packet(
@@ -579,11 +618,21 @@ class MQTTProtocol:
 
         logger.debug("mqtt_protocol.handle_pubrel_packet packet:%s", pubrel_result)
 
-        await self._session.complete_incoming_message(pubrel_result.packet_identifier)
+        packet_identifier = pubrel_result.packet_identifier
+
+        self._incoming_inflight.discard(packet_identifier)
+
+        if await self._session.complete_incoming_message(packet_identifier):
+            reason_code = 0x0
+        else:
+            logger.warning(
+                "mqtt_protocol.handle_pubrel_packet.unknown pid:%s", packet_identifier
+            )
+            reason_code = PACKET_IDENTIFIER_NOT_FOUND
 
         await self._write(
             self._connection,
-            pack_pubcomp_packet(pubrel_result.packet_identifier, 0x0, {}),
+            pack_pubcomp_packet(packet_identifier, reason_code, {}),
         )
 
     async def handle_pubcomp_packet(
@@ -671,11 +720,11 @@ class MQTTProtocol:
 
                 try:
                     await handler(header, stream)
-                except MalformedPacketError as exc:
-                    logger.error("mqtt_protocol.malformed_packet", exc_info=exc)
+                except ProtocolError as exc:
+                    logger.error("mqtt_protocol.protocol_error", exc_info=exc)
                     await self._write(
                         self._connection,
-                        pack_disconnect_packet(MALFORMED_PACKET_REASON_CODE, {}),
+                        pack_disconnect_packet(exc.reason_code, {}),
                     )
                     await self._connection.disconnect()
                     break
@@ -839,6 +888,30 @@ class MQTTProtocol:
 
         if future and not future.done():
             future.set_result(result)
+
+    def _resolve_topic_alias(self, publish_result: PublishResult) -> PublishResult:
+        topic_alias = publish_result.properties.get("topic_alias")
+
+        if topic_alias is None:
+            if not publish_result.topic:
+                raise ProtocolError("PUBLISH without topic and topic alias")
+
+            return publish_result
+
+        if not 0 < topic_alias <= self._topic_alias_maximum:
+            raise TopicAliasInvalidError(
+                f"Topic alias {topic_alias} isn't in range "
+                f"1..{self._topic_alias_maximum}"
+            )
+
+        if publish_result.topic:
+            self._incoming_topic_aliases[topic_alias] = publish_result.topic
+            return publish_result
+
+        if (topic := self._incoming_topic_aliases.get(topic_alias)) is None:
+            raise ProtocolError(f"Unknown topic alias {topic_alias}")
+
+        return dataclasses.replace(publish_result, topic=topic)
 
     async def _deliver_message(self, publish_result: PublishResult) -> None:
         await self._messages_queue.put(publish_result)

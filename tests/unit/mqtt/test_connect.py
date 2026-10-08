@@ -81,6 +81,49 @@ def test_pack_connect_packet(
     )
 
 
+@pytest.mark.parametrize(
+    "username, password, properties, expected_value",
+    (
+        # MQTT 5 allows a password without a username
+        (
+            None,
+            "password",
+            {},
+            b"\x10\x20\x00\x04MQTT\x05\x40\x00\x00\x00"
+            b"\x00\tclient-id\x00\x08password",
+        ),
+        # empty username and password are sent
+        (
+            "",
+            "",
+            {},
+            b"\x10\x1a\x00\x04MQTT\x05\xc0\x00\x00\x00"
+            b"\x00\tclient-id\x00\x00\x00\x00",
+        ),
+        (
+            None,
+            None,
+            {"request_response_information": True},
+            b"\x10\x18\x00\x04MQTT\x05\x00\x00\x00\x02\x19\x01\x00\tclient-id",
+        ),
+    ),
+)
+def test_pack_connect_packet_credentials_and_properties(
+    username, password, properties, expected_value
+):
+    assert (
+        pack_connect_packet(
+            "client-id",
+            username,
+            password,
+            clean_session=False,
+            keepalive=0,
+            properties=properties,
+        )
+        == expected_value
+    )
+
+
 def test_pack_connect_packet_with_non_ascii_client_id():
     client_id = "клиент"
 

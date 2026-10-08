@@ -75,7 +75,10 @@ class MQTTClient:
         self._username: Optional[str] = None
         self._password: Optional[str] = None
 
-    def authorize(self, username: str, password: Optional[str]) -> None:
+    def authorize(self, username: Optional[str], password: Optional[str]) -> None:
+        """
+        MQTT 5 allows a password without a username, both may be empty strings.
+        """
         self._username = username
         self._password = password
 
@@ -116,6 +119,11 @@ class MQTTClient:
             properties,
             will,
         )
+
+        # the server assigns an identifier if the client id is empty, it must be
+        # used for the following connects to resume the session
+        if assigned := connack.properties.get("assigned_client_identifier"):
+            self.client_id = assigned
 
         return connack
 

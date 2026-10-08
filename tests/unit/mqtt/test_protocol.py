@@ -15,7 +15,12 @@ from gmqtt.exceptions import (
     QoSNotSupportedError,
 )
 from gmqtt.metrics import MetricsCollector
-from gmqtt.mqtt.connect import DisconnectResult, WillMessage, parse_disconnect_packet
+from gmqtt.mqtt.connect import (
+    ConnectProperties,
+    DisconnectResult,
+    WillMessage,
+    parse_disconnect_packet,
+)
 from gmqtt.mqtt.packet import PacketType, parse_fixed_header
 from gmqtt.mqtt.protocol import MQTTProtocol
 from gmqtt.mqtt.publish import (
@@ -27,6 +32,7 @@ from gmqtt.mqtt.publish import (
     pack_publish_packet,
     pack_pubrec_packet,
     pack_pubrel_packet,
+    parse_pubcomp_packet,
     parse_publish_packet,
     parse_pubrel_packet,
 )
@@ -97,11 +103,17 @@ def topic_alias_maximum(value: int) -> bytes:
     return struct.pack("!BH", 0x22, value)
 
 
-async def connect(protocol: MQTTProtocol, **connack_kwargs) -> FakeTransport:
+async def connect(
+    protocol: MQTTProtocol,
+    connect_properties: Optional[ConnectProperties] = None,
+    **connack_kwargs,
+) -> FakeTransport:
     transport = FakeTransport()
     protocol.set_connection(MQTTConnection(transport))
 
-    task = asyncio.create_task(protocol.connect("client-id", None, None))
+    task = asyncio.create_task(
+        protocol.connect("client-id", None, None, properties=connect_properties)
+    )
 
     fixed_header, _ = await transport.next_packet()
     assert fixed_header.packet_type == PacketType.CONNECT
@@ -893,6 +905,171 @@ async def test_nothing_is_logged_when_session_is_empty(caplog):
         await connect(protocol, session_present=False)
 
     assert "discard_pending_messages" not in caplog.text
+
+
+async def expect_disconnect(transport: FakeTransport, reason_code: int):
+    fixed_header, stream = await expect(transport, PacketType.DISCONNECT)
+    assert await parse_disconnect_packet(fixed_header, stream) == DisconnectResult(
+        reason_code, {}
+    )
+
+
+def pack_qos0(topic: str, payload: bytes, topic_alias=None) -> bytes:
+    properties = {} if topic_alias is None else {"topic_alias": topic_alias}
+    return pack_publish_packet(0, topic, payload, 0, False, False, properties)
+
+
+async def test_incoming_topic_alias_is_resolved():
+    protocol, _, messages = build_protocol()
+    transport = await connect(protocol, {"topic_alias_maximum": 2})
+
+    transport.feed(pack_qos0("a/b", b"1", topic_alias=1))
+    transport.feed(pack_qos0("", b"2", topic_alias=1))
+    # the alias is re-assigned to another topic
+    transport.feed(pack_qos0("c/d", b"3", topic_alias=1))
+    transport.feed(pack_qos0("", b"4", topic_alias=1))
+
+    received = [await asyncio.wait_for(messages.get(), TIMEOUT) for _ in range(4)]
+
+    assert [(m.topic, m.payload) for m in received] == [
+        ("a/b", b"1"),
+        ("a/b", b"2"),
+        ("c/d", b"3"),
+        ("c/d", b"4"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "topic_alias_maximum, topic, topic_alias, reason_code",
+    (
+        # the client didn't allow topic aliases
+        (None, "a/b", 1, 0x94),
+        (2, "a/b", 3, 0x94),
+        (2, "a/b", 0, 0x94),
+        # unknown alias without topic
+        (2, "", 1, 0x82),
+        # neither topic nor alias
+        (2, "", None, 0x82),
+    ),
+)
+async def test_invalid_incoming_topic_alias_closes_connection(
+    topic_alias_maximum, topic, topic_alias, reason_code
+):
+    connect_properties: ConnectProperties = {}
+    if topic_alias_maximum is not None:
+        connect_properties["topic_alias_maximum"] = topic_alias_maximum
+
+    protocol, _, messages = build_protocol()
+    transport = await connect(protocol, connect_properties)
+
+    transport.feed(pack_qos0(topic, b"payload", topic_alias=topic_alias))
+
+    await expect_disconnect(transport, reason_code)
+    await wait_for_connection_lost(protocol)
+
+    assert messages.get_nowait() is None
+
+
+async def test_incoming_topic_aliases_are_reset_on_reconnect():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol, {"topic_alias_maximum": 2})
+
+    transport.feed(pack_qos0("a/b", b"1", topic_alias=1))
+    transport.drop()
+    await wait_for_connection_lost(protocol)
+
+    transport = await connect(protocol, {"topic_alias_maximum": 2})
+    transport.feed(pack_qos0("", b"2", topic_alias=1))
+
+    await expect_disconnect(transport, 0x82)
+
+
+async def test_pubrec_with_unknown_packet_identifier():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol)
+
+    transport.feed(pack_pubrec_packet(42, 0, {}))
+
+    pubrel = await parse_pubrel_packet(*await expect(transport, PacketType.PUBREL))
+    assert pubrel.packet_identifier == 42
+    assert pubrel.reason_code == 0x92
+
+
+async def test_pubrel_with_unknown_packet_identifier():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol)
+
+    transport.feed(pack_pubrel_packet(42, 0, {}))
+
+    pubcomp = await parse_pubcomp_packet(*await expect(transport, PacketType.PUBCOMP))
+    assert pubcomp.packet_identifier == 42
+    assert pubcomp.reason_code == 0x92
+
+
+async def test_pubrel_with_known_packet_identifier():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol)
+
+    transport.feed(pack_publish_packet(7, "a/b", b"payload", 2, False, False, {}))
+    await expect(transport, PacketType.PUBREC)
+
+    transport.feed(pack_pubrel_packet(7, 0, {}))
+
+    pubcomp = await parse_pubcomp_packet(*await expect(transport, PacketType.PUBCOMP))
+    assert pubcomp.reason_code == 0x00
+
+
+async def test_client_receive_maximum():
+    protocol, _, messages = build_protocol()
+    transport = await connect(protocol, {"receive_maximum": 1})
+
+    transport.feed(pack_publish_packet(1, "a/b", b"1", 2, False, False, {}))
+    await expect(transport, PacketType.PUBREC)
+
+    # the re-sent message keeps its slot
+    transport.feed(pack_publish_packet(1, "a/b", b"1", 2, False, True, {}))
+    await expect(transport, PacketType.PUBREC)
+
+    # PUBCOMP frees the slot
+    transport.feed(pack_pubrel_packet(1, 0, {}))
+    await expect(transport, PacketType.PUBCOMP)
+
+    transport.feed(pack_publish_packet(2, "a/b", b"2", 1, False, False, {}))
+    await expect(transport, PacketType.PUBACK)
+
+    transport.feed(pack_publish_packet(3, "a/b", b"3", 2, False, False, {}))
+    await expect(transport, PacketType.PUBREC)
+
+    # the slot is held by the QoS 2 message
+    transport.feed(pack_publish_packet(4, "a/b", b"4", 1, False, False, {}))
+    await expect_disconnect(transport, 0x93)
+    await wait_for_connection_lost(protocol)
+
+    payloads = []
+    while (message := messages.get_nowait()) is not None:
+        payloads.append(message.payload)
+
+    assert payloads == [b"1", b"2", b"3"]
+
+
+async def test_client_receive_maximum_is_reset_on_reconnect():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol, {"receive_maximum": 1})
+
+    transport.feed(pack_publish_packet(1, "a/b", b"1", 2, False, False, {}))
+    await expect(transport, PacketType.PUBREC)
+
+    transport.drop()
+    await wait_for_connection_lost(protocol)
+
+    transport = await connect(protocol, {"receive_maximum": 1}, session_present=True)
+
+    # a new message before the server re-sends PUBREL for the old one
+    transport.feed(pack_publish_packet(2, "a/b", b"2", 2, False, False, {}))
+    await expect(transport, PacketType.PUBREC)
+
+    transport.feed(pack_pubrel_packet(1, 0, {}))
+    await expect(transport, PacketType.PUBCOMP)
 
 
 def maximum_packet_size(value: int) -> bytes:

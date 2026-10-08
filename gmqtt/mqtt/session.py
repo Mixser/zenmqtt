@@ -78,8 +78,11 @@ class MQTTSession(Protocol):
 
     async def mark_outgoing_message_released(
         self, packet_identifier: PacketIdentifier
-    ) -> None:
-        """Called on successful PUBREC; the message keeps its original order."""
+    ) -> bool:
+        """
+        Called on successful PUBREC; the message keeps its original order.
+        Returns False if there is no such message.
+        """
         ...
 
     async def complete_outgoing_message(
@@ -106,8 +109,11 @@ class MQTTSession(Protocol):
 
     async def complete_incoming_message(
         self, packet_identifier: PacketIdentifier
-    ) -> None:
-        """Called on incoming PUBREL."""
+    ) -> bool:
+        """
+        Called on incoming PUBREL.
+        Returns False if the message wasn't registered.
+        """
         ...
 
 
@@ -175,15 +181,18 @@ class BaseSession(MQTTSession, abc.ABC):
 
     async def mark_outgoing_message_released(
         self, packet_identifier: PacketIdentifier
-    ) -> None:
+    ) -> bool:
         logger.debug(
             "mqtt_session.mark_outgoing_message_released pid:%s", packet_identifier
         )
 
-        if message := await self._load_outgoing_message(packet_identifier):
-            await self._save_outgoing_message(
-                dataclasses.replace(message, state=OutgoingMessageState.AWAITING_COMP)
-            )
+        if not (message := await self._load_outgoing_message(packet_identifier)):
+            return False
+
+        await self._save_outgoing_message(
+            dataclasses.replace(message, state=OutgoingMessageState.AWAITING_COMP)
+        )
+        return True
 
     async def complete_outgoing_message(
         self, packet_identifier: PacketIdentifier
@@ -209,9 +218,14 @@ class BaseSession(MQTTSession, abc.ABC):
 
     async def complete_incoming_message(
         self, packet_identifier: PacketIdentifier
-    ) -> None:
+    ) -> bool:
         logger.debug("mqtt_session.complete_incoming_message pid:%s", packet_identifier)
+
+        if not await self._has_incoming_message(packet_identifier):
+            return False
+
         await self._delete_incoming_message(packet_identifier)
+        return True
 
     # storage primitives, implemented by subclasses
 

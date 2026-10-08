@@ -58,6 +58,7 @@ class ConnectProperties(TypedDict, total=False):
     authentication_method: str
     authentication_data: bytes
     request_problem_information: bool
+    request_response_information: bool
     receive_maximum: int
     topic_alias_maximum: int
     user_property: Sequence[Tuple[str, str]]
@@ -140,13 +141,14 @@ def pack_connect_packet(
 
     username_bytes = password_bytes = b""
 
-    if username:
+    # MQTT 5 allows a password without a username, both may be empty
+    if username is not None:
         connect_flags |= _USERNAME_FLAG
         username_bytes = pack_str16(username)
 
-        if password:
-            connect_flags |= _PASSWORD_FLAG
-            password_bytes = pack_str16(password)
+    if password is not None:
+        connect_flags |= _PASSWORD_FLAG
+        password_bytes = pack_str16(password)
 
     variable_header = struct.pack(
         "!H4sBBH", 4, b"MQTT", 5, connect_flags, keepalive

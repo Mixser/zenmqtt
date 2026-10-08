@@ -51,5 +51,28 @@ class FeatureNotSupportedError(ServerLimitError):
     """
 
 
-class MalformedPacketError(ValueError):
-    """A received packet violates the protocol."""
+class ProtocolError(ValueError):
+    """
+    A received packet violates the protocol; the client closes the connection
+    with DISCONNECT and the reason code of the error.
+    """
+
+    reason_code = 0x82
+
+
+class MalformedPacketError(ProtocolError):
+    """A received packet can't be parsed according to the spec."""
+
+    reason_code = 0x81
+
+
+class ReceiveMaximumExceededError(ProtocolError):
+    """The server sent more QoS 1/2 messages than the client's "Receive Maximum"."""
+
+    reason_code = 0x93
+
+
+class TopicAliasInvalidError(ProtocolError):
+    """The server sent a topic alias of 0 or above client's "Topic Alias Maximum"."""
+
+    reason_code = 0x94
