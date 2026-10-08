@@ -1,7 +1,7 @@
 import itertools
 import struct
 from dataclasses import dataclass
-from typing import Sequence, Tuple, TypedDict, cast
+from typing import Final, Sequence, Tuple, TypedDict, Union, cast
 
 from gmqtt.mqtt.packet import (
     AsyncDataSequence,
@@ -45,17 +45,78 @@ class UnsubscribeResult:
     reason_codes: Sequence[int]
 
 
+@dataclass(frozen=True, slots=True)
+class Subscription:
+    """
+    Topic filter with MQTT 5 subscription options.
+
+    :param no_local: don't receive messages published by this client
+    :param retain_as_published: keep the RETAIN flag of forwarded messages
+    :param retain_handling: 0 - send retained messages on subscribe,
+        1 - only if the subscription is new, 2 - don't send them
+    """
+
+    topic: str
+    qos: int = 0
+    no_local: bool = False
+    retain_as_published: bool = False
+    retain_handling: int = 0
+
+
+# (topic, qos) is the short form of Subscription(topic, qos)
+SubscriptionRequest = Union[Subscription, Tuple[str, int]]
+
+_SHARED_SUBSCRIPTION_PREFIX: Final[str] = "$share/"
+
+# subscription options byte
+_NO_LOCAL_FLAG: Final[int] = 0x04
+_RETAIN_AS_PUBLISHED_FLAG: Final[int] = 0x08
+_RETAIN_HANDLING_SHIFT: Final[int] = 4
+
+
+def pack_subscription_options(subscription: Subscription) -> int:
+    if subscription.qos not in (0, 1, 2):
+        raise ValueError(f"Invalid QoS: {subscription.qos}")
+
+    if subscription.retain_handling not in (0, 1, 2):
+        raise ValueError(f"Invalid retain handling: {subscription.retain_handling}")
+
+    if subscription.no_local and subscription.topic.startswith(
+        _SHARED_SUBSCRIPTION_PREFIX
+    ):
+        raise ValueError("No Local can't be used with a shared subscription")
+
+    options = subscription.qos | subscription.retain_handling << _RETAIN_HANDLING_SHIFT
+
+    if subscription.no_local:
+        options |= _NO_LOCAL_FLAG
+
+    if subscription.retain_as_published:
+        options |= _RETAIN_AS_PUBLISHED_FLAG
+
+    return options
+
+
 def pack_subscription_packet(
     packet_identifier: int,
-    topics: Sequence[Tuple[str, int]],
+    topics: Sequence[SubscriptionRequest],
     properties: SubscriptionProperties,
 ) -> bytes:
     length = 2
 
     topics_bytes = bytearray()
 
-    for topic, qos in topics:
-        topics_bytes.extend(itertools.chain(pack_str16(topic), struct.pack("!B", qos)))
+    for request in topics:
+        subscription = (
+            request if isinstance(request, Subscription) else Subscription(*request)
+        )
+
+        topics_bytes.extend(
+            itertools.chain(
+                pack_str16(subscription.topic),
+                struct.pack("!B", pack_subscription_options(subscription)),
+            )
+        )
 
     length += len(topics_bytes)
 
