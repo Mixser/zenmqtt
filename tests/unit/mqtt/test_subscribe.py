@@ -3,6 +3,7 @@ import pytest
 from gmqtt.mqtt.packet import PacketType, parse_fixed_header
 from gmqtt.mqtt.subscribe import (
     SubscribeResult,
+    Subscription,
     UnsubscribeResult,
     pack_subscription_packet,
     pack_unsubscribe_packet,
@@ -123,3 +124,46 @@ def test_pack_unsubscribe_packet(
         pack_unsubscribe_packet(packet_identifier, topics, properties)
         == expected_result
     )
+
+
+@pytest.mark.parametrize(
+    "topics, expected_result",
+    (
+        (
+            [
+                Subscription(
+                    "a/b",
+                    qos=1,
+                    no_local=True,
+                    retain_as_published=True,
+                    retain_handling=2,
+                )
+            ],
+            b"\x82\x09\x00\x01\x00\x00\x03a/b\x2d",
+        ),
+        (
+            [("a/b", 0), Subscription("c/d", qos=2, retain_handling=1)],
+            b"\x82\x0f\x00\x01\x00\x00\x03a/b\x00\x00\x03c/d\x12",
+        ),
+        (
+            [Subscription("a/b")],
+            b"\x82\x09\x00\x01\x00\x00\x03a/b\x00",
+        ),
+    ),
+)
+def test_pack_subscribe_packet_with_options(topics, expected_result):
+    assert pack_subscription_packet(1, topics, {}) == expected_result
+
+
+@pytest.mark.parametrize(
+    "subscription",
+    (
+        Subscription("a/b", qos=3),
+        Subscription("a/b", retain_handling=3),
+        Subscription("$share/group/a/b", no_local=True),
+        ("a/b", 3),
+    ),
+)
+def test_pack_subscribe_packet_with_invalid_options(subscription):
+    with pytest.raises(ValueError):
+        pack_subscription_packet(1, [subscription], {})

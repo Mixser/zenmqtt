@@ -19,6 +19,7 @@ from gmqtt.mqtt.connect import (
     ConnectionResult,
     ConnectProperties,
     DisconnectProperties,
+    DisconnectResult,
     WillMessage,
     pack_connect_packet,
     pack_disconnect_packet,
@@ -56,6 +57,7 @@ from gmqtt.mqtt.session import (
 from gmqtt.mqtt.subscribe import (
     SubscribeResult,
     SubscriptionProperties,
+    SubscriptionRequest,
     UnsubscribeProperties,
     UnsubscribeResult,
     pack_subscription_packet,
@@ -184,6 +186,9 @@ class MQTTProtocol:
         # True if the connection is closed by disconnect call
         self._disconnecting = False
 
+        # DISCONNECT of the server for the current/last connection
+        self.server_disconnect: Optional[DisconnectResult] = None
+
         self._connection_future: Optional[asyncio.Future[ConnectionResult]] = None
 
         self._publish_packet_futures: dict[
@@ -220,6 +225,7 @@ class MQTTProtocol:
         self._connection = connection
         self._connection_future = asyncio.get_running_loop().create_future()
         self._disconnecting = False
+        self.server_disconnect = None
 
         # topic aliases and the receive quota don't survive the reconnect
         self._incoming_topic_aliases = {}
@@ -409,7 +415,7 @@ class MQTTProtocol:
 
     async def subscribe(
         self,
-        topics: Sequence[Tuple[str, int]],
+        topics: Sequence[SubscriptionRequest],
         properties: Optional[SubscriptionProperties] = None,
     ) -> SubscribeResult:
         self._ensure_connected()
@@ -489,9 +495,17 @@ class MQTTProtocol:
         assert self._connection
 
         disconnect_packet = await parse_disconnect_packet(fixed_header, stream)
-        logger.debug(
-            "mqtt_protocol.handle_disconnect_packet packet:%s", disconnect_packet
-        )
+
+        if disconnect_packet.reason_code >= FAILURE_REASON_CODE:
+            logger.warning(
+                "mqtt_protocol.handle_disconnect_packet packet:%s", disconnect_packet
+            )
+        else:
+            logger.debug(
+                "mqtt_protocol.handle_disconnect_packet packet:%s", disconnect_packet
+            )
+
+        self.server_disconnect = disconnect_packet
 
         # pending futures are failed by the read loop once the stream ends
         await self._connection.disconnect()
@@ -732,7 +746,7 @@ class MQTTProtocol:
             self._metrics.on_connection_closed(lost=not self._disconnecting)
 
         self._connected = False
-        exc = ConnectionLostError()
+        exc = ConnectionLostError(self.server_disconnect)
 
         self._publish_sent_at.clear()
         self._command_sent_at.clear()
