@@ -100,3 +100,22 @@ async def test_restored_pending_messages_keep_their_identifiers():
 
     await session.complete_outgoing_message(1)
     assert 1 not in session._acquired_packet_identifiers
+
+
+async def test_mark_outgoing_message_released_returns_if_found():
+    session = InMemorySession()
+
+    packet_identifier = await session.acquire_packet_identifier()
+    await session.store_outgoing_message(build_message(packet_identifier, qos=2))
+
+    assert await session.mark_outgoing_message_released(packet_identifier) is True
+    assert await session.mark_outgoing_message_released(packet_identifier + 1) is False
+
+
+async def test_complete_incoming_message_returns_if_found():
+    session = InMemorySession()
+
+    assert await session.register_incoming_message(7)
+
+    assert await session.complete_incoming_message(7) is True
+    assert await session.complete_incoming_message(7) is False
