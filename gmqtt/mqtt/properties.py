@@ -9,7 +9,7 @@ from gmqtt.mqtt.utils import pack_binaries, pack_str16, pack_variable_byte_integ
 
 class Property(IntEnum):
     PAYLOAD_FORMAT_INDICATOR = 0x01
-    MESSAGE_EXPIRE_LEVEL = 0x02
+    MESSAGE_EXPIRY_INTERVAL = 0x02
     CONTENT_TYPE = 0x03
 
     RESPONSE_TOPIC = 0x08
@@ -145,7 +145,7 @@ _AVAILABLE_PROPERTIES_PER_TYPE = {
     },
     PacketType.PUBLISH: {
         Property.PAYLOAD_FORMAT_INDICATOR,
-        Property.MESSAGE_EXPIRE_LEVEL,
+        Property.MESSAGE_EXPIRY_INTERVAL,
         Property.CONTENT_TYPE,
         Property.RESPONSE_TOPIC,
         Property.SUBSCRIPTION_IDENTIFIER,
@@ -217,7 +217,7 @@ _MAP_PROPERTY_PARSER: dict[Property, Callable[[AsyncDataSequence], Any]] = {
     Property.PAYLOAD_FORMAT_INDICATOR: lambda stream: _parse_property_value(
         stream, 1, "!B"
     ),
-    Property.MESSAGE_EXPIRE_LEVEL: lambda stream: _parse_property_value(
+    Property.MESSAGE_EXPIRY_INTERVAL: lambda stream: _parse_property_value(
         stream, 4, "!L"
     ),
     Property.CONTENT_TYPE: lambda stream: _parse_string_property_value(stream),
@@ -258,7 +258,7 @@ _MAP_PROPERTY_PARSER: dict[Property, Callable[[AsyncDataSequence], Any]] = {
 
 _MAP_PROPERTY_PACKERS = {
     Property.PAYLOAD_FORMAT_INDICATOR: lambda x: struct.pack("!B", x),
-    Property.MESSAGE_EXPIRE_LEVEL: lambda x: struct.pack("!L", x),
+    Property.MESSAGE_EXPIRY_INTERVAL: lambda x: struct.pack("!L", x),
     Property.CONTENT_TYPE: lambda x: pack_str16(x),
     Property.RESPONSE_TOPIC: lambda x: pack_str16(x),
     Property.CORRELATION_DATA: lambda x: pack_binaries(x),
