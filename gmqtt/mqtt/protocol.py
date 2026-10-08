@@ -79,6 +79,11 @@ READ_AT_MOST_BYTES: Final[int] = 128
 SESSION_PRESENT_FLAG: Final[int] = 0x01
 # reason codes >= 0x80 indicate failure
 FAILURE_REASON_CODE: Final[int] = 0x80
+# number of messages waiting for delivery to the messages queue, starting from
+# which the client warns about a slow application
+BUFFERED_MESSAGES_WARNING: Final[int] = 1000
+# seconds between warnings about a slow application
+_BUFFERED_WARNING_INTERVAL: Final[float] = 10.0
 # default value of "Receive Maximum" if the server doesn't send it
 DEFAULT_RECEIVE_MAXIMUM: Final[int] = 2**16 - 1
 # PUBREL/PUBCOMP reason code for an unknown packet identifier
@@ -170,6 +175,18 @@ def _strip_topic_alias(properties: PublishProperties) -> PublishProperties:
 
 
 @dataclass(slots=True)
+class _Incoming:
+    """An item of the buffer between the read loop and the messages queue."""
+
+    # None marks the end of messages
+    message: Optional[PublishResult]
+    # the connection which received the message, for acks in auto ack mode
+    connection: Optional[MQTTConnection] = None
+    # QoS 2 message which was received already: only PUBREC is sent
+    duplicate: bool = False
+
+
+@dataclass(slots=True)
 class _PendingAck:
     message: PublishResult
     acked: bool = False
@@ -186,6 +203,15 @@ class MQTTProtocol:
         manual_ack: bool = False,
     ) -> None:
         """
+        The read loop never waits for the messages queue, so control packets
+        (PINGRESP, PUBACK, ...) are handled when the application is slow:
+        incoming messages wait in a buffer and are moved to the queue by a
+        separate task. QoS 1/2 messages are acknowledged (in auto ack mode)
+        when they are put into the queue, so their number in the buffer is
+        limited by "Receive Maximum"; QoS 0 messages aren't limited. While
+        at least BUFFERED_MESSAGES_WARNING messages wait in the buffer, a
+        warning is logged and the size of the buffer is reported by metrics.
+
         :param manual_ack: incoming QoS 1/2 messages are acknowledged by ack()
             instead of right after they are put into the messages queue
         :param wait_across_reconnect: used with automatic reconnect: QoS 1/2
@@ -197,6 +223,8 @@ class MQTTProtocol:
         self._metrics = metrics or MetricsCollector()
         self._wait_across_reconnect = wait_across_reconnect
         self._manual_ack = manual_ack
+
+        self._buffered_messages_warning = BUFFERED_MESSAGES_WARNING
 
         self._connection: Optional[MQTTConnection] = None
         self._read_loop_task: Optional[Task[None]] = None
@@ -246,6 +274,15 @@ class MQTTProtocol:
         self._ack_lock = asyncio.Lock()
 
         self._messages_queue = messages
+
+        # messages which wait for delivery to the messages queue
+        self._incoming: deque[_Incoming] = deque()
+        self._incoming_ready = asyncio.Event()
+        self._delivery_task: Optional[Task[None]] = None
+
+        # the buffer reached the warning threshold
+        self._buffer_overloaded = False
+        self._buffered_warning_at: Optional[float] = None
 
     def set_connection(self, connection: MQTTConnection):
         self._connection = connection
@@ -472,7 +509,7 @@ class MQTTProtocol:
         """
         self._fail_publish_futures(exc)
 
-        await self._messages_queue.put(None)
+        self._enqueue(_Incoming(None))
 
     async def subscribe(
         self,
@@ -586,7 +623,7 @@ class MQTTProtocol:
 
         if not publish_result.qos:
             self._metrics.on_message_received(0, False)
-            await self._deliver_message(publish_result)
+            self._enqueue(_Incoming(publish_result))
             return
 
         packet_identifier = publish_result.packet_identifier
@@ -608,36 +645,21 @@ class MQTTProtocol:
             await self._handle_publish_with_manual_ack(publish_result)
             return
 
-        if publish_result.qos == 1:
-            self._metrics.on_message_received(1, False)
-            await self._deliver_message(publish_result)
+        # the message is acknowledged when it's put into the messages queue;
+        # a duplicate goes through the buffer too, so acks keep the order
+        duplicate = (
+            publish_result.qos == 2
+            and await self._session.has_incoming_message(packet_identifier)
+        )
+        self._metrics.on_message_received(publish_result.qos, duplicate)
 
-            logger.debug(
-                "mqtt_protocol.handle_publish_packet.send_puback_packet pid:%s",
-                packet_identifier,
-            )
-            await self._write(
-                self._connection, pack_puback_packet(packet_identifier, 0, {})
-            )
-            return
-
-        if await self._session.register_incoming_message(packet_identifier):
-            self._metrics.on_message_received(2, False)
-            await self._deliver_message(publish_result)
-        else:
-            self._metrics.on_message_received(2, True)
+        if duplicate:
             logger.debug(
                 "mqtt_protocol.handle_publish_packet.duplicate pid:%s",
                 packet_identifier,
             )
 
-        logger.debug(
-            "mqtt_protocol.handle_publish_packet.send_pubrec_packet pid:%s",
-            packet_identifier,
-        )
-        await self._write(
-            self._connection, pack_pubrec_packet(packet_identifier, 0, {})
-        )
+        self._enqueue(_Incoming(publish_result, self._connection, duplicate))
 
     async def ack(self, message: PublishResult, reason_code: int = 0) -> None:
         """
@@ -882,8 +904,16 @@ class MQTTProtocol:
         for packet_identifier in command_futures:
             await self._session.release_packet_identifier(packet_identifier)
 
+        # not acknowledged messages are re-sent by the server, QoS 0 messages
+        # are delivered
+        self._incoming = deque(
+            item
+            for item in self._incoming
+            if item.message is None or not item.message.qos
+        )
+
         if not self._wait_across_reconnect:
-            await self._messages_queue.put(None)
+            self._enqueue(_Incoming(None))
 
         if self._connection and not self._connection.is_closing():
             await self._connection.disconnect()
@@ -1024,7 +1054,7 @@ class MQTTProtocol:
             await self._send_acks()
             return
 
-        await self._deliver_message(publish_result)
+        self._enqueue(_Incoming(publish_result))
 
     async def _send_acks(self) -> None:
         """Sends acks of the first messages in the order of receiving."""
@@ -1103,8 +1133,112 @@ class MQTTProtocol:
 
         return dataclasses.replace(publish_result, topic=topic)
 
-    async def _deliver_message(self, publish_result: PublishResult) -> None:
-        await self._messages_queue.put(publish_result)
+    def _enqueue(self, item: _Incoming) -> None:
+        self._incoming.append(item)
+        self._incoming_ready.set()
+        self._report_buffer_size()
+
+        if self._delivery_task is None or self._delivery_task.done():
+            self._delivery_task = asyncio.create_task(
+                self._delivery_loop(), name="mqtt-protocol-delivery"
+            )
+
+    async def _delivery_loop(self) -> None:
+        """Moves messages from the buffer to the messages queue."""
+        while True:
+            if not self._incoming:
+                self._incoming_ready.clear()
+                await self._incoming_ready.wait()
+                continue
+
+            item = self._incoming.popleft()
+            self._report_buffer_size()
+
+            try:
+                await self._deliver(item)
+            except Exception as exc:
+                logger.error("mqtt_protocol.delivery.error", exc_info=exc)
+
+            # the end of messages, a new message starts the task again
+            if item.message is None and not self._incoming:
+                return
+
+    async def _deliver(self, item: _Incoming) -> None:
+        message = item.message
+
+        if message is None:
+            await self._messages_queue.put(None)
+            return
+
+        if not message.qos:
+            await self._messages_queue.put(message)
+            return
+
+        if self._manual_ack:
+            await self._messages_queue.put(message)
+            return
+
+        packet_identifier = cast(int, message.packet_identifier)
+
+        if not item.duplicate:
+            if message.qos == 2:
+                # registered before the message is handed over: if the
+                # connection is lost meanwhile, the re-sent message is
+                # recognised as a duplicate
+                await self._session.register_incoming_message(packet_identifier)
+
+            await self._messages_queue.put(message)
+
+        connection = item.connection
+
+        # the connection was lost, the server re-sends the message
+        if (
+            connection is not self._connection
+            or not connection
+            or (connection.is_closing())
+        ):
+            return
+
+        if message.qos == 1:
+            self._incoming_inflight.discard(packet_identifier)
+            packet = pack_puback_packet(packet_identifier, 0, {})
+        else:
+            packet = pack_pubrec_packet(packet_identifier, 0, {})
+
+        logger.debug(
+            "mqtt_protocol.send_ack pid:%s qos:%s", packet_identifier, message.qos
+        )
+        await self._write(connection, packet)
+
+    def _report_buffer_size(self) -> None:
+        """
+        Reports the size of the buffer while it's at or above the warning
+        threshold, and once when it falls below it.
+        """
+        size = len(self._incoming)
+        overloaded = size >= self._buffered_messages_warning
+
+        if not overloaded and not self._buffer_overloaded:
+            return
+
+        self._buffer_overloaded = overloaded
+        self._metrics.on_messages_buffered(size)
+
+        if not overloaded:
+            return
+
+        now = self._now()
+
+        if (
+            self._buffered_warning_at is None
+            or now - self._buffered_warning_at >= _BUFFERED_WARNING_INTERVAL
+        ):
+            logger.warning(
+                "mqtt_protocol.slow_consumer: %s incoming messages wait for the "
+                "application, it doesn't read client.messages fast enough",
+                size,
+            )
+            self._buffered_warning_at = now
 
     async def _send_command(self, packet_identifier: PacketIdentifier, packet: bytes):
         try:

@@ -381,6 +381,13 @@ class MQTTClient:
         """
         Incoming messages; with automatic reconnect the iteration continues
         across reconnects and ends when the client stops.
+
+        Messages wait in a buffer while the application reads previous ones,
+        so control packets (PINGRESP, PUBACK, ...) are handled anyway. QoS 1/2
+        messages are acknowledged when they are taken from the buffer (in auto
+        ack mode), so their number is limited by "receive_maximum" of connect
+        properties; QoS 0 messages aren't limited. While 1000 or more messages
+        wait, a warning is logged and metrics get on_messages_buffered events.
         """
         return AsyncMessageIterator(self._messages)
 

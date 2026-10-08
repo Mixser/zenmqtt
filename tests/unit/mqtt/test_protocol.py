@@ -305,7 +305,7 @@ async def test_incoming_qos1_message():
     transport.feed(pack_publish_packet(7, "a/b", b"payload", 1, False, False, {}))
 
     await expect(transport, PacketType.PUBACK)
-    assert messages.get_nowait().payload == b"payload"
+    assert (await asyncio.wait_for(messages.get(), TIMEOUT)).payload == b"payload"
 
 
 async def test_incoming_qos2_duplicate_is_delivered_once():
@@ -358,7 +358,7 @@ async def test_disconnect_with_pending_publish():
         await task
 
     assert len(await session.get_pending_outgoing_messages()) == 1
-    assert messages.get_nowait() is None
+    assert await asyncio.wait_for(messages.get(), TIMEOUT) is None
 
 
 async def test_flow_control_limits_inflight_messages():
@@ -543,7 +543,7 @@ async def test_keep_alive_closes_connection_without_pingresp():
 
     assert transport.is_closing()
     assert protocol._keep_alive_task is None
-    assert messages.get_nowait() is None
+    assert await asyncio.wait_for(messages.get(), TIMEOUT) is None
 
 
 async def test_server_keep_alive_overrides_client_value():
@@ -875,7 +875,7 @@ async def test_incoming_publish_with_qos_3_closes_connection():
 
     assert transport.is_closing()
     # the malformed message isn't delivered
-    assert messages.get_nowait() is None
+    assert await asyncio.wait_for(messages.get(), TIMEOUT) is None
 
 
 async def test_discarded_pending_messages_are_logged(caplog):
@@ -967,7 +967,7 @@ async def test_invalid_incoming_topic_alias_closes_connection(
     await expect_disconnect(transport, reason_code)
     await wait_for_connection_lost(protocol)
 
-    assert messages.get_nowait() is None
+    assert await asyncio.wait_for(messages.get(), TIMEOUT) is None
 
 
 async def test_incoming_topic_aliases_are_reset_on_reconnect():
@@ -1046,7 +1046,7 @@ async def test_client_receive_maximum():
     await wait_for_connection_lost(protocol)
 
     payloads = []
-    while (message := messages.get_nowait()) is not None:
+    while (message := await asyncio.wait_for(messages.get(), TIMEOUT)) is not None:
         payloads.append(message.payload)
 
     assert payloads == [b"1", b"2", b"3"]

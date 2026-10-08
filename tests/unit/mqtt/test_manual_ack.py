@@ -189,7 +189,7 @@ async def test_ack_of_previous_connection_is_ignored():
 
     transport.drop()
     await wait_for_connection_lost(protocol)
-    messages.get_nowait()  # end of the stream
+    await asyncio.wait_for(messages.get(), TIMEOUT)  # end of the stream
 
     transport = await connect(protocol, session_present=True)
 
