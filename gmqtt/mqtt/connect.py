@@ -1,7 +1,6 @@
-import itertools
 import struct
 from dataclasses import dataclass
-from typing import Optional, Sequence, Tuple, TypedDict, cast
+from typing import Final, Optional, Sequence, Tuple, TypedDict, cast
 
 from gmqtt.mqtt.packet import (
     AsyncDataSequence,
@@ -10,12 +9,7 @@ from gmqtt.mqtt.packet import (
     parse_variable_byte_integer,
 )
 from gmqtt.mqtt.properties import Properties, pack_properties, parse_properties
-from gmqtt.mqtt.utils import (
-    pack_fixed_header,
-    pack_str16,
-    pack_variable_byte_integer,
-    read,
-)
+from gmqtt.mqtt.utils import pack_binaries, pack_fixed_header, pack_str16, read
 
 
 class ConnackProperties(TypedDict, total=False):
@@ -70,6 +64,41 @@ class ConnectProperties(TypedDict, total=False):
     maximum_packet_size: int
 
 
+class WillProperties(TypedDict, total=False):
+    will_delay_interval: int
+    payload_format_indicator: bool
+    message_expiry_interval: int
+    content_type: str
+    response_topic: str
+    correlation_data: bytes
+    user_property: Sequence[Tuple[str, str]]
+
+
+@dataclass(frozen=True)
+class WillMessage:
+    """
+    The message which the server publishes when the connection is closed
+    without DISCONNECT (or with reason 0x04 "Disconnect with Will Message").
+    """
+
+    __slots__ = ("topic", "payload", "qos", "retain", "properties")
+
+    topic: str
+    payload: bytes
+    qos: int
+    retain: bool
+    properties: WillProperties
+
+
+# CONNECT flags
+_CLEAN_START_FLAG: Final[int] = 0x02
+_WILL_FLAG: Final[int] = 0x04
+_WILL_QOS_SHIFT: Final[int] = 3
+_WILL_RETAIN_FLAG: Final[int] = 0x20
+_PASSWORD_FLAG: Final[int] = 0x40
+_USERNAME_FLAG: Final[int] = 0x80
+
+
 def pack_connect_packet(
     client_id: str,
     username: Optional[str],
@@ -78,44 +107,56 @@ def pack_connect_packet(
     clean_session: bool,
     keepalive: bool,
     properties: ConnectProperties,
+    will: Optional[WillMessage] = None,
 ) -> bytes:
-    packet = bytearray([PacketType.CONNECT << 4 | 0x00])
-
     connect_flags = 0
 
     if clean_session:
-        connect_flags |= 0x02
+        connect_flags |= _CLEAN_START_FLAG
 
-    payload_length = 2 + 4 + 1 + 1 + 2 + 2 + len(client_id)
+    will_bytes = b""
+
+    if will:
+        if will.qos not in (0, 1, 2):
+            raise ValueError(f"Invalid will QoS: {will.qos}")
+
+        connect_flags |= _WILL_FLAG | (will.qos << _WILL_QOS_SHIFT)
+
+        if will.retain:
+            connect_flags |= _WILL_RETAIN_FLAG
+
+        will_bytes = b"".join(
+            (
+                pack_properties(cast(Properties, will.properties)),
+                pack_str16(will.topic),
+                pack_binaries(will.payload),
+            )
+        )
 
     username_bytes = password_bytes = b""
 
     if username:
-        connect_flags |= 0x80
+        connect_flags |= _USERNAME_FLAG
         username_bytes = pack_str16(username)
-        payload_length += len(username_bytes)
 
         if password:
-            connect_flags |= 0x40
+            connect_flags |= _PASSWORD_FLAG
             password_bytes = pack_str16(password)
-            payload_length += len(password_bytes)
 
-    properties_bytes = pack_properties(cast(Properties, properties))
+    variable_header = struct.pack(
+        "!H4sBBH", 4, b"MQTT", 5, connect_flags, keepalive
+    ) + pack_properties(cast(Properties, properties))
 
-    payload_length += len(properties_bytes)
-
-    packet.extend(
-        itertools.chain(
-            pack_variable_byte_integer(payload_length),
-            struct.pack("!H4sBBH", 4, b"MQTT", 5, connect_flags, keepalive),
-            properties_bytes,
-            pack_str16(client_id),
-            username_bytes,
-            password_bytes,
-        )
+    # the order of the payload fields is defined by the spec
+    payload = b"".join(
+        (pack_str16(client_id), will_bytes, username_bytes, password_bytes)
     )
 
-    return bytes(packet)
+    return (
+        pack_fixed_header(PacketType.CONNECT, 0x00, len(variable_header) + len(payload))
+        + variable_header
+        + payload
+    )
 
 
 class DisconnectProperties(TypedDict, total=False):
