@@ -31,6 +31,7 @@ from gmqtt.mqtt.publish import (
     parse_pubrel_packet,
 )
 from gmqtt.mqtt.session import InMemorySession, OutgoingMessageState
+from gmqtt.mqtt.subscribe import Subscription
 from gmqtt.mqtt.utils import read
 from tests.unit.mqtt.utils import build_async_generator
 
@@ -1093,3 +1094,79 @@ async def test_resend_discards_messages_which_break_new_limits(caplog):
 
     assert await session.get_pending_outgoing_messages() == []
     assert session._acquired_packet_identifiers == set()
+
+
+async def test_disconnect_with_reason():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol)
+
+    await asyncio.wait_for(
+        protocol.disconnect(reason=0x04, properties={"reason_string": "bye"}),
+        TIMEOUT,
+    )
+
+    fixed_header, stream = await expect(transport, PacketType.DISCONNECT)
+    assert await parse_disconnect_packet(fixed_header, stream) == DisconnectResult(
+        0x04, {"reason_string": "bye"}
+    )
+
+
+async def test_server_disconnect_is_exposed():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.subscribe([("a/b", 1)]))
+    await expect(transport, PacketType.SUBSCRIBE)
+
+    # 0x8B "Server shutting down"
+    transport.feed(b"\xe0\x01\x8b")
+
+    with pytest.raises(ConnectionLostError) as exc_info:
+        await asyncio.wait_for(task, TIMEOUT)
+
+    expected = DisconnectResult(0x8B, {})
+
+    assert exc_info.value.server_disconnect == expected
+    assert protocol.server_disconnect == expected
+
+    await wait_for_connection_lost(protocol)
+
+    # the next connection starts without it
+    await connect(protocol)
+    assert protocol.server_disconnect is None
+
+
+async def test_server_disconnect_is_none_when_connection_dropped():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.subscribe([("a/b", 1)]))
+    await expect(transport, PacketType.SUBSCRIBE)
+
+    transport.drop()
+
+    with pytest.raises(ConnectionLostError) as exc_info:
+        await asyncio.wait_for(task, TIMEOUT)
+
+    assert exc_info.value.server_disconnect is None
+    assert protocol.server_disconnect is None
+
+
+async def test_subscription_objects_are_checked_by_server_limits():
+    protocol, session, _ = build_protocol()
+    transport = await connect(
+        protocol, properties=server_flag(WILDCARD_SUBSCRIPTION_AVAILABLE, False)
+    )
+
+    with pytest.raises(FeatureNotSupportedError):
+        await asyncio.wait_for(
+            protocol.subscribe([Subscription("a/#", qos=1, no_local=True)]), TIMEOUT
+        )
+
+    await assert_nothing_leaked(transport, session)
+
+    task = asyncio.create_task(protocol.subscribe([Subscription("a/b", qos=1)]))
+    _, stream = await expect(transport, PacketType.SUBSCRIBE)
+    (packet_identifier,) = struct.unpack("!H", await read(stream, 2))
+    transport.feed(pack_suback(packet_identifier, 0x01))
+    await asyncio.wait_for(task, TIMEOUT)
