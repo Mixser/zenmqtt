@@ -1,4 +1,5 @@
 import asyncio
+from ssl import SSLContext
 from typing import Optional, Sequence
 
 from gmqtt.connection import create_connection
@@ -86,8 +87,11 @@ class MQTTClient:
         keepalive: int = DEFAULT_KEEP_ALIVE,
         properties: Optional[ConnectProperties] = None,
         will: Optional[WillMessage] = None,
+        ssl: Optional[SSLContext] = None,
     ) -> ConnectionResult:
         """
+        :param url: tcp://host[:port] or mqtts://host[:port] for TLS, the default
+            port is 1883 for tcp:// and 8883 for mqtts://
         :param clean_session: discard the session on the server and the client;
             to re-send QoS 1/2 messages after a reconnect use False together
             with properties={"session_expiry_interval": <seconds>}, otherwise
@@ -96,8 +100,11 @@ class MQTTClient:
             the client sends PINGREQ when idle; 0 disables keep alive
         :param will: the message the server publishes if the client goes away
             without DISCONNECT
+        :param ssl: context for mqtts://, e.g. with a custom CA or a client
+            certificate; by default the server certificate is verified with
+            the system CA certificates
         """
-        connection = await create_connection(url)
+        connection = await create_connection(url, ssl=ssl)
         self._protocol.set_connection(connection)
 
         connack = await self._protocol.connect(

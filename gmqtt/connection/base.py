@@ -1,5 +1,11 @@
 import asyncio
-from typing import Optional, Protocol
+from ssl import SSLContext
+from typing import Optional, Protocol, TypedDict
+
+
+class ConnectionOptions(TypedDict, total=False):
+    # context for TLS connections
+    ssl: SSLContext
 
 
 class MQTTConnectionTransport(Protocol):
