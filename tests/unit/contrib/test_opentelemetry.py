@@ -136,8 +136,11 @@ def test_other_events(metrics, reader):
     metrics.on_reconnect_attempt(1, 0.5)
     metrics.on_reconnect_attempt(2, 1.0)
     metrics.on_reconnect_gave_up()
+    metrics.on_messages_buffered(1500)
 
     data = collect(reader)
+
+    assert data["gmqtt.messages.buffered"][0][1].value == 1500
 
     assert data["gmqtt.reconnect.attempts"][0][1].value == 2
     assert data["gmqtt.reconnect.give_ups"][0][1].value == 1

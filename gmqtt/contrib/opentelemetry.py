@@ -108,6 +108,14 @@ class OpenTelemetryMetrics(MetricsCollector):
             unit="By",
             description="Number of received bytes",
         )
+        self._buffered_messages = meter.create_gauge(
+            "gmqtt.messages.buffered",
+            unit="{message}",
+            description=(
+                "Number of incoming messages waiting for the application, "
+                "reported while it's above the warning threshold"
+            ),
+        )
         self._send_quota_wait = meter.create_histogram(
             "gmqtt.send_quota.wait.duration",
             unit="s",
@@ -195,6 +203,9 @@ class OpenTelemetryMetrics(MetricsCollector):
             self._duplicated_messages.add(1, attributes)
         else:
             self._consumed_messages.add(1, attributes)
+
+    def on_messages_buffered(self, count: int) -> None:
+        self._buffered_messages.set(count, self._attributes)
 
     def on_send_quota_wait(self, duration: float) -> None:
         self._send_quota_wait.record(duration, self._attributes)
