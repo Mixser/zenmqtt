@@ -89,6 +89,7 @@ class MQTTClient:
         session: Optional[MQTTSession] = None,
         metrics: Optional[MetricsCollector] = None,
         reconnect: Optional[ReconnectPolicy] = DEFAULT_RECONNECT_POLICY,
+        manual_ack: bool = False,
     ):
         """
         :param session: storage of in-flight QoS 1/2 messages, in-memory by default
@@ -96,6 +97,9 @@ class MQTTClient:
             e.g. gmqtt.contrib.opentelemetry.OpenTelemetryMetrics
         :param reconnect: automatic reconnect after the connection is lost,
             None disables it; see connect() for details
+        :param manual_ack: incoming QoS 1/2 messages must be acknowledged by
+            ack() after they are processed; by default they are acknowledged
+            when they are put into the messages queue
         """
         messages: asyncio.Queue[PublishResult | None] = asyncio.Queue(maxsize=50)
 
@@ -109,6 +113,7 @@ class MQTTClient:
             session,
             self._metrics,
             wait_across_reconnect=reconnect is not None,
+            manual_ack=manual_ack,
         )
         self._messages = messages
 
@@ -351,6 +356,25 @@ class MQTTClient:
                 self._subscriptions.pop(topic, None)
 
         return result
+
+    async def ack(self, message: PublishResult, reason_code: int = 0) -> None:
+        """
+        Acknowledges a processed message when the client is created with
+        manual_ack=True: sends PUBACK for QoS 1 and PUBREC for QoS 2, does
+        nothing for QoS 0.
+
+        Acks are sent in the order the messages were received (MQTT 5, 4.6),
+        so an ack waits for acks of earlier messages. Not acknowledged messages
+        count to "Receive Maximum": when it's reached, the server stops sending
+        QoS 1/2 messages. If the connection is lost before the ack, the ack is
+        ignored and the server sends the message again after reconnect.
+
+        :param reason_code: 0, or >= 0x80 to reject the message, e.g. 0x80
+            (Unspecified error) or 0x99 (Payload format invalid); the server
+            doesn't send a rejected message again
+        :raises RuntimeError: manual ack isn't enabled
+        """
+        await self._protocol.ack(message, reason_code)
 
     @property
     def messages(self):

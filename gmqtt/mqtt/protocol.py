@@ -2,6 +2,7 @@ import asyncio
 import dataclasses
 from asyncio import Task
 from collections import deque
+from dataclasses import dataclass
 from logging import getLogger
 from typing import Awaitable, Callable, Final, Optional, Sequence, Tuple, cast
 
@@ -168,6 +169,13 @@ def _strip_topic_alias(properties: PublishProperties) -> PublishProperties:
     )
 
 
+@dataclass(slots=True)
+class _PendingAck:
+    message: PublishResult
+    acked: bool = False
+    reason_code: int = 0
+
+
 class MQTTProtocol:
     def __init__(
         self,
@@ -175,8 +183,11 @@ class MQTTProtocol:
         session: MQTTSession,
         metrics: Optional[MetricsCollector] = None,
         wait_across_reconnect: bool = False,
+        manual_ack: bool = False,
     ) -> None:
         """
+        :param manual_ack: incoming QoS 1/2 messages are acknowledged by ack()
+            instead of right after they are put into the messages queue
         :param wait_across_reconnect: used with automatic reconnect: QoS 1/2
             publish calls keep waiting for the acknowledgement when the
             connection is lost, and the messages queue isn't closed; call
@@ -185,6 +196,7 @@ class MQTTProtocol:
         self._session = session
         self._metrics = metrics or MetricsCollector()
         self._wait_across_reconnect = wait_across_reconnect
+        self._manual_ack = manual_ack
 
         self._connection: Optional[MQTTConnection] = None
         self._read_loop_task: Optional[Task[None]] = None
@@ -228,6 +240,11 @@ class MQTTProtocol:
         self._incoming_topic_aliases: dict[int, str] = {}
         self._incoming_inflight: set[PacketIdentifier] = set()
 
+        # manual ack: delivered messages in the order of receiving, PUBACK and
+        # PUBREC must be sent in this order (MQTT 5, 4.6)
+        self._pending_acks: dict[PacketIdentifier, _PendingAck] = {}
+        self._ack_lock = asyncio.Lock()
+
         self._messages_queue = messages
 
     def set_connection(self, connection: MQTTConnection):
@@ -239,6 +256,9 @@ class MQTTProtocol:
         # topic aliases and the receive quota don't survive the reconnect
         self._incoming_topic_aliases = {}
         self._incoming_inflight = set()
+        # acks of messages from the previous connection are ignored, the server
+        # re-sends them
+        self._pending_acks = {}
 
         self._read_loop_task = asyncio.create_task(
             self.__read_loop__(), name="mqtt-protocol-read-loop"
@@ -580,8 +600,13 @@ class MQTTProtocol:
                     f"More than {self._receive_maximum} incoming messages in flight"
                 )
 
-            if publish_result.qos == 2:
+            # with manual ack, QoS 1 is in flight until it's acknowledged
+            if publish_result.qos == 2 or self._manual_ack:
                 self._incoming_inflight.add(packet_identifier)
+
+        if self._manual_ack:
+            await self._handle_publish_with_manual_ack(publish_result)
+            return
 
         if publish_result.qos == 1:
             self._metrics.on_message_received(1, False)
@@ -613,6 +638,36 @@ class MQTTProtocol:
         await self._write(
             self._connection, pack_pubrec_packet(packet_identifier, 0, {})
         )
+
+    async def ack(self, message: PublishResult, reason_code: int = 0) -> None:
+        """
+        Acknowledges an incoming message with manual ack: PUBACK for QoS 1,
+        PUBREC for QoS 2. Acks are sent in the order messages were received,
+        so an ack waits for the acks of earlier messages.
+
+        :param reason_code: 0 or >= 0x80 to reject the message; the server
+            doesn't re-send a rejected message
+        """
+        if not self._manual_ack:
+            raise RuntimeError("Manual ack isn't enabled")
+
+        if reason_code and reason_code < FAILURE_REASON_CODE:
+            raise ValueError(f"Invalid reason code: 0x{reason_code:02X}")
+
+        if not message.qos:
+            return
+
+        pending = self._pending_acks.get(cast(int, message.packet_identifier))
+
+        if pending is None or pending.message is not message:
+            # acknowledged already or received by the previous connection
+            logger.debug("mqtt_protocol.ack.ignored pid:%s", message.packet_identifier)
+            return
+
+        pending.acked = True
+        pending.reason_code = reason_code
+
+        await self._send_acks()
 
     async def handle_puback_packet(
         self, fixed_header: FixedHeader, stream: AsyncDataSequence
@@ -944,6 +999,77 @@ class MQTTProtocol:
 
         if future and not future.done():
             future.set_result(result)
+
+    async def _handle_publish_with_manual_ack(
+        self, publish_result: PublishResult
+    ) -> None:
+        packet_identifier = cast(int, publish_result.packet_identifier)
+        qos = publish_result.qos
+
+        duplicate = qos == 2 and await self._session.has_incoming_message(
+            packet_identifier
+        )
+        self._metrics.on_message_received(qos, duplicate)
+
+        pending = _PendingAck(publish_result)
+        self._pending_acks[packet_identifier] = pending
+
+        if duplicate:
+            # PUBREC was sent already, the message isn't delivered again
+            logger.debug(
+                "mqtt_protocol.handle_publish_packet.duplicate pid:%s",
+                packet_identifier,
+            )
+            pending.acked = True
+            await self._send_acks()
+            return
+
+        await self._deliver_message(publish_result)
+
+    async def _send_acks(self) -> None:
+        """Sends acks of the first messages in the order of receiving."""
+        async with self._ack_lock:
+            pending_acks = self._pending_acks
+
+            while pending_acks:
+                packet_identifier, pending = next(iter(pending_acks.items()))
+
+                if not pending.acked:
+                    return
+
+                del pending_acks[packet_identifier]
+
+                connection = self._connection
+
+                if (
+                    pending_acks is not self._pending_acks
+                    or not connection
+                    or connection.is_closing()
+                ):
+                    return
+
+                reason_code = pending.reason_code
+
+                if pending.message.qos == 1:
+                    self._incoming_inflight.discard(packet_identifier)
+                    packet = pack_puback_packet(packet_identifier, reason_code, {})
+                else:
+                    if reason_code < FAILURE_REASON_CODE:
+                        # in flight until PUBREL
+                        await self._session.register_incoming_message(packet_identifier)
+                    else:
+                        # the flow ends with the rejecting PUBREC
+                        self._incoming_inflight.discard(packet_identifier)
+
+                    packet = pack_pubrec_packet(packet_identifier, reason_code, {})
+
+                logger.debug(
+                    "mqtt_protocol.send_ack pid:%s qos:%s reason:0x%02X",
+                    packet_identifier,
+                    pending.message.qos,
+                    reason_code,
+                )
+                await self._write(connection, packet)
 
     def _fail_publish_futures(self, exc: Exception) -> None:
         futures = list(self._publish_packet_futures.values())
