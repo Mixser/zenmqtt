@@ -338,6 +338,8 @@ class MQTTProtocol:
         except Exception as exc:
             logger.error("mqtt_protocol.read_loop.error", exc_info=exc)
         finally:
+            # stops reading of the connection
+            await stream.aclose()
             await self._handle_connection_lost(connection)
 
     async def _handle_connection_lost(self, connection: MQTTConnection) -> None:
