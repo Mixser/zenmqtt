@@ -19,7 +19,7 @@ def assigned_client_identifier(value: str) -> bytes:
 async def connect(client: MQTTClient, transport: FakeTransport, connack: bytes):
     """Returns the client id sent in CONNECT."""
 
-    async def factory(url):
+    async def factory(url, options):
         return transport
 
     register_implementation("fake", factory)
