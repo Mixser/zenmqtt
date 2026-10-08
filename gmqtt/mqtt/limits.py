@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Final, Optional, Sequence, Tuple
+from typing import Final, Optional, Sequence
 
 from gmqtt.exceptions import (
     FeatureNotSupportedError,
@@ -8,7 +8,11 @@ from gmqtt.exceptions import (
 )
 from gmqtt.mqtt.connect import ConnackProperties
 from gmqtt.mqtt.publish import PublishProperties
-from gmqtt.mqtt.subscribe import SubscriptionProperties
+from gmqtt.mqtt.subscribe import (
+    SubscriptionProperties,
+    SubscriptionRequest,
+    to_subscription,
+)
 
 SHARED_SUBSCRIPTION_PREFIX: Final[str] = "$share/"
 
@@ -79,7 +83,7 @@ class ServerLimits:
                 )
 
     def check_subscribe(
-        self, topics: Sequence[Tuple[str, int]], properties: SubscriptionProperties
+        self, topics: Sequence[SubscriptionRequest], properties: SubscriptionProperties
     ) -> None:
         if (
             "subscription_identifier" in properties
@@ -89,7 +93,9 @@ class ServerLimits:
                 "The server doesn't support subscription identifiers"
             )
 
-        for topic, _ in topics:
+        for request in topics:
+            topic = to_subscription(request).topic
+
             if (
                 topic.startswith(SHARED_SUBSCRIPTION_PREFIX)
                 and not self.shared_subscription_available
