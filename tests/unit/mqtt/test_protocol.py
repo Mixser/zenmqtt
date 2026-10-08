@@ -1170,23 +1170,3 @@ async def test_subscription_objects_are_checked_by_server_limits():
     (packet_identifier,) = struct.unpack("!H", await read(stream, 2))
     transport.feed(pack_suback(packet_identifier, 0x01))
     await asyncio.wait_for(task, TIMEOUT)
-
-
-async def test_subscription_objects_are_checked_by_server_limits():
-    protocol, session, _ = build_protocol()
-    transport = await connect(
-        protocol, properties=server_flag(WILDCARD_SUBSCRIPTION_AVAILABLE, False)
-    )
-
-    with pytest.raises(FeatureNotSupportedError):
-        await asyncio.wait_for(
-            protocol.subscribe([Subscription("a/#", qos=1, no_local=True)]), TIMEOUT
-        )
-
-    await assert_nothing_leaked(transport, session)
-
-    task = asyncio.create_task(protocol.subscribe([Subscription("a/b", qos=1)]))
-    _, stream = await expect(transport, PacketType.SUBSCRIBE)
-    (packet_identifier,) = struct.unpack("!H", await read(stream, 2))
-    transport.feed(pack_suback(packet_identifier, 0x01))
-    await asyncio.wait_for(task, TIMEOUT)
