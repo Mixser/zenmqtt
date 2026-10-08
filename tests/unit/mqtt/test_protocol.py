@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import struct
 from typing import Optional
 
@@ -6,9 +7,13 @@ import pytest
 import pytest_asyncio
 
 from gmqtt.connection import MQTTConnection, MQTTConnectionTransport
-from gmqtt.exceptions import ConnectionLostError, NotConnectedError
+from gmqtt.exceptions import (
+    ConnectionLostError,
+    NotConnectedError,
+    QoSNotSupportedError,
+)
 from gmqtt.metrics import MetricsCollector
-from gmqtt.mqtt.connect import WillMessage
+from gmqtt.mqtt.connect import DisconnectResult, WillMessage, parse_disconnect_packet
 from gmqtt.mqtt.packet import PacketType, parse_fixed_header
 from gmqtt.mqtt.protocol import MQTTProtocol
 from gmqtt.mqtt.publish import (
@@ -784,3 +789,100 @@ async def test_metrics_messages_resent():
     await asyncio.wait_for(ping, TIMEOUT)
 
     assert [qos for qos, _, _ in metrics.get("on_publish_completed")] == [1]
+
+
+def maximum_qos(value: int) -> bytes:
+    return struct.pack("!BB", 0x24, value)
+
+
+@pytest.mark.parametrize("qos", (-1, 3, 8))
+async def test_publish_with_invalid_qos(qos):
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol)
+
+    with pytest.raises(ValueError):
+        await asyncio.wait_for(protocol.publish("a/b", b"payload", qos=qos), TIMEOUT)
+
+    assert not transport.has_sent_packets()
+    assert session._acquired_packet_identifiers == set()
+
+
+async def test_publish_respects_server_maximum_qos():
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol, properties=maximum_qos(1))
+
+    with pytest.raises(QoSNotSupportedError):
+        await asyncio.wait_for(protocol.publish("a/b", b"payload", qos=2), TIMEOUT)
+
+    assert not transport.has_sent_packets()
+    assert session._acquired_packet_identifiers == set()
+
+    task = asyncio.create_task(protocol.publish("a/b", b"payload", qos=1))
+    publish = await expect_publish(transport)
+    transport.feed(pack_puback_packet(publish.packet_identifier, 0, {}))
+    await asyncio.wait_for(task, TIMEOUT)
+
+
+async def test_maximum_qos_is_reset_on_reconnect():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol, properties=maximum_qos(0))
+
+    transport.drop()
+    await wait_for_connection_lost(protocol)
+
+    # the new server doesn't limit QoS
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.publish("a/b", b"payload", qos=2))
+    publish = await expect_publish(transport)
+    assert publish.qos == 2
+
+    transport.feed(pack_pubrec_packet(publish.packet_identifier, 0x80, {}))
+    await asyncio.wait_for(task, TIMEOUT)
+
+
+async def test_incoming_publish_with_qos_3_closes_connection():
+    protocol, _, messages = build_protocol()
+    transport = await connect(protocol)
+
+    transport.feed(b"\x36\x0a\x00\x03a/b\x00\x01\x00pay")
+
+    fixed_header, stream = await expect(transport, PacketType.DISCONNECT)
+    assert await parse_disconnect_packet(fixed_header, stream) == DisconnectResult(
+        0x81, {}
+    )
+
+    await wait_for_connection_lost(protocol)
+
+    assert transport.is_closing()
+    # the malformed message isn't delivered
+    assert messages.get_nowait() is None
+
+
+async def test_discarded_pending_messages_are_logged(caplog):
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol)
+
+    task = asyncio.create_task(protocol.publish("a/b", b"payload", qos=1))
+    await expect_publish(transport)
+
+    transport.drop()
+    await wait_for_connection_lost(protocol)
+
+    with pytest.raises(ConnectionLostError):
+        await task
+
+    with caplog.at_level(logging.WARNING, logger="gmqtt.mqtt.protocol"):
+        await connect(protocol, session_present=False)
+
+    assert "discard_pending_messages count:1" in caplog.text
+    assert await session.get_pending_outgoing_messages() == []
+
+
+async def test_nothing_is_logged_when_session_is_empty(caplog):
+    protocol, _, _ = build_protocol()
+
+    with caplog.at_level(logging.WARNING, logger="gmqtt.mqtt.protocol"):
+        await connect(protocol, session_present=False)
+
+    assert "discard_pending_messages" not in caplog.text

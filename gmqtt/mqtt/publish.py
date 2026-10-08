@@ -3,6 +3,7 @@ import struct
 from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple, TypedDict, cast
 
+from gmqtt.exceptions import MalformedPacketError
 from gmqtt.mqtt.packet import (
     AsyncDataSequence,
     FixedHeader,
@@ -52,6 +53,9 @@ def pack_publish_packet(
     dup: bool,
     properties: PublishProperties,
 ) -> bytes:
+    if qos not in (0, 1, 2):
+        raise ValueError(f"Invalid QoS: {qos}")
+
     packed_topic = pack_str16(topic)
 
     payload_length = len(packed_topic) + len(payload)
@@ -105,6 +109,9 @@ async def parse_publish_packet(
     dup = (fixed_header.flags & 0x8) >> 3
     qos = (fixed_header.flags & 0x6) >> 1
     retain = fixed_header.flags & 0x01
+
+    if qos == 3:
+        raise MalformedPacketError("PUBLISH with QoS 3")
 
     payload_length = fixed_header.length
 

@@ -2,6 +2,7 @@ from unittest.mock import ANY
 
 import pytest
 
+from gmqtt.exceptions import MalformedPacketError
 from gmqtt.mqtt.packet import PacketType, parse_fixed_header
 from gmqtt.mqtt.publish import (
     PubAckResult,
@@ -309,3 +310,17 @@ async def test_parse_pubcomp_packet(input, expected_result):
     assert fixed_header.packet_type == PacketType.PUBCOMP
 
     assert await parse_pubcomp_packet(fixed_header, stream) == expected_result
+
+
+@pytest.mark.parametrize("qos", (-1, 3, 8))
+def test_pack_publish_packet_with_invalid_qos(qos):
+    with pytest.raises(ValueError):
+        pack_publish_packet(1, "a/b", b"payload", qos, False, False, {})
+
+
+async def test_parse_publish_packet_with_qos_3():
+    stream = build_async_generator(b"\x36\x0a\x00\x03a/b\x00\x01\x00pay")
+    fixed_header = await parse_fixed_header(stream)
+
+    with pytest.raises(MalformedPacketError):
+        await parse_publish_packet(fixed_header, stream)
