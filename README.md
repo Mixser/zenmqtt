@@ -174,7 +174,7 @@ await client.unsubscribe(["alerts/#"])
 ```python
 from zenmqtt.mqtt.connect import WillMessage
 
-will = WillMessage("devices/1/status", b"offline", qos=1, retain=True, properties={})
+will = WillMessage("devices/1/status", b"offline", qos=1, retain=True)
 await client.connect("tcp://localhost:1883", will=will)
 
 # 0x04 asks the broker to publish the will message

@@ -274,3 +274,26 @@ async def test_parse_disconnect_packet(input, expected_result):
     fixed_header, reader = split_packet(input)
     assert fixed_header.packet_type == PacketType.DISCONNECT
     assert parse_disconnect_packet(fixed_header, reader) == expected_result
+
+
+def test_will_message_defaults():
+    will = WillMessage("a/b", b"bye")
+
+    assert (will.qos, will.retain, will.properties) == (0, False, {})
+    # every message has its own properties
+    assert will.properties is not WillMessage("a/b", b"bye").properties
+
+    explicit = WillMessage("a/b", b"bye", qos=0, retain=False, properties={})
+
+    def pack(message):
+        return pack_connect_packet(
+            "client-id",
+            None,
+            None,
+            clean_session=False,
+            keepalive=0,
+            properties={},
+            will=message,
+        )
+
+    assert pack(will) == pack(explicit)

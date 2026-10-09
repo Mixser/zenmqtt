@@ -1,5 +1,5 @@
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final, Optional, Sequence, Tuple, TypedDict, cast
 
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader, PacketType
@@ -69,20 +69,22 @@ class WillProperties(TypedDict, total=False):
     user_property: Sequence[Tuple[str, str]]
 
 
-@dataclass(frozen=True)
+def _no_will_properties() -> WillProperties:
+    return {}
+
+
+@dataclass(frozen=True, slots=True)
 class WillMessage:
     """
     The message which the server publishes when the connection is closed
     without DISCONNECT (or with reason 0x04 "Disconnect with Will Message").
     """
 
-    __slots__ = ("topic", "payload", "qos", "retain", "properties")
-
     topic: str
     payload: bytes
-    qos: int
-    retain: bool
-    properties: WillProperties
+    qos: int = 0
+    retain: bool = False
+    properties: WillProperties = field(default_factory=_no_will_properties)
 
 
 MAX_KEEP_ALIVE: Final[int] = 2**16 - 1
