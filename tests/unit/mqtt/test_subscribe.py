@@ -49,7 +49,7 @@ async def test_parse_suback_packet(input, expected_result):
         ),
     ),
 )
-async def test_parse_unsubscribe_packet(input, expected_result):
+async def test_parse_unsuback_packet(input, expected_result):
     fixed_header, reader = split_packet(input)
     assert fixed_header.packet_type == PacketType.UNSUBACK
 

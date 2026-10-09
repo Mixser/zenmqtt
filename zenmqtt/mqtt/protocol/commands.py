@@ -1,7 +1,7 @@
 import asyncio
 from dataclasses import dataclass
 from logging import getLogger
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence, TypeVar, Union
 
 from zenmqtt.exceptions import NotConnectedError, ServerLimitError
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader
@@ -21,10 +21,15 @@ from zenmqtt.mqtt.subscribe import (
 
 logger = getLogger(__name__)
 
+CommandResult = Union[SubscribeResult, UnsubscribeResult]
+
+_Result = TypeVar("_Result", SubscribeResult, UnsubscribeResult)
+
 
 @dataclass(slots=True)
 class _PendingCommand:
-    future: asyncio.Future
+    # the future of SUBACK or UNSUBACK
+    future: asyncio.Future[Any]
     sent_at: float
 
 
@@ -49,10 +54,12 @@ class Commands:
         self._context.server_limits.check_subscribe(topics, properties)
 
         packet_identifier = await self._session.acquire_packet_identifier()
+        future: asyncio.Future[SubscribeResult] = self._create_future()
 
         return await self._send(
             packet_identifier,
             pack_subscribe_packet(packet_identifier, topics, properties),
+            future,
         )
 
     async def unsubscribe(
@@ -63,10 +70,12 @@ class Commands:
         properties = properties or {}
 
         packet_identifier = await self._session.acquire_packet_identifier()
+        future: asyncio.Future[UnsubscribeResult] = self._create_future()
 
         return await self._send(
             packet_identifier,
             pack_unsubscribe_packet(packet_identifier, topics, properties),
+            future,
         )
 
     async def handle_suback(
@@ -100,7 +109,16 @@ class Commands:
 
         return list(pending)
 
-    async def _send(self, packet_identifier: PacketIdentifier, packet: bytes):
+    @staticmethod
+    def _create_future() -> asyncio.Future[Any]:
+        return asyncio.get_running_loop().create_future()
+
+    async def _send(
+        self,
+        packet_identifier: PacketIdentifier,
+        packet: bytes,
+        future: asyncio.Future[_Result],
+    ) -> _Result:
         try:
             self._context.server_limits.check_packet_size(packet)
             connection = self._context.ensure_connected()
@@ -108,14 +126,15 @@ class Commands:
             await self._session.release_packet_identifier(packet_identifier)
             raise
 
-        future: asyncio.Future = asyncio.get_running_loop().create_future()
         self._pending[packet_identifier] = _PendingCommand(future, self._context.now())
 
         await self._context.write(connection, packet)
 
         return await future
 
-    async def _complete(self, packet_identifier: PacketIdentifier, result) -> None:
+    async def _complete(
+        self, packet_identifier: PacketIdentifier, result: CommandResult
+    ) -> None:
         await self._session.release_packet_identifier(packet_identifier)
 
         if (command := self._pending.pop(packet_identifier, None)) is None:
