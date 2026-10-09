@@ -2,8 +2,6 @@
 import asyncio
 import logging
 
-import pytest
-
 from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
     FakeTransport,
@@ -24,8 +22,6 @@ from zenmqtt.mqtt.publish import (
     parse_puback_packet,
     parse_pubrec_packet,
 )
-
-pytestmark = pytest.mark.asyncio
 
 
 async def feed(transport: FakeTransport, *packets: bytes) -> None:

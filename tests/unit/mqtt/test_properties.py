@@ -8,8 +8,6 @@ from zenmqtt.mqtt.properties import (
     parse_properties,
 )
 
-pytestmark = pytest.mark.asyncio
-
 
 @pytest.mark.parametrize("prop", list(Property))
 def test_property_name_matches_code(prop):

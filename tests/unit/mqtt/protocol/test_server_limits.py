@@ -36,8 +36,6 @@ from zenmqtt.mqtt.publish import (
 )
 from zenmqtt.mqtt.subscribe import Subscription
 
-pytestmark = pytest.mark.asyncio
-
 
 async def test_publish_respects_server_maximum_qos():
     protocol, session, _ = build_protocol()

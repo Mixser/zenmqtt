@@ -21,8 +21,6 @@ from zenmqtt.mqtt.publish import (
     parse_pubcomp_packet,
 )
 
-pytestmark = pytest.mark.asyncio
-
 
 async def test_incoming_qos1_message():
     protocol, _, messages = build_protocol()

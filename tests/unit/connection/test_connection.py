@@ -10,8 +10,6 @@ from zenmqtt.connection import (
 )
 from zenmqtt.connection.tcp import TCPConnectionTransport
 
-pytestmark = pytest.mark.asyncio
-
 
 @pytest.fixture
 def open_connection():

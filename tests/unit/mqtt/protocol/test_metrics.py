@@ -27,8 +27,6 @@ from zenmqtt.mqtt.publish import (
     pack_pubrec_packet,
 )
 
-pytestmark = pytest.mark.asyncio
-
 
 async def test_metrics_connect_and_disconnect():
     metrics = RecordingMetrics()

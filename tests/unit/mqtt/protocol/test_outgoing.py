@@ -26,8 +26,6 @@ from zenmqtt.mqtt.publish import (
 )
 from zenmqtt.mqtt.session import OutgoingMessageState
 
-pytestmark = pytest.mark.asyncio
-
 
 async def test_qos1_publish_flow():
     protocol, session, _ = build_protocol()

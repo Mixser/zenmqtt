@@ -3,8 +3,6 @@ import pytest
 from zenmqtt.mqtt.packet import PacketType, split_packet
 from zenmqtt.mqtt.ping import pack_pingreq_packet, parse_pingresp_packet
 
-pytestmark = pytest.mark.asyncio
-
 
 def test_pack_pingreq_packet():
     assert pack_pingreq_packet() == b"\xc0\x00"

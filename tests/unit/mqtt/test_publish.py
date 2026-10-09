@@ -22,8 +22,6 @@ from zenmqtt.mqtt.publish import (
     parse_pubrel_packet,
 )
 
-pytestmark = pytest.mark.asyncio
-
 
 @pytest.mark.parametrize(
     "input, expected_result",

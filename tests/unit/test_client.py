@@ -1,14 +1,10 @@
 import asyncio
 import struct
 
-import pytest
-
 from tests.unit.mqtt.protocol.helpers import TIMEOUT, FakeTransport, pack_connack
 from zenmqtt.client import MQTTClient
 from zenmqtt.connection import register_implementation
 from zenmqtt.mqtt.packet import PacketType
-
-pytestmark = pytest.mark.asyncio
 
 
 def assigned_client_identifier(value: str) -> bytes:

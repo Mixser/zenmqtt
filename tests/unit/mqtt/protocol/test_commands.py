@@ -13,8 +13,6 @@ from tests.unit.mqtt.protocol.helpers import (
 from zenmqtt.exceptions import ConnectionLostError
 from zenmqtt.mqtt.packet import PacketType
 
-pytestmark = pytest.mark.asyncio
-
 
 async def test_pending_subscribe_on_connection_lost():
     protocol, session, _ = build_protocol()

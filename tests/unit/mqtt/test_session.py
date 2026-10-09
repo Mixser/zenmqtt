@@ -2,8 +2,6 @@ import pytest
 
 from zenmqtt.mqtt.session import InMemorySession, OutgoingMessage, OutgoingMessageState
 
-pytestmark = pytest.mark.asyncio
-
 
 def build_message(packet_identifier: int, qos: int = 1) -> OutgoingMessage:
     return OutgoingMessage(

@@ -19,8 +19,6 @@ from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
 from zenmqtt.mqtt.connect import DisconnectResult, WillMessage, parse_disconnect_packet
 from zenmqtt.mqtt.packet import PacketType
 
-pytestmark = pytest.mark.asyncio
-
 
 async def test_failed_connack_is_returned():
     protocol, _, _ = build_protocol()
