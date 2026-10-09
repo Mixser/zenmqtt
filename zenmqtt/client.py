@@ -3,14 +3,10 @@ import inspect
 from dataclasses import dataclass
 from logging import getLogger
 from ssl import SSLContext
-from typing import Any, Awaitable, Callable, Optional, Sequence, TypeVar
+from typing import Any, Awaitable, Callable, Final, Optional, Sequence, TypeVar
 
 from zenmqtt.connection import create_connection
-from zenmqtt.exceptions import (
-    ConnectionLostError,
-    MQTTConnectionError,
-    NotConnectedError,
-)
+from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
 from zenmqtt.metrics import MetricsCollector
 from zenmqtt.mqtt.connect import (
     SESSION_PRESENT_FLAG,
@@ -30,36 +26,22 @@ from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE
 from zenmqtt.mqtt.session import MQTTSession, build_default_session
 from zenmqtt.mqtt.subscribe import (
     SubscribeResult,
-    Subscription,
     SubscriptionProperties,
     SubscriptionRequest,
     UnsubscribeProperties,
     UnsubscribeResult,
-    to_subscription,
 )
-from zenmqtt.reconnect import (
-    DEFAULT_RECONNECT_POLICY,
-    NON_RETRYABLE_CONNACK_REASON_CODES,
-    NON_RETRYABLE_DISCONNECT_REASON_CODES,
-    ReconnectPolicy,
-)
+from zenmqtt.reconnect import DEFAULT_RECONNECT_POLICY, ReconnectPolicy
+from zenmqtt.reconnector import Reconnector
+from zenmqtt.subscriptions import SubscriptionRegistry
 
 logger = getLogger(__name__)
 
-ClientId = str
-ClientConfig = dict
+DEFAULT_KEEP_ALIVE: Final[int] = 60
 
-Topic = str
-
-Headers = dict
-Message = bytes
-
-QOS = int
-
-DEFAULT_KEEP_ALIVE = 60
-
-# UNSUBACK reason code: the topic wasn't subscribed, it's not an error
-_NO_SUBSCRIPTION_EXISTED = 0x11
+# messages handed over to the application; when the queue is full, the next
+# messages wait in the buffer of the protocol, which doesn't block reading
+MESSAGES_QUEUE_SIZE: Final[int] = 50
 
 T = TypeVar("T")
 
@@ -68,13 +50,13 @@ OnDisconnect = Callable[[ConnectionLostError], Any]
 
 
 class AsyncMessageIterator:
-    def __init__(self, queue: asyncio.Queue):
+    def __init__(self, queue: "asyncio.Queue[Optional[PublishResult]]") -> None:
         self._queue = queue
 
-    def __aiter__(self):
+    def __aiter__(self) -> "AsyncMessageIterator":
         return self
 
-    async def __anext__(self):
+    async def __anext__(self) -> PublishResult:
         value = await self._queue.get()
 
         if value is None:
@@ -95,11 +77,11 @@ class _ConnectOptions:
 class MQTTClient:
     def __init__(
         self,
-        client_id: ClientId,
+        client_id: str,
         session: Optional[MQTTSession] = None,
         metrics: Optional[MetricsCollector] = None,
         reconnect: Optional[ReconnectPolicy] = DEFAULT_RECONNECT_POLICY,
-    ):
+    ) -> None:
         """
         :param session: storage of in-flight QoS 1/2 messages, in-memory by default
         :param metrics: receives events of the client to build metrics,
@@ -107,16 +89,16 @@ class MQTTClient:
         :param reconnect: automatic reconnect after the connection is lost,
             None disables it; see connect() for details
         """
-        messages: asyncio.Queue[PublishResult | None] = asyncio.Queue(maxsize=50)
-
-        session = session or build_default_session()
+        messages: asyncio.Queue[Optional[PublishResult]] = asyncio.Queue(
+            maxsize=MESSAGES_QUEUE_SIZE
+        )
 
         self._metrics = metrics or MetricsCollector()
-        self._reconnect = reconnect
+        self._reconnect_policy = reconnect
 
         self._protocol = MQTTProtocol(
             messages,
-            session,
+            session or build_default_session(),
             self._metrics,
             wait_across_reconnect=reconnect is not None,
         )
@@ -129,15 +111,13 @@ class MQTTClient:
 
         self._connect_options: Optional[_ConnectOptions] = None
 
-        # active subscriptions, restored after reconnect if the server lost them
-        self._subscriptions: dict[str, tuple[Subscription, SubscriptionProperties]] = {}
+        self._subscriptions = SubscriptionRegistry()
+        self._reconnector: Optional[Reconnector] = None
 
         self._connected = False
         # True until connect and after the client stops for good
         self._stopped = True
         self._state_changed = asyncio.Event()
-
-        self._reconnect_task: Optional[asyncio.Task[None]] = None
 
         # called on every successful connect and on every lost connection,
         # may be sync or async functions
@@ -182,12 +162,14 @@ class MQTTClient:
             certificate; by default the server certificate is verified with
             the system CA certificates
         """
-        if self._reconnect_task:
+        if self._reconnector and self._reconnector.running:
             raise RuntimeError("The client is already connected")
 
         self._connect_options = _ConnectOptions(url, keepalive, properties, will, ssl)
 
-        if self._reconnect and not (properties or {}).get("session_expiry_interval"):
+        if self._reconnect_policy and not (properties or {}).get(
+            "session_expiry_interval"
+        ):
             logger.warning(
                 "mqtt_client.connect: reconnect is enabled, but the server drops "
                 "the session when the connection is lost; set "
@@ -204,16 +186,23 @@ class MQTTClient:
         self._set_connected(True)
         await self._notify(self.on_connect, connack)
 
-        if self._reconnect:
-            self._reconnect_task = asyncio.create_task(
-                self._reconnect_loop(self._reconnect), name="mqtt-client-reconnect"
+        if self._reconnect_policy:
+            self._reconnector = Reconnector(
+                self._reconnect_policy,
+                self._protocol,
+                self._metrics,
+                connect=lambda: self._connect(clean_session=False),
+                connection_lost=self._on_connection_lost,
+                reconnected=self._on_reconnected,
+                gave_up=self._on_gave_up,
             )
+            self._reconnector.start()
 
         return connack
 
     async def disconnect(
         self, reason: int = 0, properties: Optional[DisconnectProperties] = None
-    ):
+    ) -> None:
         """
         Stops automatic reconnect; pending publish calls fail with
         ConnectionLostError, the messages iterator ends.
@@ -224,25 +213,20 @@ class MQTTClient:
         was_stopped = self._stopped
         self._stopped = True
 
-        if task := self._reconnect_task:
-            self._reconnect_task = None
-            task.cancel()
-
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+        if reconnector := self._reconnector:
+            self._reconnector = None
+            await reconnector.stop()
 
         await self._protocol.disconnect(reason=reason, properties=properties)
 
         self._set_connected(False)
 
-        if self._reconnect and not was_stopped:
+        if self._reconnect_policy and not was_stopped:
             await self._protocol.close(ConnectionLostError())
 
     @property
     def is_connected(self) -> bool:
-        # the protocol notices a lost connection before the reconnect task
+        # the protocol notices a lost connection before the reconnector
         return self._connected and self._protocol.is_connected
 
     async def wait_connected(self) -> None:
@@ -268,8 +252,8 @@ class MQTTClient:
 
     async def publish(
         self,
-        topic: Topic,
-        message: Message,
+        topic: str,
+        message: bytes,
         qos: int = 0,
         retain: bool = False,
         properties: Optional[PublishProperties] = None,
@@ -325,40 +309,34 @@ class MQTTClient:
             retain_handling)
         :raises ValueError: invalid QoS or subscription options
         """
-        properties = properties or {}
+        subscription_properties = properties or {}
 
         result = await self._when_connected(
-            lambda: self._protocol.subscribe(topics, properties), repeat=True
+            lambda: self._protocol.subscribe(topics, subscription_properties),
+            repeat=True,
         )
 
-        for request, reason_code in zip(topics, result.reason_codes):
-            if reason_code < FAILURE_REASON_CODE:
-                subscription = to_subscription(request)
-                self._subscriptions[subscription.topic] = (subscription, properties)
+        self._subscriptions.add(topics, subscription_properties, result.reason_codes)
 
         return result
 
     async def unsubscribe(
         self,
-        topics: Sequence[Topic],
+        topics: Sequence[str],
         properties: Optional[UnsubscribeProperties] = None,
     ) -> UnsubscribeResult:
         """
         With automatic reconnect, the call waits while the client reconnects
         and is repeated if the connection is lost before UNSUBACK.
         """
-        properties = properties or {}
+        unsubscribe_properties = properties or {}
 
         result = await self._when_connected(
-            lambda: self._protocol.unsubscribe(topics, properties), repeat=True
+            lambda: self._protocol.unsubscribe(topics, unsubscribe_properties),
+            repeat=True,
         )
 
-        for topic, reason_code in zip(topics, result.reason_codes):
-            if (
-                reason_code < FAILURE_REASON_CODE
-                or reason_code == _NO_SUBSCRIPTION_EXISTED
-            ):
-                self._subscriptions.pop(topic, None)
+        self._subscriptions.remove(topics, result.reason_codes)
 
         return result
 
@@ -381,7 +359,7 @@ class MQTTClient:
         await self._protocol.ack(message, reason_code)
 
     @property
-    def messages(self):
+    def messages(self) -> AsyncMessageIterator:
         """
         Incoming messages; with automatic reconnect the iteration continues
         across reconnects and ends when the client stops. QoS 1/2 messages must
@@ -433,116 +411,21 @@ class MQTTClient:
 
         return connack
 
-    async def _reconnect_loop(self, policy: ReconnectPolicy) -> None:
-        try:
-            await self._reconnect_forever(policy)
-        except Exception as exc:
-            logger.error("mqtt_client.reconnect.error", exc_info=exc)
-            await self._give_up(ConnectionLostError())
-
-    async def _reconnect_forever(self, policy: ReconnectPolicy) -> None:
-        while True:
-            await self._protocol.wait_closed()
-
-            self._set_connected(False)
-
-            server_disconnect = self._protocol.server_disconnect
-            lost = ConnectionLostError(server_disconnect)
-
-            logger.warning("mqtt_client.connection_lost: %s", lost)
-            await self._notify(self.on_disconnect, lost)
-
-            if (
-                server_disconnect
-                and server_disconnect.reason_code
-                in NON_RETRYABLE_DISCONNECT_REASON_CODES
-            ):
-                logger.error(
-                    "mqtt_client.reconnect.stopped: the server closed the "
-                    "connection with reason 0x%02X",
-                    server_disconnect.reason_code,
-                )
-                await self._give_up(lost)
-                return
-
-            if not await self._reconnect_with_backoff(policy, lost):
-                return
-
-    async def _reconnect_with_backoff(
-        self, policy: ReconnectPolicy, lost: ConnectionLostError
-    ) -> bool:
-        """Returns False if the client gave up."""
-        for attempt, delay in enumerate(policy.delays(), start=1):
-            self._metrics.on_reconnect_attempt(attempt, delay)
-            await asyncio.sleep(delay)
-
-            logger.info("mqtt_client.reconnect.attempt: %s", attempt)
-
-            try:
-                connack = await asyncio.wait_for(
-                    self._connect(clean_session=False), policy.connect_timeout
-                )
-            except (OSError, asyncio.TimeoutError, MQTTConnectionError) as exc:
-                logger.warning("mqtt_client.reconnect.failed: %r", exc)
-                continue
-
-            if connack.result_code >= FAILURE_REASON_CODE:
-                if connack.result_code in NON_RETRYABLE_CONNACK_REASON_CODES:
-                    logger.error(
-                        "mqtt_client.reconnect.stopped: the server rejected the "
-                        "connection with reason 0x%02X",
-                        connack.result_code,
-                    )
-                    await self._give_up(lost)
-                    return False
-
-                logger.warning(
-                    "mqtt_client.reconnect.rejected: reason 0x%02X",
-                    connack.result_code,
-                )
-                continue
-
-            if not connack.flags & SESSION_PRESENT_FLAG:
-                await self._restore_subscriptions()
-
-            logger.info("mqtt_client.reconnect.succeeded: attempt %s", attempt)
-
-            self._set_connected(True)
-            await self._notify(self.on_connect, connack)
-            return True
-
-        logger.error("mqtt_client.reconnect.stopped: no attempts left")
-        await self._give_up(lost)
-        return False
-
-    async def _restore_subscriptions(self) -> None:
-        # one SUBSCRIBE per group of subscriptions with the same properties
-        groups: list[tuple[SubscriptionProperties, list[Subscription]]] = []
-
-        for subscription, properties in self._subscriptions.values():
-            for group_properties, subscriptions in groups:
-                if group_properties == properties:
-                    subscriptions.append(subscription)
-                    break
-            else:
-                groups.append((properties, [subscription]))
-
-        for properties, subscriptions in groups:
-            try:
-                await self._protocol.subscribe(subscriptions, properties)
-            except Exception as exc:
-                logger.error(
-                    "mqtt_client.restore_subscriptions.failed: %s",
-                    [subscription.topic for subscription in subscriptions],
-                    exc_info=exc,
-                )
-
-    async def _give_up(self, exc: Exception) -> None:
-        self._stopped = True
-        self._reconnect_task = None
+    async def _on_connection_lost(self, lost: ConnectionLostError) -> None:
         self._set_connected(False)
+        await self._notify(self.on_disconnect, lost)
 
-        self._metrics.on_reconnect_gave_up()
+    async def _on_reconnected(self, connack: ConnectionResult) -> None:
+        if not connack.flags & SESSION_PRESENT_FLAG:
+            await self._subscriptions.restore(self._protocol.subscribe)
+
+        self._set_connected(True)
+        await self._notify(self.on_connect, connack)
+
+    async def _on_gave_up(self, exc: Exception) -> None:
+        self._stopped = True
+        self._reconnector = None
+        self._set_connected(False)
 
         await self._protocol.close(exc)
 
@@ -555,7 +438,7 @@ class MQTTClient:
         lost the connection before sending it, or with repeat=True (for
         idempotent operations) before the acknowledgement.
         """
-        if not self._reconnect:
+        if not self._reconnect_policy:
             return await operation()
 
         while True:
