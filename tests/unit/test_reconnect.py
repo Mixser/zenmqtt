@@ -340,7 +340,7 @@ async def test_first_connect_failure_is_raised(broker):
         await client.connect(URL)
 
     await broker.assert_no_connections()
-    assert client._reconnect_task is None
+    assert client._reconnector is None
 
 
 async def test_inflight_publish_waits_across_reconnect(broker):
