@@ -95,7 +95,7 @@ def to_subscription(request: SubscriptionRequest) -> Subscription:
     return request if isinstance(request, Subscription) else Subscription(*request)
 
 
-def pack_subscription_packet(
+def pack_subscribe_packet(
     packet_identifier: int,
     topics: Sequence[SubscriptionRequest],
     properties: SubscriptionProperties,
@@ -143,7 +143,7 @@ def pack_unsubscribe_packet(
     return pack_fixed_header(PacketType.UNSUBSCRIBE, 0x2, len(body)) + body
 
 
-def parse_unsubscribe_packet(
+def parse_unsuback_packet(
     fixed_header: FixedHeader, reader: BytesReader
 ) -> UnsubscribeResult:
     packet_identifier, properties, reason_codes = _parse_packet(fixed_header, reader)

@@ -26,7 +26,7 @@ from zenmqtt.mqtt.publish import (
 )
 from zenmqtt.mqtt.subscribe import (
     Subscription,
-    pack_subscription_packet,
+    pack_subscribe_packet,
     parse_suback_packet,
 )
 
@@ -107,7 +107,7 @@ def test_parse_properties(benchmark):
 
 
 def test_pack_subscribe(benchmark):
-    benchmark(pack_subscription_packet, 1, SUBSCRIPTIONS, {})
+    benchmark(pack_subscribe_packet, 1, SUBSCRIPTIONS, {})
 
 
 def test_parse_suback(benchmark):

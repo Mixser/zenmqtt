@@ -4,7 +4,7 @@ from typing import Any, Callable, List, Sequence, Tuple, TypedDict, cast
 
 from zenmqtt.exceptions import MalformedPacketError
 from zenmqtt.mqtt.packet import BytesReader, PacketType
-from zenmqtt.mqtt.utils import pack_binaries, pack_str16, pack_variable_byte_integer
+from zenmqtt.mqtt.utils import pack_binary, pack_str16, pack_variable_byte_integer
 
 
 class Property(IntEnum):
@@ -205,13 +205,13 @@ _MAP_PROPERTY_PACKERS: dict[Property, Callable[[Any], bytes]] = {
     Property.MESSAGE_EXPIRY_INTERVAL: _pack_uint32,
     Property.CONTENT_TYPE: pack_str16,
     Property.RESPONSE_TOPIC: pack_str16,
-    Property.CORRELATION_DATA: pack_binaries,
+    Property.CORRELATION_DATA: pack_binary,
     Property.SUBSCRIPTION_IDENTIFIER: pack_variable_byte_integer,
     Property.SESSION_EXPIRY_INTERVAL: _pack_uint32,
     Property.ASSIGNED_CLIENT_IDENTIFIER: pack_str16,
     Property.SERVER_KEEP_ALIVE: _pack_uint16,
     Property.AUTHENTICATION_METHOD: pack_str16,
-    Property.AUTHENTICATION_DATA: pack_binaries,
+    Property.AUTHENTICATION_DATA: pack_binary,
     Property.REQUEST_PROBLEM_INFORMATION: _pack_uint8,
     Property.WILL_DELAY_INTERVAL: _pack_uint32,
     Property.REQUEST_RESPONSE_INFORMATION: _pack_uint8,

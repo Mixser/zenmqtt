@@ -12,9 +12,8 @@ import os
 import sqlite3
 from typing import Optional, Sequence
 
-from zenmqtt.client import MQTTClient
+from zenmqtt import BaseSession, MQTTClient
 from zenmqtt.mqtt.session import (
-    BaseSession,
     OutgoingMessage,
     OutgoingMessageState,
     PacketIdentifier,

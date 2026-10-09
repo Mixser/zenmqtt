@@ -13,10 +13,10 @@ from zenmqtt.mqtt.subscribe import (
     SubscriptionRequest,
     UnsubscribeProperties,
     UnsubscribeResult,
-    pack_subscription_packet,
+    pack_subscribe_packet,
     pack_unsubscribe_packet,
     parse_suback_packet,
-    parse_unsubscribe_packet,
+    parse_unsuback_packet,
 )
 
 logger = getLogger(__name__)
@@ -58,7 +58,7 @@ class Commands:
 
         return await self._send(
             packet_identifier,
-            pack_subscription_packet(packet_identifier, topics, properties),
+            pack_subscribe_packet(packet_identifier, topics, properties),
             future,
         )
 
@@ -90,7 +90,7 @@ class Commands:
     async def handle_unsuback(
         self, fixed_header: FixedHeader, reader: BytesReader
     ) -> None:
-        unsuback_packet = parse_unsubscribe_packet(fixed_header, reader)
+        unsuback_packet = parse_unsuback_packet(fixed_header, reader)
 
         logger.debug("mqtt_protocol.handle_unsuback_packet packet:%s", unsuback_packet)
 

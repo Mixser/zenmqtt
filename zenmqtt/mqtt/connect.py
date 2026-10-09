@@ -4,7 +4,7 @@ from typing import Final, Optional, Sequence, Tuple, TypedDict, cast
 
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader, PacketType
 from zenmqtt.mqtt.properties import Properties, pack_properties, parse_properties
-from zenmqtt.mqtt.utils import pack_binaries, pack_fixed_header, pack_str16
+from zenmqtt.mqtt.utils import pack_binary, pack_fixed_header, pack_str16
 
 
 class ConnackProperties(TypedDict, total=False):
@@ -27,12 +27,21 @@ class ConnackProperties(TypedDict, total=False):
     shared_subscription_available: bool
 
 
+# CONNACK "Session Present" flag
+SESSION_PRESENT_FLAG: Final[int] = 0x01
+
+
 @dataclass(frozen=True)
 class ConnectionResult:
     __slots__ = ("flags", "result_code", "properties")
     flags: int
     result_code: int
     properties: ConnackProperties
+
+    @property
+    def session_present(self) -> bool:
+        """The server has a session of the client from a previous connection."""
+        return bool(self.flags & SESSION_PRESENT_FLAG)
 
 
 def parse_connack_packet(
@@ -89,9 +98,6 @@ class WillMessage:
 
 MAX_KEEP_ALIVE: Final[int] = 2**16 - 1
 
-# CONNACK "Session Present" flag
-SESSION_PRESENT_FLAG: Final[int] = 0x01
-
 # CONNECT flags
 _CLEAN_START_FLAG: Final[int] = 0x02
 _WILL_FLAG: Final[int] = 0x04
@@ -134,7 +140,7 @@ def pack_connect_packet(
             (
                 pack_properties(cast(Properties, will.properties)),
                 pack_str16(will.topic),
-                pack_binaries(will.payload),
+                pack_binary(will.payload),
             )
         )
 
