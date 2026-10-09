@@ -1,9 +1,23 @@
 [tool.poetry]
 name = "zenmqtt"
 version = "0.1.0"
-description = ""
+description = "Asyncio MQTT 5 client: automatic reconnect, persistent sessions, acknowledgement after processing"
 authors = ["Mikhail Turchunovich <mixser.by@gmail.com>"]
+license = "MIT"
 readme = "README.md"
+homepage = "https://github.com/Mixser/zenmqtt"
+repository = "https://github.com/Mixser/zenmqtt"
+keywords = ["mqtt", "mqtt5", "asyncio", "iot", "client"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Topic :: Communications",
+    "Topic :: Internet",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
 
 [tool.poetry.dependencies]
 python = "^3.12"
