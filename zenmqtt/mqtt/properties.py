@@ -166,7 +166,7 @@ def _read_user_property(reader: BytesReader) -> Tuple[str, str]:
 
 
 _MAP_PROPERTY_PARSER: dict[Property, Callable[[BytesReader], Any]] = {
-    Property.PAYLOAD_FORMAT_INDICATOR: BytesReader.read_byte,
+    Property.PAYLOAD_FORMAT_INDICATOR: _read_bool,
     Property.MESSAGE_EXPIRY_INTERVAL: BytesReader.read_uint32,
     Property.CONTENT_TYPE: BytesReader.read_str,
     Property.RESPONSE_TOPIC: BytesReader.read_str,
