@@ -1,11 +1,10 @@
-import itertools
 import struct
 from dataclasses import dataclass
 from typing import Final, Sequence, Tuple, TypedDict, Union, cast
 
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader, PacketType
 from zenmqtt.mqtt.properties import Properties, pack_properties, parse_properties
-from zenmqtt.mqtt.utils import pack_str16, pack_variable_byte_integer
+from zenmqtt.mqtt.utils import pack_fixed_header, pack_str16
 
 
 class SubscriptionProperties(TypedDict, total=False):
@@ -101,37 +100,21 @@ def pack_subscription_packet(
     topics: Sequence[SubscriptionRequest],
     properties: SubscriptionProperties,
 ) -> bytes:
-    length = 2
-
-    topics_bytes = bytearray()
+    parts = [
+        struct.pack("!H", packet_identifier),
+        pack_properties(cast(Properties, properties)),
+    ]
 
     for request in topics:
         subscription = to_subscription(request)
-
-        topics_bytes.extend(
-            itertools.chain(
-                pack_str16(subscription.topic),
-                struct.pack("!B", pack_subscription_options(subscription)),
-            )
+        parts += (
+            pack_str16(subscription.topic),
+            struct.pack("!B", pack_subscription_options(subscription)),
         )
 
-    length += len(topics_bytes)
+    body = b"".join(parts)
 
-    properties_bytes = pack_properties(cast(Properties, properties))
-    length += len(properties_bytes)
-
-    packet = bytearray([(PacketType.SUBSCRIBE << 4) | 0x2])
-
-    packet.extend(
-        itertools.chain(
-            pack_variable_byte_integer(length),
-            struct.pack("!H", packet_identifier),
-            properties_bytes,
-            topics_bytes,
-        )
-    )
-
-    return bytes(packet)
+    return pack_fixed_header(PacketType.SUBSCRIBE, 0x2, len(body)) + body
 
 
 def parse_suback_packet(
@@ -149,29 +132,15 @@ def parse_suback_packet(
 def pack_unsubscribe_packet(
     packet_identifier: int, topics: Sequence[str], properties: UnsubscribeProperties
 ) -> bytes:
-    length = 2
-
-    topic_bytes = bytearray()
-    for topic in topics:
-        topic_bytes.extend(pack_str16(topic))
-
-    length += len(topic_bytes)
-
-    properties_bytes = pack_properties(cast(Properties, properties))
-    length += len(properties_bytes)
-
-    packet = bytearray([(PacketType.UNSUBSCRIBE << 4) | 0x2])
-
-    packet.extend(
-        itertools.chain(
-            pack_variable_byte_integer(length),
+    body = b"".join(
+        (
             struct.pack("!H", packet_identifier),
-            properties_bytes,
-            topic_bytes,
+            pack_properties(cast(Properties, properties)),
+            *map(pack_str16, topics),
         )
     )
 
-    return bytes(packet)
+    return pack_fixed_header(PacketType.UNSUBSCRIBE, 0x2, len(body)) + body
 
 
 def parse_unsubscribe_packet(
