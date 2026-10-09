@@ -1,4 +1,3 @@
-import itertools
 import struct
 from enum import IntEnum
 from typing import Any, Callable, List, Literal, Sequence, Tuple, TypedDict, cast
@@ -335,13 +334,8 @@ def pack_properties(properties: Properties) -> bytes:
         if code == Property.USER_PROPERTY:
             for value in cast(Sequence[Tuple[str, str]], prop_value):
                 data.append(code & 0xFF)
-
-                data.extend(
-                    itertools.chain(
-                        value_packer(value[0]),
-                        value_packer(value[1]),
-                    )
-                )
+                data += value_packer(value[0])
+                data += value_packer(value[1])
         else:
             data.append(code & 0xFF)
 

@@ -312,3 +312,44 @@ async def test_parse_publish_packet_with_qos_3():
 
     with pytest.raises(MalformedPacketError):
         parse_publish_packet(fixed_header, reader)
+
+
+@pytest.mark.parametrize(
+    "pack, parse",
+    (
+        (pack_puback_packet, parse_puback_packet),
+        (pack_pubrec_packet, parse_pubrec_packet),
+        (pack_pubrel_packet, parse_pubrel_packet),
+        (pack_pubcomp_packet, parse_pubcomp_packet),
+    ),
+)
+@pytest.mark.parametrize("reason_length", (100, 200, 400))
+def test_publish_response_with_long_properties(pack, parse, reason_length):
+    # the remaining length doesn't fit into one byte above 127
+    properties = {"reason_string": "x" * reason_length}
+
+    fixed_header, reader = split_packet(pack(7, 0x80, properties))
+    result = parse(fixed_header, reader)
+
+    assert fixed_header.length == 2 + 1 + 1 + 3 + reason_length + (reason_length > 124)
+    assert (result.packet_identifier, result.reason_code) == (7, 0x80)
+    assert result.properties == properties
+
+
+@pytest.mark.parametrize("qos", (0, 1, 2))
+def test_pack_and_parse_big_publish(qos):
+    payload = bytes(range(256)) * 64
+    properties = {"content_type": "application/octet-stream"}
+
+    data = pack_publish_packet(9, "a/b", payload, qos, True, False, properties)
+    fixed_header, reader = split_packet(data)
+    message = parse_publish_packet(fixed_header, reader)
+
+    assert (message.topic, message.payload, message.qos, message.retain) == (
+        "a/b",
+        payload,
+        qos,
+        1,
+    )
+    assert message.packet_identifier == (9 if qos else None)
+    assert message.properties == properties

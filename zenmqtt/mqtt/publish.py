@@ -1,7 +1,6 @@
-import itertools
 import struct
 from dataclasses import dataclass
-from typing import Optional, Sequence, Tuple, TypedDict, cast
+from typing import Any, Optional, Sequence, Tuple, TypedDict, cast
 
 from zenmqtt.exceptions import MalformedPacketError
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader, PacketType
@@ -52,28 +51,22 @@ def pack_publish_packet(
         raise ValueError(f"Invalid QoS: {qos}")
 
     packed_topic = pack_str16(topic)
-
-    payload_length = len(packed_topic) + len(payload)
-    properties_bytes = pack_properties(cast(Properties, properties))
-    payload_length += len(properties_bytes)
-
-    if qos:
-        payload_length += 2
+    packed_identifier = struct.pack("!H", packet_identifier) if qos else b""
+    packed_properties = pack_properties(cast(Properties, properties))
 
     fixed_header = pack_fixed_header(
         PacketType.PUBLISH,
         flags=(dup & 1) << 3 | (qos << 1) | retain & 1,
-        length=payload_length,
+        length=len(packed_topic)
+        + len(packed_identifier)
+        + len(packed_properties)
+        + len(payload),
     )
 
-    packet_payload = bytearray(packed_topic)
-
-    if qos:
-        packet_payload.extend(struct.pack("!H", packet_identifier))
-
-    packet_payload.extend(itertools.chain(properties_bytes, payload))
-
-    return fixed_header + bytes(packet_payload)
+    # the payload is copied once
+    return b"".join(
+        (fixed_header, packed_topic, packed_identifier, packed_properties, payload)
+    )
 
 
 @dataclass(frozen=True)
@@ -147,19 +140,9 @@ def parse_puback_packet(fixed_header: FixedHeader, reader: BytesReader) -> PubAc
 def pack_puback_packet(
     packet_identifier: int, reason_code: int, properties: PubackProperties
 ) -> bytes:
-    payload = bytearray()
-
-    payload.append(PacketType.PUBACK << 4)
-
-    packet_length, variable_header_payload = _pack_publish_response_variable_header(
-        packet_identifier, reason_code, cast(Properties, properties)
+    return _pack_publish_response_packet(
+        PacketType.PUBACK, 0x0, packet_identifier, reason_code, properties
     )
-
-    payload.extend(
-        itertools.chain(struct.pack("!B", packet_length), variable_header_payload)
-    )
-
-    return bytes(payload)
 
 
 @dataclass(frozen=True)
@@ -185,17 +168,9 @@ def parse_pubrec_packet(fixed_header: FixedHeader, reader: BytesReader) -> PubRe
 def pack_pubrec_packet(
     packet_identifier: int, reason_code: int, properties: PubrecProperties
 ) -> bytes:
-    payload = bytearray([PacketType.PUBREC << 4])
-
-    packet_length, variable_header_payload = _pack_publish_response_variable_header(
-        packet_identifier, reason_code, cast(Properties, properties)
+    return _pack_publish_response_packet(
+        PacketType.PUBREC, 0x0, packet_identifier, reason_code, properties
     )
-
-    payload.extend(
-        itertools.chain(struct.pack("!B", packet_length), variable_header_payload)
-    )
-
-    return bytes(payload)
 
 
 @dataclass(frozen=True)
@@ -222,17 +197,9 @@ def parse_pubrel_packet(fixed_header: FixedHeader, reader: BytesReader) -> PubRe
 def pack_pubrel_packet(
     packet_identifier: int, reason_code: int, properties: PubrelProperties
 ) -> bytes:
-    payload = bytearray([PacketType.PUBREL << 4 | 0x2])
-
-    packet_length, variable_header_payload = _pack_publish_response_variable_header(
-        packet_identifier, reason_code, cast(Properties, properties)
+    return _pack_publish_response_packet(
+        PacketType.PUBREL, 0x2, packet_identifier, reason_code, properties
     )
-
-    payload.extend(
-        itertools.chain(struct.pack("!B", packet_length), variable_header_payload)
-    )
-
-    return bytes(payload)
 
 
 @dataclass(frozen=True)
@@ -261,17 +228,9 @@ def parse_pubcomp_packet(
 def pack_pubcomp_packet(
     packet_identifier: int, reason_code: int, properties: PubcompProperties
 ) -> bytes:
-    payload = bytearray([PacketType.PUBCOMP << 4])
-
-    packet_length, variable_header_payload = _pack_publish_response_variable_header(
-        packet_identifier, reason_code, cast(Properties, properties)
+    return _pack_publish_response_packet(
+        PacketType.PUBCOMP, 0x0, packet_identifier, reason_code, properties
     )
-
-    payload.extend(
-        itertools.chain(struct.pack("!B", packet_length), variable_header_payload)
-    )
-
-    return bytes(payload)
 
 
 def _parse_publish_response_packet(
@@ -287,26 +246,23 @@ def _parse_publish_response_packet(
     return packet_identifier, reason_code, properties
 
 
-def _pack_publish_response_variable_header(
-    packet_identifier: int, reason_code: int, properties: Properties
-) -> Tuple[int, bytes]:
-    length = 2
+def _pack_publish_response_packet(
+    packet_type: PacketType,
+    flags: int,
+    packet_identifier: int,
+    reason_code: int,
+    properties: Any,
+) -> bytes:
+    variable_header = struct.pack("!H", packet_identifier)
 
-    variable_header_payload = bytearray(struct.pack("!H", packet_identifier))
-
+    # the reason code and properties may be omitted if they are empty
     if reason_code or properties:
-        properties_payload = b""
+        variable_header += struct.pack("!B", reason_code)
 
         if properties:
-            properties_payload = pack_properties(properties)
+            variable_header += pack_properties(cast(Properties, properties))
 
-        length += 1 + len(properties_payload)
-
-        variable_header_payload.extend(
-            itertools.chain(struct.pack("!B", reason_code), properties_payload)
-        )
-
-    return length, bytes(variable_header_payload)
+    return pack_fixed_header(packet_type, flags, len(variable_header)) + variable_header
 
 
 # PUBACK for QoS 1; PUBCOMP (or PUBREC with an error reason code) for QoS 2
