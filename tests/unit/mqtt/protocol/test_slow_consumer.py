@@ -13,6 +13,7 @@ from tests.unit.mqtt.protocol.helpers import (
     expect_publish,
     pack_publish,
     receive,
+    set_buffered_messages_warning,
     wait_for_connection_lost,
 )
 from zenmqtt.mqtt.packet import PacketType
@@ -54,7 +55,7 @@ async def test_control_packets_are_handled_while_queue_is_full():
 async def test_slow_consumer_is_reported(caplog):
     metrics = RecordingMetrics()
     protocol, _, messages = build_protocol(queue_size=1, metrics=metrics)
-    protocol._incoming.buffered_messages_warning = 2
+    set_buffered_messages_warning(protocol, 2)
     transport = await connect(protocol)
 
     with caplog.at_level(logging.WARNING, logger="zenmqtt.mqtt.protocol"):
@@ -78,7 +79,7 @@ async def test_slow_consumer_is_reported(caplog):
 async def test_buffer_size_is_reported_periodically():
     metrics = RecordingMetrics()
     protocol, _, _ = build_protocol(queue_size=1, metrics=metrics)
-    protocol._incoming.buffered_messages_warning = 2
+    set_buffered_messages_warning(protocol, 2)
     transport = await connect(protocol)
 
     await feed(transport, *(pack_publish(0, 0, b"%d" % i) for i in range(4)))

@@ -50,7 +50,12 @@ async def test_assigned_client_identifier_is_used_for_next_connect():
     assert client.client_id == "auto-42"
 
     transport.drop()
-    await asyncio.wait_for(client._protocol._read_loop_task, TIMEOUT)
+
+    async def wait_disconnected():
+        while client.is_connected:
+            await asyncio.sleep(0.001)
+
+    await asyncio.wait_for(wait_disconnected(), TIMEOUT)
 
     transport = FakeTransport()
     sent_client_id = await connect(client, transport, pack_connack())

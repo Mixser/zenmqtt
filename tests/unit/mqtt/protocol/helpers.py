@@ -148,9 +148,8 @@ async def connect_with_keep_alive(
     return transport
 
 
-async def wait_for_connection_lost(protocol: MQTTProtocol):
-    assert protocol._read_loop_task
-    await asyncio.wait_for(protocol._read_loop_task, TIMEOUT)
+async def wait_for_connection_lost(protocol: MQTTProtocol, timeout: float = TIMEOUT):
+    await asyncio.wait_for(protocol.wait_closed(), timeout)
 
 
 async def expect(transport: FakeTransport, packet_type: PacketType):
@@ -181,7 +180,7 @@ async def assert_nothing_leaked(transport: FakeTransport, session: InMemorySessi
     await asyncio.sleep(0)
 
     assert not transport.has_sent_packets()
-    assert session._acquired_packet_identifiers == set()
+    assert acquired_packet_identifiers(session) == set()
     assert await session.get_pending_outgoing_messages() == []
 
 
@@ -231,3 +230,36 @@ async def receive(messages: asyncio.Queue):
 async def expect_nothing_sent(transport: FakeTransport) -> None:
     await asyncio.sleep(0.01)
     assert not transport.has_sent_packets()
+
+
+# Internal state which tests check; it's read only here, so a refactoring of
+# the internals changes these functions, not the tests.
+
+
+def has_connection(protocol: MQTTProtocol) -> bool:
+    return protocol._context.connection is not None
+
+
+def keep_alive_task(protocol: MQTTProtocol) -> Optional[asyncio.Task]:
+    return protocol._keep_alive.task
+
+
+def ping_in_flight(protocol: MQTTProtocol) -> bool:
+    return protocol._keep_alive.ping_future is not None
+
+
+def incoming_inflight(protocol: MQTTProtocol) -> set[int]:
+    """Incoming QoS 1/2 messages which count to the client "Receive Maximum"."""
+    return set(protocol._incoming.inflight)
+
+
+def set_buffered_messages_warning(protocol: MQTTProtocol, value: int) -> None:
+    protocol._incoming.buffered_messages_warning = value
+
+
+def acquired_packet_identifiers(session: InMemorySession) -> set[int]:
+    return set(session._acquired_packet_identifiers)
+
+
+def free_packet_identifiers(session: InMemorySession) -> int:
+    return session._packet_identifiers_pool.qsize()

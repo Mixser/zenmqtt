@@ -11,6 +11,7 @@ from tests.unit.mqtt.protocol.helpers import (
     expect,
     expect_disconnect,
     expect_nothing_sent,
+    incoming_inflight,
     pack_publish,
     receive,
     wait_for_connection_lost,
@@ -123,7 +124,7 @@ async def test_rejected_message(qos):
         assert not await session.has_incoming_message(1)
 
     assert ack.reason_code == 0x99
-    assert protocol._incoming.inflight == set()
+    assert incoming_inflight(protocol) == set()
 
 
 async def test_not_acknowledged_messages_count_to_receive_maximum():
