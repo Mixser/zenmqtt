@@ -24,8 +24,6 @@ from zenmqtt.mqtt.publish import (
     parse_pubrec_packet,
 )
 
-pytestmark = pytest.mark.asyncio
-
 
 async def expect_puback(transport: FakeTransport):
     return parse_puback_packet(*await expect(transport, PacketType.PUBACK))

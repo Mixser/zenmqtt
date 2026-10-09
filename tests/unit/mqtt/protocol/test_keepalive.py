@@ -15,8 +15,6 @@ from tests.unit.mqtt.protocol.helpers import (
 from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
 from zenmqtt.mqtt.packet import PacketType
 
-pytestmark = pytest.mark.asyncio
-
 
 async def test_ping():
     protocol, _, _ = build_protocol()

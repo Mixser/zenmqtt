@@ -11,8 +11,6 @@ from zenmqtt.mqtt.connect import (
 )
 from zenmqtt.mqtt.packet import PacketType, split_packet
 
-pytestmark = pytest.mark.asyncio
-
 
 @pytest.mark.parametrize(
     "client_id, username, password, clean_session, keepalive, properties, expected_value",

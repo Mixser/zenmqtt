@@ -11,8 +11,6 @@ from zenmqtt.mqtt.subscribe import (
     parse_unsubscribe_packet,
 )
 
-pytestmark = pytest.mark.asyncio
-
 
 @pytest.mark.parametrize(
     "input, expected_result",

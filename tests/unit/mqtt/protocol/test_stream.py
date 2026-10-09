@@ -20,8 +20,6 @@ from zenmqtt.mqtt.packet import FixedHeader, PacketType
 from zenmqtt.mqtt.protocol.stream import PacketReader
 from zenmqtt.mqtt.publish import pack_publish_packet
 
-pytestmark = pytest.mark.asyncio
-
 PUBLISH = pack_publish_packet(0, "a/b", b"payload", 0, False, False, {})
 
 

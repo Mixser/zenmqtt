@@ -23,8 +23,6 @@ from zenmqtt.mqtt.publish import PubAckResult, pack_puback_packet, pack_publish_
 from zenmqtt.mqtt.subscribe import Subscription
 from zenmqtt.reconnect import ReconnectPolicy
 
-pytestmark = pytest.mark.asyncio
-
 URL = "fakebroker://broker"
 
 FAST = ReconnectPolicy(
