@@ -53,7 +53,7 @@ pip install "zenmqtt[otel] @ git+https://github.com/Mixser/zenmqtt"
 ```python
 import asyncio
 
-from zenmqtt.client import MQTTClient
+from zenmqtt import MQTTClient
 
 
 async def main():
@@ -98,8 +98,8 @@ await client.connect(
 )
 ```
 
-`connect()` returns the CONNACK (`ConnectionResult` with `result_code`, `flags`
-and server `properties`). If the first connect fails, the error is raised.
+`connect()` returns the CONNACK (`ConnectionResult` with `result_code`,
+`session_present` and server `properties`). If the first connect fails, the error is raised.
 
 ### Sessions and reconnect
 
@@ -109,7 +109,7 @@ broker must keep the session: use `clean_session=False` with
 `session_expiry_interval > 0`.
 
 ```python
-from zenmqtt.reconnect import ReconnectPolicy
+from zenmqtt import ReconnectPolicy
 
 client = MQTTClient(
     "my-client",
@@ -156,7 +156,7 @@ reconnects and ends when the client stops.
 ### Subscriptions
 
 ```python
-from zenmqtt.mqtt.subscribe import Subscription
+from zenmqtt import Subscription
 
 result = await client.subscribe(
     [
@@ -172,7 +172,7 @@ await client.unsubscribe(["alerts/#"])
 ### Will message and disconnect
 
 ```python
-from zenmqtt.mqtt.connect import WillMessage
+from zenmqtt import WillMessage
 
 will = WillMessage("devices/1/status", b"offline", qos=1, retain=True)
 await client.connect("tcp://localhost:1883", will=will)
@@ -194,7 +194,7 @@ available as `client.server_disconnect` and in `ConnectionLostError`.
 | `QoSNotSupportedError`, `PacketTooLargeError`, `FeatureNotSupportedError` | the operation breaks a limit of the broker from CONNACK (all are `ServerLimitError`); nothing is sent |
 | `ValueError` | invalid arguments, e.g. QoS 3 |
 
-All exceptions are in `zenmqtt.exceptions`. Protocol violations of the broker
+All exceptions can be imported from `zenmqtt`. Protocol violations of the broker
 (malformed packets, invalid topic aliases, ...) close the connection with the
 matching DISCONNECT reason code.
 
@@ -217,7 +217,7 @@ See [examples/opentelemetry_metrics.py](examples/opentelemetry_metrics.py).
 
 QoS 1/2 messages wait in the session until they are acknowledged. The default
 session is in memory; to keep messages across restarts of the application,
-subclass `zenmqtt.mqtt.session.BaseSession` and implement its storage methods.
+subclass `zenmqtt.BaseSession` and implement its storage methods.
 [examples/sqlite_session.py](examples/sqlite_session.py) stores the session in
 SQLite.
 

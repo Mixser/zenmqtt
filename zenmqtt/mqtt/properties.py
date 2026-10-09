@@ -4,7 +4,7 @@ from typing import Any, Callable, List, Literal, Sequence, Tuple, TypedDict, cas
 
 from zenmqtt.exceptions import MalformedPacketError
 from zenmqtt.mqtt.packet import BytesReader, PacketType
-from zenmqtt.mqtt.utils import pack_binaries, pack_str16, pack_variable_byte_integer
+from zenmqtt.mqtt.utils import pack_binary, pack_str16, pack_variable_byte_integer
 
 
 class Property(IntEnum):
@@ -258,13 +258,13 @@ _MAP_PROPERTY_PACKERS = {
     Property.MESSAGE_EXPIRY_INTERVAL: lambda x: struct.pack("!L", x),
     Property.CONTENT_TYPE: lambda x: pack_str16(x),
     Property.RESPONSE_TOPIC: lambda x: pack_str16(x),
-    Property.CORRELATION_DATA: lambda x: pack_binaries(x),
+    Property.CORRELATION_DATA: lambda x: pack_binary(x),
     Property.SUBSCRIPTION_IDENTIFIER: lambda x: pack_variable_byte_integer(x),
     Property.SESSION_EXPIRY_INTERVAL: lambda x: struct.pack("!L", x),
     Property.ASSIGNED_CLIENT_IDENTIFIER: lambda x: pack_str16(x),
     Property.SERVER_KEEP_ALIVE: lambda x: struct.pack("!H", x),
     Property.AUTHENTICATION_METHOD: lambda x: pack_str16(x),
-    Property.AUTHENTICATION_DATA: lambda x: pack_binaries(x),
+    Property.AUTHENTICATION_DATA: lambda x: pack_binary(x),
     Property.REQUEST_PROBLEM_INFORMATION: lambda x: struct.pack("!B", x),
     Property.WILL_DELAY_INTERVAL: lambda x: struct.pack("!L", x),
     Property.REQUEST_RESPONSE_INFORMATION: lambda x: struct.pack("!B", x),

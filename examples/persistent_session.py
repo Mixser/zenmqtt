@@ -12,10 +12,13 @@ import asyncio
 import logging
 import os
 
-from zenmqtt.client import MQTTClient
-from zenmqtt.exceptions import ConnectionLostError, SessionLostError
-from zenmqtt.mqtt.connect import ConnectionResult
-from zenmqtt.reconnect import ReconnectPolicy
+from zenmqtt import (
+    ConnectionLostError,
+    ConnectionResult,
+    MQTTClient,
+    ReconnectPolicy,
+    SessionLostError,
+)
 
 MQTT_URL = os.environ.get("MQTT_URL", "tcp://localhost:1883")
 MQTT_USERNAME = os.environ.get("MQTT_USERNAME")
@@ -30,8 +33,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 def on_connect(result: ConnectionResult) -> None:
-    # bit 0 of CONNACK flags is "session present"
-    print("connected, session present:", bool(result.flags & 0x01))
+    print("connected, session present:", result.session_present)
 
 
 def on_disconnect(exc: ConnectionLostError) -> None:

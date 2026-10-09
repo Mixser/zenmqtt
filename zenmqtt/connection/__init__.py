@@ -17,7 +17,7 @@ ConnectionFactory = Callable[
     [ParseResult, ConnectionOptions], Awaitable[MQTTConnectionTransport]
 ]
 
-_CONNECTIO_IMPLEMENTATION_MAP: dict[str, ConnectionFactory] = {
+_CONNECTION_IMPLEMENTATION_MAP: dict[str, ConnectionFactory] = {
     "tcp": build_tcp_connection_transport,
     "mqtt": build_tcp_connection_transport,
     "mqtts": build_tls_connection_transport,
@@ -29,7 +29,7 @@ _TLS_SCHEMES = {"mqtts", "ssl"}
 
 
 def register_implementation(scheme: str, factory: ConnectionFactory) -> None:
-    _CONNECTIO_IMPLEMENTATION_MAP[scheme] = factory
+    _CONNECTION_IMPLEMENTATION_MAP[scheme] = factory
 
 
 async def create_connection(
@@ -46,7 +46,7 @@ async def create_connection(
     if not parsed_url.hostname:
         raise ValueError(f"Invalid URL, host is missing: {url}")
 
-    if not (factory := _CONNECTIO_IMPLEMENTATION_MAP.get(parsed_url.scheme)):
+    if not (factory := _CONNECTION_IMPLEMENTATION_MAP.get(parsed_url.scheme)):
         raise ValueError(f"Unsupported URL scheme: {parsed_url.scheme}")
 
     options: ConnectionOptions = {}

@@ -80,9 +80,9 @@ class PublishResult:
         "properties",
         "topic",
     )
-    dup: int
+    dup: bool
     qos: int
-    retain: int
+    retain: bool
 
     packet_identifier: Optional[int]
     topic: str
@@ -94,9 +94,9 @@ class PublishResult:
 def parse_publish_packet(
     fixed_header: FixedHeader, reader: BytesReader
 ) -> PublishResult:
-    dup = (fixed_header.flags & 0x8) >> 3
+    dup = bool(fixed_header.flags & 0x8)
     qos = (fixed_header.flags & 0x6) >> 1
-    retain = fixed_header.flags & 0x01
+    retain = bool(fixed_header.flags & 0x01)
 
     if qos == 3:
         raise MalformedPacketError("PUBLISH with QoS 3")

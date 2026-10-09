@@ -5,10 +5,10 @@ from zenmqtt.mqtt.subscribe import (
     SubscribeResult,
     Subscription,
     UnsubscribeResult,
-    pack_subscription_packet,
+    pack_subscribe_packet,
     pack_unsubscribe_packet,
     parse_suback_packet,
-    parse_unsubscribe_packet,
+    parse_unsuback_packet,
 )
 
 
@@ -53,7 +53,7 @@ async def test_parse_unsubscribe_packet(input, expected_result):
     fixed_header, reader = split_packet(input)
     assert fixed_header.packet_type == PacketType.UNSUBACK
 
-    assert parse_unsubscribe_packet(fixed_header, reader) == expected_result
+    assert parse_unsuback_packet(fixed_header, reader) == expected_result
 
 
 @pytest.mark.parametrize(
@@ -85,8 +85,7 @@ async def test_parse_unsubscribe_packet(input, expected_result):
 )
 def test_pack_subscribe_packet(packet_identifier, topics, properties, expected_result):
     assert (
-        pack_subscription_packet(packet_identifier, topics, properties)
-        == expected_result
+        pack_subscribe_packet(packet_identifier, topics, properties) == expected_result
     )
 
 
@@ -145,7 +144,7 @@ def test_pack_unsubscribe_packet(
     ),
 )
 def test_pack_subscribe_packet_with_options(topics, expected_result):
-    assert pack_subscription_packet(1, topics, {}) == expected_result
+    assert pack_subscribe_packet(1, topics, {}) == expected_result
 
 
 @pytest.mark.parametrize(
@@ -159,4 +158,4 @@ def test_pack_subscribe_packet_with_options(topics, expected_result):
 )
 def test_pack_subscribe_packet_with_invalid_options(subscription):
     with pytest.raises(ValueError):
-        pack_subscription_packet(1, [subscription], {})
+        pack_subscribe_packet(1, [subscription], {})

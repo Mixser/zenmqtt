@@ -7,12 +7,12 @@ def pack_variable_byte_integer(value: int) -> bytes:
     result = bytearray()
 
     while True:
-        value, reminder = divmod(value, 0x80)
+        value, remainder = divmod(value, 0x80)
 
         if value > 0:
-            reminder |= 0x80
+            remainder |= 0x80
 
-        result.extend(struct.pack("!B", reminder))
+        result.extend(struct.pack("!B", remainder))
 
         if value <= 0:
             break
@@ -22,10 +22,10 @@ def pack_variable_byte_integer(value: int) -> bytes:
 
 def pack_str16(value: str) -> bytes:
     encoded = value.encode()
-    return pack_binaries(encoded)
+    return pack_binary(encoded)
 
 
-def pack_binaries(value: bytes) -> bytes:
+def pack_binary(value: bytes) -> bytes:
     return struct.pack(f"!H{len(value)}s", len(value), value)
 
 

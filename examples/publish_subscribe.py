@@ -5,7 +5,7 @@ import asyncio
 import logging
 import os
 
-from zenmqtt.client import MQTTClient
+from zenmqtt import MQTTClient
 
 MQTT_URL = os.environ.get("MQTT_URL", "tcp://localhost:1883")
 MQTT_USERNAME = os.environ.get("MQTT_USERNAME")
