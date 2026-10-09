@@ -107,11 +107,11 @@ percent between runs).
 | scenario | client | QoS | msg/s | p50 ms | p95 ms | p99 ms | note |
 |---|---|---|---:|---:|---:|---:|---|
 | in-memory receive | zenmqtt | 0 | 181,509 | | | | no metrics |
-| in-memory receive | zenmqtt | 0 | 53,249 | | | | opentelemetry |
+| in-memory receive | zenmqtt | 0 | 87,789 | | | | opentelemetry |
 | in-memory receive | zenmqtt | 1 | 114,661 | | | | no metrics |
-| in-memory receive | zenmqtt | 1 | 36,723 | | | | opentelemetry |
+| in-memory receive | zenmqtt | 1 | 57,012 | | | | opentelemetry |
 | in-memory receive | zenmqtt | 2 | 111,875 | | | | no metrics |
-| in-memory receive | zenmqtt | 2 | 34,887 | | | | opentelemetry |
+| in-memory receive | zenmqtt | 2 | 56,692 | | | | opentelemetry |
 | publish | zenmqtt | 0 | 67,496 | | | | |
 | publish | zenmqtt | 1 | 21,548 | 3.47 | 4.18 | 22.64 | |
 | publish | zenmqtt | 2 | 14,648 | 5.71 | 6.63 | 21.98 | |
@@ -163,10 +163,11 @@ Same machine, `make bench-codec`:
   60 seconds: Mosquitto keeps at most 1000 QoS 1/2 messages per client
   (`max_queued_messages`) and drops the rest when the subscriber is slower.
   zenmqtt received all messages.
-- **OpenTelemetry metrics** cost about 70% of the in-memory receive
-  throughput now that parsing is fast (181k -> 53k msg/s for QoS 0). "no
-  metrics" runs with the default `MetricsCollector`, whose hooks do nothing;
-  their own cost isn't measured separately.
+- **OpenTelemetry metrics** halve the in-memory receive throughput (178k ->
+  88k msg/s for QoS 0): every measurement has a fixed cost in the SDK, and
+  each message needs 2 (QoS 0) or 3 (QoS 1/2) of them. "no metrics" runs with
+  the default `MetricsCollector`, whose hooks do nothing; their own cost isn't
+  measured separately.
 - **Packing big payloads** is slow: a PUBLISH of 16 KiB takes 93 µs to pack
   but only 4 µs to parse, because `pack_publish_packet` copies the payload byte
   by byte (`bytearray.extend(itertools.chain(...))`).

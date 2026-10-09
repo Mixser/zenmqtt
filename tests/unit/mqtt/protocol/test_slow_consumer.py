@@ -65,9 +65,10 @@ async def test_slow_consumer_is_reported(caplog):
         # 1 in the queue, 1 waits to be put, the rest in the buffer
         await feed(transport, *(pack_publish(0, 0, b"%d" % i) for i in range(6)))
 
-    # nothing is dropped, the buffer size is reported above the threshold
-    assert metrics.get("on_messages_buffered") == [(2,), (3,), (4,)]
-    # the warning is rate-limited
+    # nothing is dropped; the size is reported when the buffer reaches the
+    # threshold, the next reports are rate-limited
+    assert metrics.get("on_messages_buffered") == [(2,)]
+    # the warning is rate-limited too
     assert caplog.text.count("slow_consumer") == 1
 
     assert [(await receive(messages)).payload for _ in range(6)] == [
@@ -75,7 +76,23 @@ async def test_slow_consumer_is_reported(caplog):
     ]
 
     # reported once more when the buffer falls below the threshold
-    assert metrics.get("on_messages_buffered")[3:] == [(3,), (2,), (1,)]
+    assert metrics.get("on_messages_buffered") == [(2,), (1,)]
+
+
+async def test_buffer_size_is_reported_periodically():
+    metrics = RecordingMetrics()
+    protocol, _, _ = build_protocol(queue_size=1, metrics=metrics)
+    protocol._incoming.buffered_messages_warning = 2
+    transport = await connect(protocol)
+
+    await feed(transport, *(pack_publish(0, 0, b"%d" % i) for i in range(4)))
+    assert metrics.get("on_messages_buffered") == [(2,)]
+
+    # the buffer is still above the threshold after the report interval
+    await asyncio.sleep(0.15)
+    await feed(transport, pack_publish(0, 0, b"4"))
+
+    assert metrics.get("on_messages_buffered") == [(2,), (3,)]
 
 
 async def test_acks_keep_the_order_with_duplicates():

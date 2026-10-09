@@ -45,8 +45,9 @@ class MetricsCollector:
     def on_messages_buffered(self, count: int) -> None:
         """
         Number of incoming messages which wait for the application, reported
-        while it's at or above the warning threshold of the client (the
-        application reads messages too slowly) and once when it falls below
+        when it reaches the warning threshold of the client (the application
+        reads messages too slowly), then at most every 0.1 s while it's above,
+        and once when it falls below
         """
 
     def on_send_quota_wait(self, duration: float) -> None:
