@@ -230,8 +230,8 @@ metrics.
 ## Performance
 
 [benchmarks/](benchmarks/README.md) measures the receive path in memory,
-packing, publish and end-to-end delivery through a broker, compared with
-aiomqtt. Every pull request gets a performance report against `main`, and the
+publish and end-to-end delivery through a broker, compared with aiomqtt, and
+packing and parsing of packets with pytest-benchmark. Every pull request gets a performance report against `main`, and the
 history of `main` is at https://mixser.github.io/zenmqtt/perf/.
 
 ## Development
@@ -242,6 +242,7 @@ make fmt                  # black, isort
 make lint                 # black, flake8, mypy
 make test                 # pytest with coverage
 make bench                # benchmarks, a broker is needed for some scenarios
+make bench-codec          # micro-benchmarks of packing and parsing
 ```
 
 The examples and broker benchmarks need an MQTT 5 broker, e.g.:

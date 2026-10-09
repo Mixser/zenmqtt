@@ -40,3 +40,8 @@ test/unit:
 .PHONY: bench
 bench:
 	@poetry run python -m benchmarks.run $(ARGS)
+
+# micro-benchmarks of packing and parsing (pytest-benchmark)
+.PHONY: bench-codec
+bench-codec:
+	@poetry run pytest benchmarks/codec --benchmark-only $(ARGS)

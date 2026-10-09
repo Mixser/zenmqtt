@@ -57,6 +57,8 @@ jobs:
             --messages 20000 \
             --json results.json
           poetry run python -m benchmarks.history results.json > history.json
+          poetry run pytest benchmarks/codec -q -p no:cacheprovider \
+            --benchmark-only --benchmark-json codec.json
 
       - name: Store the results
         uses: benchmark-action/github-action-benchmark@v1
@@ -69,5 +71,18 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
           # report only: history and charts, no alerts
+          comment-on-alert: false
+          fail-on-alert: false
+
+      - name: Store the codec results
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: zenmqtt codec (Python ${{ matrix.python-version }})
+          tool: pytest
+          output-file-path: codec.json
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: perf
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
           comment-on-alert: false
           fail-on-alert: false

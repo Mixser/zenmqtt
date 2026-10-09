@@ -23,7 +23,7 @@ from benchmarks import scenarios
 from benchmarks.clients import available_clients
 from benchmarks.stats import Result, format_table
 
-SCENARIOS = ("in-memory", "pack", "publish", "end-to-end")
+SCENARIOS = ("in-memory", "publish", "end-to-end")
 
 
 def parse_args() -> argparse.Namespace:
@@ -129,14 +129,6 @@ async def main() -> None:
                         label="opentelemetry",
                     ),
                 )
-
-    if "pack" in selected:
-        for qos in args.qos:
-
-            async def pack(qos=qos) -> Result:
-                return scenarios.pack_publish(args.messages, args.payload, qos)
-
-            await measure(results, pack)
 
     for scenario, run in (
         ("publish", scenarios.publish),
