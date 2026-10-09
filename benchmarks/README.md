@@ -69,7 +69,7 @@ report is written to `--output-dir` as `report.md` and `results.json`.
   as a comment of the pull request (one comment, updated on every push). It's
   a report only, the check doesn't fail on a slowdown.
 - **History** (`.github/workflows/perf-history.yml`): every push to `main` runs
-  all scenarios on Python 3.12, 3.13, 3.14 and 3.15 and stores the results on
+  all scenarios on Python 3.12, 3.13 and 3.14 and stores the results on
   the `gh-pages` branch with
   [github-action-benchmark](https://github.com/benchmark-action/github-action-benchmark).
   Charts: **https://mixser.github.io/zenmqtt/perf/** (one chart per scenario
