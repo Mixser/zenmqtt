@@ -4,11 +4,11 @@ TEST_UNIT=$(TEST)/unit
 
 .PHONY: fmt/black
 fmt/black:
-	@poetry run black $(SOURCE) $(TEST)
+	@poetry run black $(SOURCE) $(TEST) benchmarks
 
 .PHONY: fmt/isort
 fmt/isort:
-	@poetry run isort --profile black $(SOURCE) $(TEST)
+	@poetry run isort --profile black $(SOURCE) $(TEST) benchmarks
 	
 .PHONY: fmt
 fmt: fmt/black fmt/isort
@@ -35,3 +35,8 @@ test:
 .PHONY: test/unit
 test/unit:
 	@poetry run pytest --disable-warnings --cov=$(SOURCE) $(TEST_UNIT)
+
+# needs a broker for publish and end-to-end: MQTT_URL=tcp://host:port make bench
+.PHONY: bench
+bench:
+	@poetry run python -m benchmarks.run $(ARGS)

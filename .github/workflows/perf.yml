@@ -1,0 +1,91 @@
+# Compares performance of a pull request with its base branch on the same
+# machine (benchmarks/compare.py). The report is shown in the job summary and
+# uploaded as an artifact; perf-comment.yml posts it to the pull request.
+#
+# This workflow runs code of the pull request, so it has only read access.
+name: perf
+
+on:
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # the merge commit of the pull request into the current base
+      - name: Checkout the pull request
+        uses: actions/checkout@v7
+        with:
+          path: head
+          fetch-depth: 2
+
+      # its first parent: the only difference between both sides is the
+      # pull request
+      - name: Checkout the base
+        run: git -C head worktree add ../base HEAD^1
+
+      - name: Install poetry
+        run: pipx install poetry
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: "poetry"
+          cache-dependency-path: head/poetry.lock
+
+      - name: Install dependencies
+        working-directory: head
+        run: |
+          poetry env use python
+          poetry install
+
+      - name: Start Mosquitto
+        run: |
+          docker run -d --name mosquitto -p 1883:1883 eclipse-mosquitto:2 \
+            mosquitto -c /mosquitto-no-auth.conf
+          timeout 30 bash -c 'until (echo > /dev/tcp/localhost/1883) 2>/dev/null; do sleep 1; done'
+
+      - name: Compare
+        working-directory: head
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          base_sha=$(git rev-parse --short HEAD^1)
+          head_sha=$(git rev-parse --short HEAD)
+          poetry run python -m benchmarks.compare \
+            --base ../base \
+            --head . \
+            --base-label "main ${base_sha}" \
+            --head-label "#${PR_NUMBER} merged ${head_sha}" \
+            --scenarios in-memory,pack,publish,end-to-end \
+            --url tcp://localhost:1883 \
+            --rounds 10 \
+            --output-dir ../perf-report
+
+      - name: Job summary
+        run: cat perf-report/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save the pull request number
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          echo "$PR_NUMBER" > perf-report/pr-number
+          echo "$HEAD_SHA" > perf-report/head-sha
+
+      - name: Upload the report
+        uses: actions/upload-artifact@v7
+        with:
+          name: perf-report
+          path: perf-report
+          retention-days: 30

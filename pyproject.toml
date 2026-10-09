@@ -22,6 +22,14 @@ pytest-asyncio = "^0.21.1"
 pytest-cov = "^4.1.0"
 opentelemetry-sdk = "^1.45.1"
 
+
+# benchmarks only: poetry install --with bench
+[tool.poetry.group.bench]
+optional = true
+
+[tool.poetry.group.bench.dependencies]
+aiomqtt = "^2.5"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

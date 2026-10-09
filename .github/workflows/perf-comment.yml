@@ -1,0 +1,73 @@
+# Posts the report of perf.yml to the pull request, or updates the previous
+# report. It's a separate workflow, so code of the pull request never runs
+# with a token which can write comments: this one only reads the report.
+name: perf-comment
+
+on:
+  workflow_run:
+    workflows: [ "perf" ]
+    types: [ completed ]
+
+permissions:
+  pull-requests: write
+  actions: read
+
+jobs:
+  comment:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the report
+        uses: actions/download-artifact@v8
+        with:
+          name: perf-report
+          path: perf-report
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Post or update the comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          marker='<!-- zenmqtt-perf-report -->'
+          report=perf-report/report.md
+
+          # the artifact comes from pull request code: don't trust the number,
+          # find the pull request by the commit the workflow ran for
+          pr=$(gh pr list --repo "$REPO" --state open --search "$RUN_HEAD_SHA" \
+                 --json number,headRefOid \
+                 --jq ".[] | select(.headRefOid == \"$RUN_HEAD_SHA\") | .number" | head -1)
+
+          if [[ ! "$pr" =~ ^[0-9]+$ ]]; then
+            echo "No open pull request for $RUN_HEAD_SHA"
+            exit 0
+          fi
+
+          if [ "$(cat perf-report/pr-number)" != "$pr" ]; then
+            echo "The report is for another pull request"
+            exit 1
+          fi
+
+          if ! head -1 "$report" | grep -qF "$marker"; then
+            echo "Unexpected report format"
+            exit 1
+          fi
+
+          # GitHub limits comments to 65536 characters
+          if [ "$(wc -c < "$report")" -gt 60000 ]; then
+            echo "The report is too big"
+            exit 1
+          fi
+
+          comment_id=$(gh api "repos/$REPO/issues/$pr/comments" --paginate \
+                         --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -1)
+
+          if [ -n "$comment_id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$comment_id" -F "body=@$report"
+          else
+            gh api -X POST "repos/$REPO/issues/$pr/comments" -F "body=@$report"
+          fi
