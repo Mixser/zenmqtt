@@ -91,14 +91,16 @@ def test_packets(metrics, reader):
 
     data = collect(reader)
 
+    # histograms of sizes: count is the number of packets, sum of bytes
     [(attributes, sent)] = data["zenmqtt.packets.sent"]
-    assert attributes["mqtt.packet.type"] == "PUBLISH" and sent.value == 2
+    assert attributes["mqtt.packet.type"] == "PUBLISH"
+    assert (sent.count, sent.sum) == (2, 15)
+    # bytes buckets, not the default ones
+    assert sent.explicit_bounds[0] == 16
 
-    [(_, sent_bytes)] = data["zenmqtt.bytes.sent"]
-    assert sent_bytes.value == 15
-
-    [(attributes, received_bytes)] = data["zenmqtt.bytes.received"]
-    assert attributes["mqtt.packet.type"] == "PUBACK" and received_bytes.value == 4
+    [(attributes, received)] = data["zenmqtt.packets.received"]
+    assert attributes["mqtt.packet.type"] == "PUBACK"
+    assert (received.count, received.sum) == (1, 4)
 
 
 def test_received_messages(metrics, reader):

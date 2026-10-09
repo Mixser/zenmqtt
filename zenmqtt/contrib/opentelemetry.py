@@ -18,6 +18,9 @@ from zenmqtt.mqtt.packet import PacketType
 from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE
 
 # recommended by the semantic conventions for durations in seconds
+# packet sizes in bytes
+_SIZE_BUCKETS = (16, 64, 256, 1024, 4096, 16384, 65536, 262144, 1048576)
+
 _DURATION_BUCKETS = (
     0.005,
     0.01,
@@ -86,26 +89,39 @@ class OpenTelemetryMetrics(MetricsCollector):
             unit="{connection}",
             description="Number of closed connections",
         )
-        self._sent_packets = meter.create_counter(
+        # one histogram instead of counters of packets and bytes: every
+        # measurement has a fixed cost in the SDK, and a histogram gives both,
+        # the number of packets (count) and of bytes (sum)
+        self._sent_packets = meter.create_histogram(
             "zenmqtt.packets.sent",
-            unit="{packet}",
-            description="Number of sent packets",
+            unit="By",
+            description="Sizes of sent packets: count of packets, sum of bytes",
+            explicit_bucket_boundaries_advisory=_SIZE_BUCKETS,
         )
-        self._received_packets = meter.create_counter(
+        self._received_packets = meter.create_histogram(
             "zenmqtt.packets.received",
-            unit="{packet}",
-            description="Number of received packets",
-        )
-        self._sent_bytes = meter.create_counter(
-            "zenmqtt.bytes.sent",
             unit="By",
-            description="Number of sent bytes",
+            description="Sizes of received packets: count of packets, sum of bytes",
+            explicit_bucket_boundaries_advisory=_SIZE_BUCKETS,
         )
-        self._received_bytes = meter.create_counter(
-            "zenmqtt.bytes.received",
-            unit="By",
-            description="Number of received bytes",
-        )
+
+        # attributes are built once, not for every measurement
+        self._packet_attributes: dict[PacketType, dict[str, AttributeValue]] = {
+            packet_type: {**self._attributes, "mqtt.packet.type": packet_type.name}
+            for packet_type in PacketType
+        }
+        self._received_attributes: dict[int, dict[str, AttributeValue]] = {
+            qos: {
+                **self._attributes,
+                "messaging.operation.name": "receive",
+                "messaging.operation.type": "receive",
+                "mqtt.qos": qos,
+            }
+            for qos in (0, 1, 2)
+        }
+        self._published_attributes: dict[
+            tuple[int, int], dict[str, AttributeValue]
+        ] = {}
         self._buffered_messages = meter.create_gauge(
             "zenmqtt.messages.buffered",
             unit="{message}",
@@ -167,35 +183,26 @@ class OpenTelemetryMetrics(MetricsCollector):
         )
 
     def on_packet_sent(self, packet_type: PacketType, size: int) -> None:
-        attributes = {**self._attributes, "mqtt.packet.type": packet_type.name}
-
-        self._sent_packets.add(1, attributes)
-        self._sent_bytes.add(size, attributes)
+        self._sent_packets.record(size, self._packet_attributes[packet_type])
 
     def on_packet_received(self, packet_type: PacketType, size: int) -> None:
-        attributes = {**self._attributes, "mqtt.packet.type": packet_type.name}
-
-        self._received_packets.add(1, attributes)
-        self._received_bytes.add(size, attributes)
+        self._received_packets.record(size, self._packet_attributes[packet_type])
 
     def on_publish_completed(self, qos: int, reason_code: int, duration: float) -> None:
-        attributes = {
-            **self._with_reason_code(reason_code),
-            "messaging.operation.name": "publish",
-            "messaging.operation.type": "send",
-            "mqtt.qos": qos,
-        }
+        if (attributes := self._published_attributes.get((qos, reason_code))) is None:
+            attributes = {
+                **self._with_reason_code(reason_code),
+                "messaging.operation.name": "publish",
+                "messaging.operation.type": "send",
+                "mqtt.qos": qos,
+            }
+            self._published_attributes[(qos, reason_code)] = attributes
 
         self._operation_duration.record(duration, attributes)
         self._sent_messages.add(1, attributes)
 
     def on_message_received(self, qos: int, duplicate: bool) -> None:
-        attributes = {
-            **self._attributes,
-            "messaging.operation.name": "receive",
-            "messaging.operation.type": "receive",
-            "mqtt.qos": qos,
-        }
+        attributes = self._received_attributes[qos]
 
         if duplicate:
             self._duplicated_messages.add(1, attributes)

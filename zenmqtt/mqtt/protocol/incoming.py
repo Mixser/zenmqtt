@@ -34,6 +34,9 @@ DEFAULT_RECEIVE_MAXIMUM: Final[int] = 2**16 - 1
 BUFFERED_MESSAGES_WARNING: Final[int] = 1000
 # seconds between warnings about a slow application
 _BUFFERED_WARNING_INTERVAL: Final[float] = 10.0
+# seconds between reports of the buffer size to metrics while it's above the
+# warning threshold; it changes with every message, the last value is enough
+_BUFFERED_REPORT_INTERVAL: Final[float] = 0.1
 
 
 @dataclass(slots=True)
@@ -100,6 +103,7 @@ class IncomingFlow:
         self.buffered_messages_warning = BUFFERED_MESSAGES_WARNING
         # the buffer reached the warning threshold
         self._buffer_overloaded = False
+        self._buffered_reported_at: Optional[float] = None
         self._buffered_warning_at: Optional[float] = None
 
     @property
@@ -329,22 +333,31 @@ class IncomingFlow:
 
     def _report_buffer_size(self) -> None:
         """
-        Reports the size of the buffer while it's at or above the warning
-        threshold, and once when it falls below it.
+        Reports the size of the buffer when it reaches the warning threshold,
+        then at most every _BUFFERED_REPORT_INTERVAL while it's above, and once
+        when it falls below.
         """
         size = len(self._buffer)
         overloaded = size >= self.buffered_messages_warning
 
-        if not overloaded and not self._buffer_overloaded:
-            return
-
-        self._buffer_overloaded = overloaded
-        self._context.metrics.on_messages_buffered(size)
-
         if not overloaded:
+            if self._buffer_overloaded:
+                self._buffer_overloaded = False
+                self._context.metrics.on_messages_buffered(size)
+
             return
 
         now = self._context.now()
+
+        if (
+            not self._buffer_overloaded
+            or self._buffered_reported_at is None
+            or now - self._buffered_reported_at >= _BUFFERED_REPORT_INTERVAL
+        ):
+            self._context.metrics.on_messages_buffered(size)
+            self._buffered_reported_at = now
+
+        self._buffer_overloaded = True
 
         if (
             self._buffered_warning_at is None
