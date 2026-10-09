@@ -1,6 +1,6 @@
 import pytest
 
-from gmqtt.mqtt.session import InMemorySession, OutgoingMessage, OutgoingMessageState
+from zenmqtt.mqtt.session import InMemorySession, OutgoingMessage, OutgoingMessageState
 
 pytestmark = pytest.mark.asyncio
 

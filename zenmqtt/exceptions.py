@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from gmqtt.mqtt.connect import DisconnectResult
+    from zenmqtt.mqtt.connect import DisconnectResult
 
 
 class MQTTConnectionError(Exception):

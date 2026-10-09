@@ -1,6 +1,6 @@
 import struct
 
-from gmqtt.mqtt.packet import AsyncDataSequence, PacketType
+from zenmqtt.mqtt.packet import AsyncDataSequence, PacketType
 
 
 async def read(stream: AsyncDataSequence, size: int) -> bytes:

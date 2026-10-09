@@ -5,10 +5,14 @@ from logging import getLogger
 from ssl import SSLContext
 from typing import Any, Awaitable, Callable, Optional, Sequence, TypeVar
 
-from gmqtt.connection import create_connection
-from gmqtt.exceptions import ConnectionLostError, MQTTConnectionError, NotConnectedError
-from gmqtt.metrics import MetricsCollector
-from gmqtt.mqtt.connect import (
+from zenmqtt.connection import create_connection
+from zenmqtt.exceptions import (
+    ConnectionLostError,
+    MQTTConnectionError,
+    NotConnectedError,
+)
+from zenmqtt.metrics import MetricsCollector
+from zenmqtt.mqtt.connect import (
     SESSION_PRESENT_FLAG,
     ConnectionResult,
     ConnectProperties,
@@ -16,11 +20,15 @@ from gmqtt.mqtt.connect import (
     DisconnectResult,
     WillMessage,
 )
-from gmqtt.mqtt.protocol import MQTTProtocol
-from gmqtt.mqtt.publish import PublishAcknowledgement, PublishProperties, PublishResult
-from gmqtt.mqtt.reason_codes import FAILURE_REASON_CODE
-from gmqtt.mqtt.session import MQTTSession, build_default_session
-from gmqtt.mqtt.subscribe import (
+from zenmqtt.mqtt.protocol import MQTTProtocol
+from zenmqtt.mqtt.publish import (
+    PublishAcknowledgement,
+    PublishProperties,
+    PublishResult,
+)
+from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE
+from zenmqtt.mqtt.session import MQTTSession, build_default_session
+from zenmqtt.mqtt.subscribe import (
     SubscribeResult,
     Subscription,
     SubscriptionProperties,
@@ -29,7 +37,7 @@ from gmqtt.mqtt.subscribe import (
     UnsubscribeResult,
     to_subscription,
 )
-from gmqtt.reconnect import (
+from zenmqtt.reconnect import (
     DEFAULT_RECONNECT_POLICY,
     NON_RETRYABLE_CONNACK_REASON_CODES,
     NON_RETRYABLE_DISCONNECT_REASON_CODES,
@@ -95,7 +103,7 @@ class MQTTClient:
         """
         :param session: storage of in-flight QoS 1/2 messages, in-memory by default
         :param metrics: receives events of the client to build metrics,
-            e.g. gmqtt.contrib.opentelemetry.OpenTelemetryMetrics
+            e.g. zenmqtt.contrib.opentelemetry.OpenTelemetryMetrics
         :param reconnect: automatic reconnect after the connection is lost,
             None disables it; see connect() for details
         """
@@ -312,7 +320,7 @@ class MQTTClient:
         With automatic reconnect, the call waits while the client reconnects
         and is repeated if the connection is lost before SUBACK.
 
-        :param topics: (topic, qos) pairs, or gmqtt.mqtt.subscribe.Subscription to set
+        :param topics: (topic, qos) pairs, or zenmqtt.mqtt.subscribe.Subscription to set
             MQTT 5 subscription options (no_local, retain_as_published,
             retain_handling)
         :raises ValueError: invalid QoS or subscription options

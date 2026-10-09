@@ -4,11 +4,6 @@ import logging
 
 import pytest
 
-from gmqtt.connection import MQTTConnection
-from gmqtt.exceptions import ConnectionLostError, NotConnectedError
-from gmqtt.mqtt.connect import DisconnectResult, WillMessage, parse_disconnect_packet
-from gmqtt.mqtt.packet import PacketType
-from gmqtt.mqtt.utils import read
 from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
     FakeTransport,
@@ -19,6 +14,11 @@ from tests.unit.mqtt.protocol.helpers import (
     pack_connack,
     wait_for_connection_lost,
 )
+from zenmqtt.connection import MQTTConnection
+from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
+from zenmqtt.mqtt.connect import DisconnectResult, WillMessage, parse_disconnect_packet
+from zenmqtt.mqtt.packet import PacketType
+from zenmqtt.mqtt.utils import read
 
 pytestmark = pytest.mark.asyncio
 
@@ -108,7 +108,7 @@ async def test_discarded_pending_messages_are_logged(caplog):
     with pytest.raises(ConnectionLostError):
         await task
 
-    with caplog.at_level(logging.WARNING, logger="gmqtt.mqtt.protocol"):
+    with caplog.at_level(logging.WARNING, logger="zenmqtt.mqtt.protocol"):
         await connect(protocol, session_present=False)
 
     assert "discard_pending_messages count:1" in caplog.text
@@ -118,7 +118,7 @@ async def test_discarded_pending_messages_are_logged(caplog):
 async def test_nothing_is_logged_when_session_is_empty(caplog):
     protocol, _, _ = build_protocol()
 
-    with caplog.at_level(logging.WARNING, logger="gmqtt.mqtt.protocol"):
+    with caplog.at_level(logging.WARNING, logger="zenmqtt.mqtt.protocol"):
         await connect(protocol, session_present=False)
 
     assert "discard_pending_messages" not in caplog.text

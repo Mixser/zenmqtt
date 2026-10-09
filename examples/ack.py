@@ -13,14 +13,14 @@ import asyncio
 import logging
 import os
 
-from gmqtt.client import MQTTClient
-from gmqtt.mqtt.publish import PublishResult
+from zenmqtt.client import MQTTClient
+from zenmqtt.mqtt.publish import PublishResult
 
 MQTT_URL = os.environ.get("MQTT_URL", "tcp://localhost:1883")
 MQTT_USERNAME = os.environ.get("MQTT_USERNAME")
 MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
 
-TOPIC = "gmqtt/examples/ack"
+TOPIC = "zenmqtt/examples/ack"
 
 # reason code of a rejected message, the server doesn't send it again
 PAYLOAD_FORMAT_INVALID = 0x99
@@ -37,7 +37,7 @@ async def process(message: PublishResult) -> None:
 
 
 async def main():
-    client = MQTTClient("gmqtt-example-ack")
+    client = MQTTClient("zenmqtt-example-ack")
 
     if MQTT_USERNAME:
         client.authorize(MQTT_USERNAME, MQTT_PASSWORD)

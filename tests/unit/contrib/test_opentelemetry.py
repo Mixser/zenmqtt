@@ -1,13 +1,13 @@
 import pytest
 
-from gmqtt.mqtt.packet import PacketType
+from zenmqtt.mqtt.packet import PacketType
 
 pytest.importorskip("opentelemetry.sdk")
 
 from opentelemetry.sdk.metrics import MeterProvider  # noqa: E402
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader  # noqa: E402
 
-from gmqtt.contrib.opentelemetry import OpenTelemetryMetrics  # noqa: E402
+from zenmqtt.contrib.opentelemetry import OpenTelemetryMetrics  # noqa: E402
 
 
 @pytest.fixture
@@ -70,15 +70,15 @@ def test_connections(metrics, reader):
 
     data = collect(reader)
 
-    [(_, active)] = data["gmqtt.connections.active"]
+    [(_, active)] = data["zenmqtt.connections.active"]
     assert active.value == 0
 
-    [(attributes, closed)] = data["gmqtt.connections.closed"]
-    assert attributes["gmqtt.connection.lost"] is True and closed.value == 1
+    [(attributes, closed)] = data["zenmqtt.connections.closed"]
+    assert attributes["zenmqtt.connection.lost"] is True and closed.value == 1
 
     connects = {
         attributes["mqtt.reason_code"]: (attributes, point)
-        for attributes, point in data["gmqtt.connect.duration"]
+        for attributes, point in data["zenmqtt.connect.duration"]
     }
     assert connects.keys() == {0, 0x86}
     assert connects[0x86][0]["error.type"] == "0x86"
@@ -91,13 +91,13 @@ def test_packets(metrics, reader):
 
     data = collect(reader)
 
-    [(attributes, sent)] = data["gmqtt.packets.sent"]
+    [(attributes, sent)] = data["zenmqtt.packets.sent"]
     assert attributes["mqtt.packet.type"] == "PUBLISH" and sent.value == 2
 
-    [(_, sent_bytes)] = data["gmqtt.bytes.sent"]
+    [(_, sent_bytes)] = data["zenmqtt.bytes.sent"]
     assert sent_bytes.value == 15
 
-    [(attributes, received_bytes)] = data["gmqtt.bytes.received"]
+    [(attributes, received_bytes)] = data["zenmqtt.bytes.received"]
     assert attributes["mqtt.packet.type"] == "PUBACK" and received_bytes.value == 4
 
 
@@ -110,7 +110,7 @@ def test_received_messages(metrics, reader):
     [(_, consumed)] = data["messaging.client.consumed.messages"]
     assert consumed.value == 1
 
-    [(_, duplicated)] = data["gmqtt.messages.duplicated"]
+    [(_, duplicated)] = data["zenmqtt.messages.duplicated"]
     assert duplicated.value == 1
 
 
@@ -140,12 +140,12 @@ def test_other_events(metrics, reader):
 
     data = collect(reader)
 
-    assert data["gmqtt.messages.buffered"][0][1].value == 1500
+    assert data["zenmqtt.messages.buffered"][0][1].value == 1500
 
-    assert data["gmqtt.reconnect.attempts"][0][1].value == 2
-    assert data["gmqtt.reconnect.give_ups"][0][1].value == 1
+    assert data["zenmqtt.reconnect.attempts"][0][1].value == 2
+    assert data["zenmqtt.reconnect.give_ups"][0][1].value == 1
 
-    assert data["gmqtt.send_quota.wait.duration"][0][1].sum == 0.5
-    assert data["gmqtt.messages.resent"][0][1].value == 3
-    assert data["gmqtt.ping.duration"][0][1].count == 1
-    assert data["gmqtt.ping.timeouts"][0][1].value == 1
+    assert data["zenmqtt.send_quota.wait.duration"][0][1].sum == 0.5
+    assert data["zenmqtt.messages.resent"][0][1].value == 3
+    assert data["zenmqtt.ping.duration"][0][1].count == 1
+    assert data["zenmqtt.ping.timeouts"][0][1].value == 1

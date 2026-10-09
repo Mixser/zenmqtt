@@ -2,13 +2,13 @@ from typing import AsyncGenerator, Sequence
 
 import pytest
 
-from gmqtt.mqtt.packet import (
+from tests.unit.mqtt.utils import build_async_generator
+from zenmqtt.mqtt.packet import (
     FixedHeader,
     PacketType,
     parse_fixed_header,
     parse_variable_byte_integer,
 )
-from tests.unit.mqtt.utils import build_async_generator
 
 pytestmark = pytest.mark.asyncio
 

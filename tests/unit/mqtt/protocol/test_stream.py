@@ -4,9 +4,6 @@ import logging
 
 import pytest
 
-from gmqtt.connection import MQTTConnection
-from gmqtt.mqtt.packet import PacketType
-from gmqtt.mqtt.protocol.stream import build_data_sequence
 from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
     FakeTransport,
@@ -16,6 +13,9 @@ from tests.unit.mqtt.protocol.helpers import (
     pack_connack,
     wait_for_connection_lost,
 )
+from zenmqtt.connection import MQTTConnection
+from zenmqtt.mqtt.packet import PacketType
+from zenmqtt.mqtt.protocol.stream import build_data_sequence
 
 pytestmark = pytest.mark.asyncio
 
@@ -91,7 +91,7 @@ async def test_read_error_closes_the_connection(caplog):
     transport.feed(pack_connack())
     await asyncio.wait_for(task, TIMEOUT)
 
-    with caplog.at_level(logging.ERROR, logger="gmqtt.mqtt.protocol"):
+    with caplog.at_level(logging.ERROR, logger="zenmqtt.mqtt.protocol"):
         transport.fail(ConnectionResetError("reset by peer"))
         await wait_for_connection_lost(protocol)
 

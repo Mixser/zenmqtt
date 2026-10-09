@@ -5,15 +5,6 @@ import struct
 import pytest
 import pytest_asyncio
 
-from gmqtt.client import MQTTClient
-from gmqtt.connection import register_implementation
-from gmqtt.exceptions import ConnectionLostError, NotConnectedError, SessionLostError
-from gmqtt.mqtt.connect import pack_disconnect_packet
-from gmqtt.mqtt.packet import PacketType
-from gmqtt.mqtt.publish import PubAckResult, pack_puback_packet, pack_publish_packet
-from gmqtt.mqtt.subscribe import Subscription
-from gmqtt.mqtt.utils import read
-from gmqtt.reconnect import ReconnectPolicy
 from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
     FakeTransport,
@@ -23,6 +14,15 @@ from tests.unit.mqtt.protocol.helpers import (
     pack_connack,
     pack_suback,
 )
+from zenmqtt.client import MQTTClient
+from zenmqtt.connection import register_implementation
+from zenmqtt.exceptions import ConnectionLostError, NotConnectedError, SessionLostError
+from zenmqtt.mqtt.connect import pack_disconnect_packet
+from zenmqtt.mqtt.packet import PacketType
+from zenmqtt.mqtt.publish import PubAckResult, pack_puback_packet, pack_publish_packet
+from zenmqtt.mqtt.subscribe import Subscription
+from zenmqtt.mqtt.utils import read
+from zenmqtt.reconnect import ReconnectPolicy
 
 pytestmark = pytest.mark.asyncio
 
@@ -535,7 +535,7 @@ async def test_reconnect_disabled(broker):
 async def test_warning_without_session_expiry(broker, caplog):
     client = build_client()
 
-    with caplog.at_level(logging.WARNING, logger="gmqtt.client"):
+    with caplog.at_level(logging.WARNING, logger="zenmqtt.client"):
         await connect(client, broker, properties={})
 
     assert "session_expiry_interval" in caplog.text
