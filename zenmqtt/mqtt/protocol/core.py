@@ -55,7 +55,7 @@ class MQTTProtocol:
 
     def __init__(
         self,
-        messages: asyncio.Queue,
+        messages: asyncio.Queue[Optional[PublishResult]],
         session: MQTTSession,
         metrics: Optional[MetricsCollector] = None,
         wait_across_reconnect: bool = False,
@@ -107,7 +107,7 @@ class MQTTProtocol:
         """True between successful CONNACK and loss of the connection."""
         return self._context.connected
 
-    def set_connection(self, connection: MQTTConnection):
+    def set_connection(self, connection: MQTTConnection) -> None:
         self._context.connection = connection
         self._connection_future = asyncio.get_running_loop().create_future()
         self._disconnecting = False
@@ -191,7 +191,7 @@ class MQTTProtocol:
 
     async def disconnect(
         self, reason: int, properties: Optional[DisconnectProperties] = None
-    ):
+    ) -> None:
         connection = self._context.connection
         assert connection
 

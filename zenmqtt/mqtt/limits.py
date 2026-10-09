@@ -16,6 +16,10 @@ from zenmqtt.mqtt.subscribe import (
 
 SHARED_SUBSCRIPTION_PREFIX: Final[str] = "$share/"
 
+# "Receive Maximum" of the client or the server if it isn't sent in CONNECT
+# or CONNACK (MQTT 5, 3.1.2.11.3 and 3.2.2.3.3)
+DEFAULT_RECEIVE_MAXIMUM: Final[int] = 2**16 - 1
+
 
 @dataclass(frozen=True)
 class ServerLimits:

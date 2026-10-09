@@ -2,6 +2,8 @@ import pytest
 
 from zenmqtt.mqtt.packet import BytesReader
 from zenmqtt.mqtt.properties import (
+    _MAP_PROPERTY_PACKERS,
+    _MAP_PROPERTY_PARSER,
     _NAME_TO_CODE_MAP,
     Property,
     pack_properties,
@@ -30,3 +32,8 @@ async def test_pack_and_parse_properties(properties, expected_value):
     assert packed == expected_value
 
     assert parse_properties(BytesReader(packed)) == properties
+
+
+def test_every_property_has_parser_and_packer():
+    assert set(_MAP_PROPERTY_PARSER) == set(Property)
+    assert set(_MAP_PROPERTY_PACKERS) == set(Property)
