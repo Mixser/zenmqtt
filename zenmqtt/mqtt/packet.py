@@ -143,10 +143,12 @@ class BytesReader:
         return value
 
     def read_uint16(self) -> int:
-        return _UINT16.unpack(self.read(2))[0]
+        value: int = _UINT16.unpack(self.read(2))[0]
+        return value
 
     def read_uint32(self) -> int:
-        return _UINT32.unpack(self.read(4))[0]
+        value: int = _UINT32.unpack(self.read(4))[0]
+        return value
 
     def read_variable_byte_integer(self) -> int:
         try:

@@ -12,6 +12,7 @@ from zenmqtt.exceptions import (
     TopicAliasInvalidError,
 )
 from zenmqtt.mqtt.connect import ConnectProperties
+from zenmqtt.mqtt.limits import DEFAULT_RECEIVE_MAXIMUM
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader
 from zenmqtt.mqtt.protocol.context import ProtocolContext
 from zenmqtt.mqtt.publish import (
@@ -27,8 +28,6 @@ from zenmqtt.mqtt.session import MQTTSession, PacketIdentifier
 
 logger = getLogger(__name__)
 
-# default value of "Receive Maximum" of the client
-DEFAULT_RECEIVE_MAXIMUM: Final[int] = 2**16 - 1
 # number of messages waiting for delivery to the messages queue, starting from
 # which the client warns about a slow application
 BUFFERED_MESSAGES_WARNING: Final[int] = 1000
@@ -79,7 +78,7 @@ class IncomingFlow:
         self,
         context: ProtocolContext,
         session: MQTTSession,
-        messages: asyncio.Queue,
+        messages: asyncio.Queue[Optional[PublishResult]],
         wait_across_reconnect: bool,
     ) -> None:
         self._context = context

@@ -1,6 +1,6 @@
 import struct
 from enum import IntEnum
-from typing import Any, Callable, List, Literal, Sequence, Tuple, TypedDict, cast
+from typing import Any, Callable, List, Sequence, Tuple, TypedDict, cast
 
 from zenmqtt.exceptions import MalformedPacketError
 from zenmqtt.mqtt.packet import BytesReader, PacketType
@@ -52,65 +52,8 @@ class Property(IntEnum):
     SHARED_SUBSCRIPTION_AVAILABLE = 0x2A
 
 
-PropertyName = Literal[
-    "payload_format_indicator",
-    "message_expiry_interval",
-    "content_type",
-    "response_topic",
-    "correlation_data",
-    "subscription_identifier",
-    "session_expiry_interval",
-    "assigned_client_identifier",
-    "server_keep_alive",
-    "authentication_method",
-    "authentication_data",
-    "request_problem_information",
-    "will_delay_interval",
-    "request_response_information",
-    "response_information",
-    "server_reference",
-    "reason_string",
-    "receive_maximum",
-    "topic_alias_maximum",
-    "topic_alias",
-    "maximum_qos",
-    "retain_available",
-    "user_property",
-    "maximum_packet_size",
-    "wildcard_subscription_available",
-    "subscription_identifier_available",
-    "shared_subscription_available",
-]
-
-_NAME_TO_CODE_MAP = {
-    "payload_format_indicator": 1,
-    "message_expiry_interval": 2,
-    "content_type": 3,
-    "response_topic": 8,
-    "correlation_data": 9,
-    "subscription_identifier": 11,
-    "session_expiry_interval": 17,
-    "assigned_client_identifier": 18,
-    "server_keep_alive": 19,
-    "authentication_method": 21,
-    "authentication_data": 22,
-    "request_problem_information": 23,
-    "will_delay_interval": 24,
-    "request_response_information": 25,
-    "response_information": 26,
-    "server_reference": 28,
-    "reason_string": 31,
-    "receive_maximum": 33,
-    "topic_alias_maximum": 34,
-    "topic_alias": 35,
-    "maximum_qos": 36,
-    "retain_available": 37,
-    "user_property": 38,
-    "maximum_packet_size": 39,
-    "wildcard_subscription_available": 40,
-    "subscription_identifier_available": 41,
-    "shared_subscription_available": 42,
-}
+# names of properties are the names of Property members in lower case
+_NAME_TO_CODE_MAP: dict[str, Property] = {prop.name.lower(): prop for prop in Property}
 
 
 _AVAILABLE_PROPERTIES_PER_TYPE = {
@@ -223,7 +166,7 @@ def _read_user_property(reader: BytesReader) -> Tuple[str, str]:
 
 
 _MAP_PROPERTY_PARSER: dict[Property, Callable[[BytesReader], Any]] = {
-    Property.PAYLOAD_FORMAT_INDICATOR: BytesReader.read_byte,
+    Property.PAYLOAD_FORMAT_INDICATOR: _read_bool,
     Property.MESSAGE_EXPIRY_INTERVAL: BytesReader.read_uint32,
     Property.CONTENT_TYPE: BytesReader.read_str,
     Property.RESPONSE_TOPIC: BytesReader.read_str,
@@ -253,34 +196,38 @@ _MAP_PROPERTY_PARSER: dict[Property, Callable[[BytesReader], Any]] = {
 }
 
 
-_MAP_PROPERTY_PACKERS = {
-    Property.PAYLOAD_FORMAT_INDICATOR: lambda x: struct.pack("!B", x),
-    Property.MESSAGE_EXPIRY_INTERVAL: lambda x: struct.pack("!L", x),
-    Property.CONTENT_TYPE: lambda x: pack_str16(x),
-    Property.RESPONSE_TOPIC: lambda x: pack_str16(x),
-    Property.CORRELATION_DATA: lambda x: pack_binaries(x),
-    Property.SUBSCRIPTION_IDENTIFIER: lambda x: pack_variable_byte_integer(x),
-    Property.SESSION_EXPIRY_INTERVAL: lambda x: struct.pack("!L", x),
-    Property.ASSIGNED_CLIENT_IDENTIFIER: lambda x: pack_str16(x),
-    Property.SERVER_KEEP_ALIVE: lambda x: struct.pack("!H", x),
-    Property.AUTHENTICATION_METHOD: lambda x: pack_str16(x),
-    Property.AUTHENTICATION_DATA: lambda x: pack_binaries(x),
-    Property.REQUEST_PROBLEM_INFORMATION: lambda x: struct.pack("!B", x),
-    Property.WILL_DELAY_INTERVAL: lambda x: struct.pack("!L", x),
-    Property.REQUEST_RESPONSE_INFORMATION: lambda x: struct.pack("!B", x),
-    Property.RESPONSE_INFORMATION: lambda x: pack_str16(x),
-    Property.SERVER_REFERENCE: lambda x: pack_str16(x),
-    Property.REASON_STRING: lambda x: pack_str16(x),
-    Property.RECEIVE_MAXIMUM: lambda x: struct.pack("!H", x),
-    Property.TOPIC_ALIAS_MAXIMUM: lambda x: struct.pack("!H", x),
-    Property.TOPIC_ALIAS: lambda x: struct.pack("!H", x),
-    Property.MAXIMUM_QOS: lambda x: struct.pack("!B", x),
-    Property.RETAIN_AVAILABLE: lambda x: struct.pack("!B", x),
-    Property.USER_PROPERTY: lambda x: pack_str16(x),
-    Property.MAXIMUM_PACKET_SIZE: lambda x: struct.pack("!L", x),
-    Property.WILDCARD_SUBSCRIPTION_AVAILABLE: lambda x: struct.pack("!B", x),
-    Property.SUBSCRIPTION_IDENTIFIER_AVAILABLE: lambda x: struct.pack("!B", x),
-    Property.SHARED_SUBSCRIPTION_AVAILABLE: lambda x: struct.pack("!B", x),
+_pack_uint8: Callable[[int], bytes] = struct.Struct("!B").pack
+_pack_uint16: Callable[[int], bytes] = struct.Struct("!H").pack
+_pack_uint32: Callable[[int], bytes] = struct.Struct("!L").pack
+
+_MAP_PROPERTY_PACKERS: dict[Property, Callable[[Any], bytes]] = {
+    Property.PAYLOAD_FORMAT_INDICATOR: _pack_uint8,
+    Property.MESSAGE_EXPIRY_INTERVAL: _pack_uint32,
+    Property.CONTENT_TYPE: pack_str16,
+    Property.RESPONSE_TOPIC: pack_str16,
+    Property.CORRELATION_DATA: pack_binaries,
+    Property.SUBSCRIPTION_IDENTIFIER: pack_variable_byte_integer,
+    Property.SESSION_EXPIRY_INTERVAL: _pack_uint32,
+    Property.ASSIGNED_CLIENT_IDENTIFIER: pack_str16,
+    Property.SERVER_KEEP_ALIVE: _pack_uint16,
+    Property.AUTHENTICATION_METHOD: pack_str16,
+    Property.AUTHENTICATION_DATA: pack_binaries,
+    Property.REQUEST_PROBLEM_INFORMATION: _pack_uint8,
+    Property.WILL_DELAY_INTERVAL: _pack_uint32,
+    Property.REQUEST_RESPONSE_INFORMATION: _pack_uint8,
+    Property.RESPONSE_INFORMATION: pack_str16,
+    Property.SERVER_REFERENCE: pack_str16,
+    Property.REASON_STRING: pack_str16,
+    Property.RECEIVE_MAXIMUM: _pack_uint16,
+    Property.TOPIC_ALIAS_MAXIMUM: _pack_uint16,
+    Property.TOPIC_ALIAS: _pack_uint16,
+    Property.MAXIMUM_QOS: _pack_uint8,
+    Property.RETAIN_AVAILABLE: _pack_uint8,
+    Property.USER_PROPERTY: pack_str16,
+    Property.MAXIMUM_PACKET_SIZE: _pack_uint32,
+    Property.WILDCARD_SUBSCRIPTION_AVAILABLE: _pack_uint8,
+    Property.SUBSCRIPTION_IDENTIFIER_AVAILABLE: _pack_uint8,
+    Property.SHARED_SUBSCRIPTION_AVAILABLE: _pack_uint8,
 }
 
 
@@ -295,7 +242,8 @@ def parse_properties(reader: BytesReader) -> Properties:
         raise MalformedPacketError("Properties are longer than the packet")
 
     end = reader.remaining() - length
-    properties: Properties = {}
+    # filled by names of the enum, which are the keys of Properties
+    properties: dict[str, Any] = {}
     user_properties: List[Tuple[str, str]] = []
 
     while reader.remaining() > end:
@@ -311,7 +259,7 @@ def parse_properties(reader: BytesReader) -> Properties:
         if prop == Property.USER_PROPERTY:
             user_properties.append(value)
         else:
-            properties[cast(PropertyName, prop.name.lower())] = value
+            properties[prop.name.lower()] = value
 
     if reader.remaining() != end:
         raise MalformedPacketError("Properties don't match their length")
@@ -319,7 +267,7 @@ def parse_properties(reader: BytesReader) -> Properties:
     if user_properties:
         properties["user_property"] = user_properties
 
-    return properties
+    return cast(Properties, properties)
 
 
 def pack_properties(properties: Properties) -> bytes:
@@ -329,7 +277,7 @@ def pack_properties(properties: Properties) -> bytes:
 
     for prop_name, prop_value in properties.items():
         code = _NAME_TO_CODE_MAP[prop_name]
-        value_packer = _MAP_PROPERTY_PACKERS[Property(code)]
+        value_packer = _MAP_PROPERTY_PACKERS[code]
 
         if code == Property.USER_PROPERTY:
             for value in cast(Sequence[Tuple[str, str]], prop_value):

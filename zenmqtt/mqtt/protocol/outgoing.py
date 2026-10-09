@@ -2,7 +2,7 @@ import asyncio
 from collections import deque
 from dataclasses import dataclass
 from logging import getLogger
-from typing import Final, Optional, cast
+from typing import Optional, cast
 
 from zenmqtt.connection import MQTTConnection
 from zenmqtt.exceptions import (
@@ -12,6 +12,7 @@ from zenmqtt.exceptions import (
     SessionLostError,
 )
 from zenmqtt.mqtt.connect import ConnectionResult
+from zenmqtt.mqtt.limits import DEFAULT_RECEIVE_MAXIMUM
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader
 from zenmqtt.mqtt.protocol.context import ProtocolContext
 from zenmqtt.mqtt.publish import (
@@ -32,9 +33,6 @@ from zenmqtt.mqtt.session import (
 )
 
 logger = getLogger(__name__)
-
-# default value of "Receive Maximum" if the server doesn't send it
-DEFAULT_RECEIVE_MAXIMUM: Final[int] = 2**16 - 1
 
 
 class _SendQuota:
