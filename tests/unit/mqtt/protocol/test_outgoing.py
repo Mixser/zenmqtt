@@ -3,18 +3,6 @@ import asyncio
 
 import pytest
 
-from gmqtt.exceptions import ConnectionLostError, NotConnectedError
-from gmqtt.mqtt.packet import PacketType
-from gmqtt.mqtt.publish import (
-    PubAckResult,
-    PubCompResult,
-    PubRecResult,
-    pack_puback_packet,
-    pack_pubcomp_packet,
-    pack_pubrec_packet,
-    parse_pubrel_packet,
-)
-from gmqtt.mqtt.session import OutgoingMessageState
 from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
     build_protocol,
@@ -25,6 +13,18 @@ from tests.unit.mqtt.protocol.helpers import (
     topic_alias_maximum,
     wait_for_connection_lost,
 )
+from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
+from zenmqtt.mqtt.packet import PacketType
+from zenmqtt.mqtt.publish import (
+    PubAckResult,
+    PubCompResult,
+    PubRecResult,
+    pack_puback_packet,
+    pack_pubcomp_packet,
+    pack_pubrec_packet,
+    parse_pubrel_packet,
+)
+from zenmqtt.mqtt.session import OutgoingMessageState
 
 pytestmark = pytest.mark.asyncio
 

@@ -1,8 +1,8 @@
 """
-OpenTelemetry metrics for the client, requires `pip install gmqtt[otel]`.
+OpenTelemetry metrics for the client, requires `pip install zenmqtt[otel]`.
 
 Messaging metrics follow the OpenTelemetry semantic conventions, MQTT
-specific metrics use the `gmqtt.` prefix. Metrics can be exported with any
+specific metrics use the `zenmqtt.` prefix. Metrics can be exported with any
 OpenTelemetry exporter: OTLP, Prometheus, console, etc.
 
 Topics are not used as attributes: the number of topics isn't limited, so it
@@ -13,9 +13,9 @@ from typing import Mapping, Optional, Sequence
 from opentelemetry.metrics import Meter, get_meter
 from opentelemetry.util.types import AttributeValue
 
-from gmqtt.metrics import MetricsCollector
-from gmqtt.mqtt.packet import PacketType
-from gmqtt.mqtt.reason_codes import FAILURE_REASON_CODE
+from zenmqtt.metrics import MetricsCollector
+from zenmqtt.mqtt.packet import PacketType
+from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE
 
 # recommended by the semantic conventions for durations in seconds
 _DURATION_BUCKETS = (
@@ -46,7 +46,7 @@ class OpenTelemetryMetrics(MetricsCollector):
         :param meter: meter to create instruments, the global one by default
         :param attributes: added to every measurement, e.g. a client name
         """
-        meter = meter or get_meter("gmqtt")
+        meter = meter or get_meter("zenmqtt")
 
         self._attributes: dict[str, AttributeValue] = {
             "messaging.system": "mqtt",
@@ -71,43 +71,43 @@ class OpenTelemetryMetrics(MetricsCollector):
         )
 
         self._connect_duration = meter.create_histogram(
-            "gmqtt.connect.duration",
+            "zenmqtt.connect.duration",
             unit="s",
             description="Time from sending CONNECT to receiving CONNACK",
             explicit_bucket_boundaries_advisory=_DURATION_BUCKETS,
         )
         self._active_connections = meter.create_up_down_counter(
-            "gmqtt.connections.active",
+            "zenmqtt.connections.active",
             unit="{connection}",
             description="Number of established connections",
         )
         self._closed_connections = meter.create_counter(
-            "gmqtt.connections.closed",
+            "zenmqtt.connections.closed",
             unit="{connection}",
             description="Number of closed connections",
         )
         self._sent_packets = meter.create_counter(
-            "gmqtt.packets.sent",
+            "zenmqtt.packets.sent",
             unit="{packet}",
             description="Number of sent packets",
         )
         self._received_packets = meter.create_counter(
-            "gmqtt.packets.received",
+            "zenmqtt.packets.received",
             unit="{packet}",
             description="Number of received packets",
         )
         self._sent_bytes = meter.create_counter(
-            "gmqtt.bytes.sent",
+            "zenmqtt.bytes.sent",
             unit="By",
             description="Number of sent bytes",
         )
         self._received_bytes = meter.create_counter(
-            "gmqtt.bytes.received",
+            "zenmqtt.bytes.received",
             unit="By",
             description="Number of received bytes",
         )
         self._buffered_messages = meter.create_gauge(
-            "gmqtt.messages.buffered",
+            "zenmqtt.messages.buffered",
             unit="{message}",
             description=(
                 "Number of incoming messages waiting for the application, "
@@ -115,39 +115,39 @@ class OpenTelemetryMetrics(MetricsCollector):
             ),
         )
         self._send_quota_wait = meter.create_histogram(
-            "gmqtt.send_quota.wait.duration",
+            "zenmqtt.send_quota.wait.duration",
             unit="s",
             description='Time a publish waited because of the server "Receive Maximum"',
             explicit_bucket_boundaries_advisory=_DURATION_BUCKETS,
         )
         self._resent_messages = meter.create_counter(
-            "gmqtt.messages.resent",
+            "zenmqtt.messages.resent",
             unit="{message}",
             description="Number of pending messages re-sent after reconnect",
         )
         self._duplicated_messages = meter.create_counter(
-            "gmqtt.messages.duplicated",
+            "zenmqtt.messages.duplicated",
             unit="{message}",
             description="Number of duplicated QoS 2 messages, not delivered again",
         )
         self._ping_duration = meter.create_histogram(
-            "gmqtt.ping.duration",
+            "zenmqtt.ping.duration",
             unit="s",
             description="Time from sending PINGREQ to receiving PINGRESP",
             explicit_bucket_boundaries_advisory=_DURATION_BUCKETS,
         )
         self._reconnect_attempts = meter.create_counter(
-            "gmqtt.reconnect.attempts",
+            "zenmqtt.reconnect.attempts",
             unit="{attempt}",
             description="Number of automatic reconnect attempts",
         )
         self._reconnect_give_ups = meter.create_counter(
-            "gmqtt.reconnect.give_ups",
+            "zenmqtt.reconnect.give_ups",
             unit="{event}",
             description="Number of times automatic reconnect stopped for good",
         )
         self._ping_timeouts = meter.create_counter(
-            "gmqtt.ping.timeouts",
+            "zenmqtt.ping.timeouts",
             unit="{timeout}",
             description="Number of connections closed by keep alive",
         )
@@ -163,7 +163,7 @@ class OpenTelemetryMetrics(MetricsCollector):
     def on_connection_closed(self, lost: bool) -> None:
         self._active_connections.add(-1, self._attributes)
         self._closed_connections.add(
-            1, {**self._attributes, "gmqtt.connection.lost": lost}
+            1, {**self._attributes, "zenmqtt.connection.lost": lost}
         )
 
     def on_packet_sent(self, packet_type: PacketType, size: int) -> None:

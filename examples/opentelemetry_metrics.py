@@ -1,7 +1,7 @@
 """
 Metrics: collect statistics of the client with OpenTelemetry.
 
-Requires `pip install gmqtt[otel] opentelemetry-sdk`. The example prints
+Requires `pip install zenmqtt[otel] opentelemetry-sdk`. The example prints
 metrics to the console; for Prometheus use PrometheusMetricReader from
 `opentelemetry-exporter-prometheus`, for OTLP use OTLPMetricExporter from
 `opentelemetry-exporter-otlp`.
@@ -15,14 +15,14 @@ from opentelemetry.sdk.metrics.export import (
     PeriodicExportingMetricReader,
 )
 
-from gmqtt.client import MQTTClient
-from gmqtt.contrib.opentelemetry import OpenTelemetryMetrics
+from zenmqtt.client import MQTTClient
+from zenmqtt.contrib.opentelemetry import OpenTelemetryMetrics
 
 MQTT_URL = os.environ.get("MQTT_URL", "tcp://localhost:1883")
 MQTT_USERNAME = os.environ.get("MQTT_USERNAME")
 MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
 
-TOPIC = "gmqtt/examples/opentelemetry-metrics"
+TOPIC = "zenmqtt/examples/opentelemetry-metrics"
 
 
 async def main():
@@ -33,9 +33,9 @@ async def main():
     provider = MeterProvider(metric_readers=[reader])
 
     metrics = OpenTelemetryMetrics(
-        provider.get_meter("gmqtt"), attributes={"client.name": "example"}
+        provider.get_meter("zenmqtt"), attributes={"client.name": "example"}
     )
-    client = MQTTClient("gmqtt-example-opentelemetry-metrics", metrics=metrics)
+    client = MQTTClient("zenmqtt-example-opentelemetry-metrics", metrics=metrics)
 
     if MQTT_USERNAME:
         client.authorize(MQTT_USERNAME, MQTT_PASSWORD)

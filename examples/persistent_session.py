@@ -12,16 +12,16 @@ import asyncio
 import logging
 import os
 
-from gmqtt.client import MQTTClient
-from gmqtt.exceptions import ConnectionLostError, SessionLostError
-from gmqtt.mqtt.connect import ConnectionResult
-from gmqtt.reconnect import ReconnectPolicy
+from zenmqtt.client import MQTTClient
+from zenmqtt.exceptions import ConnectionLostError, SessionLostError
+from zenmqtt.mqtt.connect import ConnectionResult
+from zenmqtt.reconnect import ReconnectPolicy
 
 MQTT_URL = os.environ.get("MQTT_URL", "tcp://localhost:1883")
 MQTT_USERNAME = os.environ.get("MQTT_USERNAME")
 MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
 
-TOPIC = "gmqtt/examples/persistent-session"
+TOPIC = "zenmqtt/examples/persistent-session"
 
 # the server keeps the session for an hour after the connection is lost
 SESSION_EXPIRY_INTERVAL = 3600
@@ -40,7 +40,7 @@ def on_disconnect(exc: ConnectionLostError) -> None:
 
 async def main():
     client = MQTTClient(
-        "gmqtt-example-persistent-session",
+        "zenmqtt-example-persistent-session",
         reconnect=ReconnectPolicy(initial_delay=1, max_delay=10),
     )
     client.on_connect = on_connect

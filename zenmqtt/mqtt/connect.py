@@ -2,14 +2,14 @@ import struct
 from dataclasses import dataclass
 from typing import Final, Optional, Sequence, Tuple, TypedDict, cast
 
-from gmqtt.mqtt.packet import (
+from zenmqtt.mqtt.packet import (
     AsyncDataSequence,
     FixedHeader,
     PacketType,
     parse_variable_byte_integer,
 )
-from gmqtt.mqtt.properties import Properties, pack_properties, parse_properties
-from gmqtt.mqtt.utils import pack_binaries, pack_fixed_header, pack_str16, read
+from zenmqtt.mqtt.properties import Properties, pack_properties, parse_properties
+from zenmqtt.mqtt.utils import pack_binaries, pack_fixed_header, pack_str16, read
 
 
 class ConnackProperties(TypedDict, total=False):

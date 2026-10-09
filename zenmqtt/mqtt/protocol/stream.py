@@ -1,8 +1,8 @@
 import asyncio
 from typing import Final
 
-from gmqtt.connection import MQTTConnection
-from gmqtt.mqtt.packet import AsyncDataSequence
+from zenmqtt.connection import MQTTConnection
+from zenmqtt.mqtt.packet import AsyncDataSequence
 
 BUFFER_SIZE: Final[int] = 1024
 READ_AT_MOST_BYTES: Final[int] = 128

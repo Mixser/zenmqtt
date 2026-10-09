@@ -3,10 +3,10 @@ from asyncio import Task
 from logging import getLogger
 from typing import Awaitable, Callable, Optional, Sequence
 
-from gmqtt.connection import MQTTConnection
-from gmqtt.exceptions import ConnectionLostError, ProtocolError
-from gmqtt.metrics import MetricsCollector
-from gmqtt.mqtt.connect import (
+from zenmqtt.connection import MQTTConnection
+from zenmqtt.exceptions import ConnectionLostError, ProtocolError
+from zenmqtt.metrics import MetricsCollector
+from zenmqtt.mqtt.connect import (
     SESSION_PRESENT_FLAG,
     ConnectionResult,
     ConnectProperties,
@@ -18,30 +18,34 @@ from gmqtt.mqtt.connect import (
     parse_connack_packet,
     parse_disconnect_packet,
 )
-from gmqtt.mqtt.limits import ServerLimits
-from gmqtt.mqtt.packet import (
+from zenmqtt.mqtt.limits import ServerLimits
+from zenmqtt.mqtt.packet import (
     AsyncDataSequence,
     FixedHeader,
     PacketType,
     parse_fixed_header,
 )
-from gmqtt.mqtt.protocol.commands import Commands
-from gmqtt.mqtt.protocol.context import ProtocolContext
-from gmqtt.mqtt.protocol.incoming import IncomingFlow
-from gmqtt.mqtt.protocol.keepalive import KeepAlive
-from gmqtt.mqtt.protocol.outgoing import OutgoingFlow
-from gmqtt.mqtt.protocol.stream import build_data_sequence
-from gmqtt.mqtt.publish import PublishAcknowledgement, PublishProperties, PublishResult
-from gmqtt.mqtt.reason_codes import FAILURE_REASON_CODE
-from gmqtt.mqtt.session import MQTTSession
-from gmqtt.mqtt.subscribe import (
+from zenmqtt.mqtt.protocol.commands import Commands
+from zenmqtt.mqtt.protocol.context import ProtocolContext
+from zenmqtt.mqtt.protocol.incoming import IncomingFlow
+from zenmqtt.mqtt.protocol.keepalive import KeepAlive
+from zenmqtt.mqtt.protocol.outgoing import OutgoingFlow
+from zenmqtt.mqtt.protocol.stream import build_data_sequence
+from zenmqtt.mqtt.publish import (
+    PublishAcknowledgement,
+    PublishProperties,
+    PublishResult,
+)
+from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE
+from zenmqtt.mqtt.session import MQTTSession
+from zenmqtt.mqtt.subscribe import (
     SubscribeResult,
     SubscriptionProperties,
     SubscriptionRequest,
     UnsubscribeProperties,
     UnsubscribeResult,
 )
-from gmqtt.mqtt.utils import pack_variable_byte_integer, read
+from zenmqtt.mqtt.utils import pack_variable_byte_integer, read
 
 logger = getLogger(__name__)
 

@@ -1,11 +1,11 @@
 import asyncio
 from typing import Optional
 
-from gmqtt.connection import MQTTConnection
-from gmqtt.exceptions import NotConnectedError
-from gmqtt.metrics import MetricsCollector
-from gmqtt.mqtt.limits import DEFAULT_SERVER_LIMITS, ServerLimits
-from gmqtt.mqtt.packet import PacketType
+from zenmqtt.connection import MQTTConnection
+from zenmqtt.exceptions import NotConnectedError
+from zenmqtt.metrics import MetricsCollector
+from zenmqtt.mqtt.limits import DEFAULT_SERVER_LIMITS, ServerLimits
+from zenmqtt.mqtt.packet import PacketType
 
 
 class ProtocolContext:

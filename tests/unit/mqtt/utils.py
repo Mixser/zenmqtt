@@ -1,6 +1,6 @@
 from typing import Sequence
 
-from gmqtt.mqtt.packet import AsyncDataSequence
+from zenmqtt.mqtt.packet import AsyncDataSequence
 
 
 async def build_async_generator(

@@ -3,8 +3,6 @@ import asyncio
 
 import pytest
 
-from gmqtt.exceptions import ConnectionLostError, NotConnectedError
-from gmqtt.mqtt.packet import PacketType
 from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
     build_protocol,
@@ -14,6 +12,8 @@ from tests.unit.mqtt.protocol.helpers import (
     server_keep_alive,
     wait_for_connection_lost,
 )
+from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
+from zenmqtt.mqtt.packet import PacketType
 
 pytestmark = pytest.mark.asyncio
 

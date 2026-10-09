@@ -1,6 +1,6 @@
 from typing import Sequence
 
-from gmqtt.mqtt.packet import PacketType
+from zenmqtt.mqtt.packet import PacketType
 
 
 class MetricsCollector:

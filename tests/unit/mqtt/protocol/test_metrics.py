@@ -4,15 +4,6 @@ import struct
 
 import pytest
 
-from gmqtt.exceptions import ConnectionLostError
-from gmqtt.mqtt.packet import PacketType
-from gmqtt.mqtt.publish import (
-    pack_puback_packet,
-    pack_pubcomp_packet,
-    pack_publish_packet,
-    pack_pubrec_packet,
-)
-from gmqtt.mqtt.utils import read
 from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
     RecordingMetrics,
@@ -27,6 +18,15 @@ from tests.unit.mqtt.protocol.helpers import (
     receive_maximum,
     wait_for_connection_lost,
 )
+from zenmqtt.exceptions import ConnectionLostError
+from zenmqtt.mqtt.packet import PacketType
+from zenmqtt.mqtt.publish import (
+    pack_puback_packet,
+    pack_pubcomp_packet,
+    pack_publish_packet,
+    pack_pubrec_packet,
+)
+from zenmqtt.mqtt.utils import read
 
 pytestmark = pytest.mark.asyncio
 

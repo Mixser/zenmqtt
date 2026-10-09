@@ -1,12 +1,12 @@
 import pytest
 
-from gmqtt.exceptions import (
+from zenmqtt.exceptions import (
     FeatureNotSupportedError,
     PacketTooLargeError,
     QoSNotSupportedError,
     ServerLimitError,
 )
-from gmqtt.mqtt.limits import DEFAULT_SERVER_LIMITS, ServerLimits
+from zenmqtt.mqtt.limits import DEFAULT_SERVER_LIMITS, ServerLimits
 
 
 def test_default_limits():

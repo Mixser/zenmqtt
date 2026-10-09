@@ -1,6 +1,7 @@
 import pytest
 
-from gmqtt.mqtt.connect import (
+from tests.unit.mqtt.utils import build_async_generator
+from zenmqtt.mqtt.connect import (
     ConnectionResult,
     DisconnectResult,
     WillMessage,
@@ -9,8 +10,7 @@ from gmqtt.mqtt.connect import (
     parse_connack_packet,
     parse_disconnect_packet,
 )
-from gmqtt.mqtt.packet import PacketType, parse_fixed_header
-from tests.unit.mqtt.utils import build_async_generator
+from zenmqtt.mqtt.packet import PacketType, parse_fixed_header
 
 pytestmark = pytest.mark.asyncio
 

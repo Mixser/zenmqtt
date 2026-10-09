@@ -3,18 +3,18 @@ import asyncio
 import struct
 from typing import Optional
 
-from gmqtt.connection import MQTTConnection, MQTTConnectionTransport
-from gmqtt.metrics import MetricsCollector
-from gmqtt.mqtt.connect import (
+from tests.unit.mqtt.utils import build_async_generator
+from zenmqtt.connection import MQTTConnection, MQTTConnectionTransport
+from zenmqtt.metrics import MetricsCollector
+from zenmqtt.mqtt.connect import (
     ConnectProperties,
     DisconnectResult,
     parse_disconnect_packet,
 )
-from gmqtt.mqtt.packet import PacketType, parse_fixed_header
-from gmqtt.mqtt.protocol import MQTTProtocol
-from gmqtt.mqtt.publish import pack_publish_packet, parse_publish_packet
-from gmqtt.mqtt.session import InMemorySession
-from tests.unit.mqtt.utils import build_async_generator
+from zenmqtt.mqtt.packet import PacketType, parse_fixed_header
+from zenmqtt.mqtt.protocol import MQTTProtocol
+from zenmqtt.mqtt.publish import pack_publish_packet, parse_publish_packet
+from zenmqtt.mqtt.session import InMemorySession
 
 TIMEOUT = 1
 

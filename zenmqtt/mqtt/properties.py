@@ -3,8 +3,17 @@ import struct
 from enum import IntEnum
 from typing import Any, Callable, List, Literal, Sequence, Tuple, TypedDict, cast
 
-from gmqtt.mqtt.packet import AsyncDataSequence, PacketType, parse_variable_byte_integer
-from gmqtt.mqtt.utils import pack_binaries, pack_str16, pack_variable_byte_integer, read
+from zenmqtt.mqtt.packet import (
+    AsyncDataSequence,
+    PacketType,
+    parse_variable_byte_integer,
+)
+from zenmqtt.mqtt.utils import (
+    pack_binaries,
+    pack_str16,
+    pack_variable_byte_integer,
+    read,
+)
 
 
 class Property(IntEnum):

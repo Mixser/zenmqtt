@@ -1,6 +1,6 @@
-from gmqtt.exceptions import MalformedPacketError
-from gmqtt.mqtt.packet import AsyncDataSequence, FixedHeader, PacketType
-from gmqtt.mqtt.utils import pack_fixed_header
+from zenmqtt.exceptions import MalformedPacketError
+from zenmqtt.mqtt.packet import AsyncDataSequence, FixedHeader, PacketType
+from zenmqtt.mqtt.utils import pack_fixed_header
 
 # PINGREQ and PINGRESP consist of the fixed header only:
 # reserved flags are 0x0, no variable header and no payload

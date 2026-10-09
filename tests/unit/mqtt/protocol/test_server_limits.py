@@ -5,20 +5,6 @@ import struct
 
 import pytest
 
-from gmqtt.exceptions import (
-    ConnectionLostError,
-    FeatureNotSupportedError,
-    PacketTooLargeError,
-    QoSNotSupportedError,
-)
-from gmqtt.mqtt.packet import PacketType
-from gmqtt.mqtt.publish import (
-    pack_puback_packet,
-    pack_publish_packet,
-    pack_pubrec_packet,
-)
-from gmqtt.mqtt.subscribe import Subscription
-from gmqtt.mqtt.utils import read
 from tests.unit.mqtt.protocol.helpers import (
     RETAIN_AVAILABLE,
     SHARED_SUBSCRIPTION_AVAILABLE,
@@ -37,6 +23,20 @@ from tests.unit.mqtt.protocol.helpers import (
     topic_alias_maximum,
     wait_for_connection_lost,
 )
+from zenmqtt.exceptions import (
+    ConnectionLostError,
+    FeatureNotSupportedError,
+    PacketTooLargeError,
+    QoSNotSupportedError,
+)
+from zenmqtt.mqtt.packet import PacketType
+from zenmqtt.mqtt.publish import (
+    pack_puback_packet,
+    pack_publish_packet,
+    pack_pubrec_packet,
+)
+from zenmqtt.mqtt.subscribe import Subscription
+from zenmqtt.mqtt.utils import read
 
 pytestmark = pytest.mark.asyncio
 
@@ -228,7 +228,7 @@ async def test_resend_discards_messages_which_break_new_limits(caplog):
         with pytest.raises(ConnectionLostError):
             await task
 
-    with caplog.at_level(logging.WARNING, logger="gmqtt.mqtt.protocol"):
+    with caplog.at_level(logging.WARNING, logger="zenmqtt.mqtt.protocol"):
         transport = await connect(
             protocol,
             session_present=True,
