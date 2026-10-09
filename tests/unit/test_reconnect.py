@@ -340,7 +340,10 @@ async def test_first_connect_failure_is_raised(broker):
         await client.connect(URL)
 
     await broker.assert_no_connections()
-    assert client._reconnect_task is None
+
+    # the client is stopped, reconnect isn't started
+    with pytest.raises(NotConnectedError):
+        await client.wait_connected()
 
 
 async def test_inflight_publish_waits_across_reconnect(broker):

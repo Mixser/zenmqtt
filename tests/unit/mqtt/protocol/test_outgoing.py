@@ -5,6 +5,7 @@ import pytest
 
 from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
+    acquired_packet_identifiers,
     build_protocol,
     connect,
     expect,
@@ -43,7 +44,7 @@ async def test_qos1_publish_flow():
 
     assert isinstance(result, PubAckResult)
     assert await session.get_pending_outgoing_messages() == []
-    assert session._acquired_packet_identifiers == set()
+    assert acquired_packet_identifiers(session) == set()
 
 
 async def test_qos2_publish_flow():
@@ -67,7 +68,7 @@ async def test_qos2_publish_flow():
 
     assert isinstance(result, PubCompResult)
     assert await session.get_pending_outgoing_messages() == []
-    assert session._acquired_packet_identifiers == set()
+    assert acquired_packet_identifiers(session) == set()
 
 
 async def test_qos2_publish_rejected_by_pubrec():
@@ -138,7 +139,7 @@ async def test_connection_lost_then_resend_with_session_present():
     await asyncio.wait_for(task, TIMEOUT)
 
     assert await session.get_pending_outgoing_messages() == []
-    assert session._acquired_packet_identifiers == set()
+    assert acquired_packet_identifiers(session) == set()
 
 
 async def test_reconnect_without_session_present_discards_session():
@@ -158,7 +159,7 @@ async def test_reconnect_without_session_present_discards_session():
 
     assert not transport.has_sent_packets()
     assert await session.get_pending_outgoing_messages() == []
-    assert session._acquired_packet_identifiers == set()
+    assert acquired_packet_identifiers(session) == set()
 
 
 async def test_disconnect_with_pending_publish():
@@ -208,7 +209,7 @@ async def test_publish_with_invalid_qos(qos):
         await asyncio.wait_for(protocol.publish("a/b", b"payload", qos=qos), TIMEOUT)
 
     assert not transport.has_sent_packets()
-    assert session._acquired_packet_identifiers == set()
+    assert acquired_packet_identifiers(session) == set()
 
 
 async def test_pubrec_with_unknown_packet_identifier():

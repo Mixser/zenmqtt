@@ -2,7 +2,7 @@ import asyncio
 
 import pytest_asyncio
 
-from tests.unit.mqtt.protocol.helpers import TIMEOUT, _protocols
+from tests.unit.mqtt.protocol.helpers import TIMEOUT, _protocols, has_connection
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -12,7 +12,7 @@ async def close_protocols():
     while _protocols:
         protocol = _protocols.pop()
 
-        if protocol._context.connection:
+        if has_connection(protocol):
             await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
 
     # e.g. the delivery task waits for space in a messages queue which a test

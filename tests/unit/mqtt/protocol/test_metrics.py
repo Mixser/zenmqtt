@@ -146,8 +146,7 @@ async def test_metrics_ping_timeout():
     protocol, _, _ = build_protocol(metrics)
     await connect_with_keep_alive(protocol, keepalive=1)
 
-    assert protocol._read_loop_task
-    await asyncio.wait_for(protocol._read_loop_task, 3)
+    await wait_for_connection_lost(protocol, 3)
 
     assert metrics.get("on_ping_timeout") == [()]
     assert ("on_connection_closed", (), {"lost": True}) in metrics.events

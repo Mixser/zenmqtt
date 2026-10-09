@@ -10,6 +10,7 @@ from tests.unit.mqtt.protocol.helpers import (
     SUBSCRIPTION_IDENTIFIER_AVAILABLE,
     TIMEOUT,
     WILDCARD_SUBSCRIPTION_AVAILABLE,
+    acquired_packet_identifiers,
     assert_nothing_leaked,
     build_protocol,
     connect,
@@ -45,7 +46,7 @@ async def test_publish_respects_server_maximum_qos():
         await asyncio.wait_for(protocol.publish("a/b", b"payload", qos=2), TIMEOUT)
 
     assert not transport.has_sent_packets()
-    assert session._acquired_packet_identifiers == set()
+    assert acquired_packet_identifiers(session) == set()
 
     task = asyncio.create_task(protocol.publish("a/b", b"payload", qos=1))
     publish = await expect_publish(transport)
@@ -247,7 +248,7 @@ async def test_resend_discards_messages_which_break_new_limits(caplog):
     await asyncio.wait_for(ping, TIMEOUT)
 
     assert await session.get_pending_outgoing_messages() == []
-    assert session._acquired_packet_identifiers == set()
+    assert acquired_packet_identifiers(session) == set()
 
 
 async def test_subscription_objects_are_checked_by_server_limits():

@@ -1,5 +1,9 @@
 import pytest
 
+from tests.unit.mqtt.protocol.helpers import (
+    acquired_packet_identifiers,
+    free_packet_identifiers,
+)
 from zenmqtt.mqtt.session import InMemorySession, OutgoingMessage, OutgoingMessageState
 
 
@@ -47,8 +51,8 @@ async def test_complete_outgoing_message_releases_identifier():
     await session.release_packet_identifier(packet_identifier)
 
     assert await session.get_pending_outgoing_messages() == []
-    assert session._acquired_packet_identifiers == set()
-    assert session._packet_identifiers_pool.qsize() == 2**16 - 1
+    assert acquired_packet_identifiers(session) == set()
+    assert free_packet_identifiers(session) == 2**16 - 1
 
 
 async def test_reset_discards_state_and_returns_identifiers():
@@ -62,7 +66,7 @@ async def test_reset_discards_state_and_returns_identifiers():
 
     assert await session.get_pending_outgoing_messages() == []
     assert await session.register_incoming_message(10)
-    assert session._packet_identifiers_pool.qsize() == 2**16 - 1
+    assert free_packet_identifiers(session) == 2**16 - 1
 
 
 async def test_register_incoming_message_detects_duplicates():
@@ -97,7 +101,7 @@ async def test_restored_pending_messages_keep_their_identifiers():
     assert acquired == [2, 4, 5]
 
     await session.complete_outgoing_message(1)
-    assert 1 not in session._acquired_packet_identifiers
+    assert 1 not in acquired_packet_identifiers(session)
 
 
 async def test_mark_outgoing_message_released_returns_if_found():

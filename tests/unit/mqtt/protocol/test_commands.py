@@ -5,6 +5,7 @@ import pytest
 
 from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
+    acquired_packet_identifiers,
     build_protocol,
     connect,
     expect,
@@ -27,4 +28,4 @@ async def test_pending_subscribe_on_connection_lost():
         await asyncio.wait_for(task, TIMEOUT)
 
     await wait_for_connection_lost(protocol)
-    assert session._acquired_packet_identifiers == set()
+    assert acquired_packet_identifiers(session) == set()

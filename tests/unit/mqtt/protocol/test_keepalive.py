@@ -9,6 +9,8 @@ from tests.unit.mqtt.protocol.helpers import (
     connect,
     connect_with_keep_alive,
     expect,
+    keep_alive_task,
+    ping_in_flight,
     server_keep_alive,
     wait_for_connection_lost,
 )
@@ -26,7 +28,7 @@ async def test_ping():
     transport.feed(b"\xd0\x00")
 
     assert await asyncio.wait_for(task, TIMEOUT) is None
-    assert protocol._keep_alive.ping_future is None
+    assert not ping_in_flight(protocol)
 
 
 async def test_concurrent_pings_share_pingreq():
@@ -64,7 +66,7 @@ async def test_pending_ping_on_connection_lost():
         await asyncio.wait_for(task, TIMEOUT)
 
     await wait_for_connection_lost(protocol)
-    assert protocol._keep_alive.ping_future is None
+    assert not ping_in_flight(protocol)
 
 
 async def test_unexpected_pingresp_is_ignored():
@@ -115,11 +117,10 @@ async def test_keep_alive_closes_connection_without_pingresp():
     fixed_header, _ = await transport.next_packet(timeout=2)
     assert fixed_header.packet_type == PacketType.PINGREQ
 
-    assert protocol._read_loop_task
-    await asyncio.wait_for(protocol._read_loop_task, 2)
+    await wait_for_connection_lost(protocol, 2)
 
     assert transport.is_closing()
-    assert protocol._keep_alive.task is None
+    assert keep_alive_task(protocol) is None
     assert await asyncio.wait_for(messages.get(), TIMEOUT) is None
 
 
@@ -139,17 +140,17 @@ async def test_keep_alive_disabled():
     protocol, _, _ = build_protocol()
     await connect_with_keep_alive(protocol, keepalive=0)
 
-    assert protocol._keep_alive.task is None
+    assert keep_alive_task(protocol) is None
 
 
 async def test_keep_alive_stops_on_disconnect():
     protocol, _, _ = build_protocol()
     await connect_with_keep_alive(protocol, keepalive=1)
 
-    keep_alive_task = protocol._keep_alive.task
-    assert keep_alive_task
+    task = keep_alive_task(protocol)
+    assert task
 
     await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
 
-    assert keep_alive_task.cancelled()
-    assert protocol._keep_alive.task is None
+    assert task.cancelled()
+    assert keep_alive_task(protocol) is None

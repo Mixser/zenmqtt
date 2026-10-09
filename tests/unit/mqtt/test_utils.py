@@ -1,5 +1,5 @@
+import random
 import struct
-from unittest.mock import ANY
 
 import pytest
 
@@ -11,13 +11,39 @@ from zenmqtt.mqtt.packet import (
 )
 from zenmqtt.mqtt.utils import pack_fixed_header, pack_str16, pack_variable_byte_integer
 
+# the smallest and the largest values of 1, 2, 3 and 4 bytes
+VARIABLE_BYTE_INTEGERS = {
+    0: b"\x00",
+    1: b"\x01",
+    127: b"\x7f",
+    128: b"\x80\x01",
+    16_383: b"\xff\x7f",
+    16_384: b"\x80\x80\x01",
+    2_097_151: b"\xff\xff\x7f",
+    2_097_152: b"\x80\x80\x80\x01",
+    268_435_455: b"\xff\xff\xff\x7f",
+}
 
-@pytest.mark.parametrize("value", range(2048))
-def test_pack_variable_byte_integer(value: int):
-    assert parse_variable_byte_integer(pack_variable_byte_integer(value)) == (
-        value,
-        ANY,
-    )
+
+@pytest.mark.parametrize(
+    "value, encoded",
+    VARIABLE_BYTE_INTEGERS.items(),
+    ids=[str(value) for value in VARIABLE_BYTE_INTEGERS],
+)
+def test_pack_variable_byte_integer(value: int, encoded: bytes):
+    assert pack_variable_byte_integer(value) == encoded
+    assert parse_variable_byte_integer(encoded) == (value, len(encoded))
+
+
+def test_variable_byte_integer_round_trip():
+    rng = random.Random(0)
+
+    for value in (rng.randrange(268_435_456) for _ in range(1000)):
+        encoded = pack_variable_byte_integer(value)
+        size = 1 + (value >= 128) + (value >= 16_384) + (value >= 2_097_152)
+
+        assert len(encoded) == size
+        assert parse_variable_byte_integer(encoded) == (value, size)
 
 
 @pytest.mark.parametrize(
