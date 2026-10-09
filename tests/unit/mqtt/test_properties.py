@@ -1,7 +1,6 @@
 import pytest
 
-from tests.unit.mqtt.utils import build_async_generator
-from zenmqtt.mqtt.packet import parse_variable_byte_integer
+from zenmqtt.mqtt.packet import BytesReader
 from zenmqtt.mqtt.properties import (
     _NAME_TO_CODE_MAP,
     Property,
@@ -32,7 +31,4 @@ async def test_pack_and_parse_properties(properties, expected_value):
     packed = pack_properties(properties)
     assert packed == expected_value
 
-    stream = build_async_generator(packed)
-    length, _ = await parse_variable_byte_integer(stream)
-
-    assert await parse_properties(stream, length) == properties
+    assert parse_properties(BytesReader(packed)) == properties

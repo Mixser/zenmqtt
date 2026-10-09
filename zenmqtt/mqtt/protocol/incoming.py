@@ -1,7 +1,7 @@
 import asyncio
 import dataclasses
 from asyncio import Task
-from collections import deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from logging import getLogger
 from typing import Final, Optional, cast
@@ -12,7 +12,7 @@ from zenmqtt.exceptions import (
     TopicAliasInvalidError,
 )
 from zenmqtt.mqtt.connect import ConnectProperties
-from zenmqtt.mqtt.packet import AsyncDataSequence, FixedHeader
+from zenmqtt.mqtt.packet import BytesReader, FixedHeader
 from zenmqtt.mqtt.protocol.context import ProtocolContext
 from zenmqtt.mqtt.publish import (
     PublishResult,
@@ -52,8 +52,12 @@ class _ConnectionState:
     # PUBREL, the number is limited by "Receive Maximum" of the client
     inflight: set[PacketIdentifier] = field(default_factory=set)
     # QoS 1/2 messages in the order of receiving: PUBACK and PUBREC must be
-    # sent in this order (MQTT 5, 4.6)
-    pending_acks: dict[PacketIdentifier, _PendingAck] = field(default_factory=dict)
+    # sent in this order (MQTT 5, 4.6). OrderedDict: getting the first item of
+    # a dict after deletions from its beginning gets slower with every deleted
+    # item, of an OrderedDict it takes constant time
+    pending_acks: OrderedDict[PacketIdentifier, _PendingAck] = field(
+        default_factory=OrderedDict
+    )
 
 
 class IncomingFlow:
@@ -130,11 +134,9 @@ class IncomingFlow:
         self._enqueue(None)
 
     async def handle_publish(
-        self, fixed_header: FixedHeader, stream: AsyncDataSequence
+        self, fixed_header: FixedHeader, reader: BytesReader
     ) -> None:
-        message = self._resolve_topic_alias(
-            await parse_publish_packet(fixed_header, stream)
-        )
+        message = self._resolve_topic_alias(parse_publish_packet(fixed_header, reader))
 
         logger.debug("mqtt_protocol.handle_publish_packet packet:%s", message)
 
@@ -176,12 +178,12 @@ class IncomingFlow:
         self._enqueue(message)
 
     async def handle_pubrel(
-        self, fixed_header: FixedHeader, stream: AsyncDataSequence
+        self, fixed_header: FixedHeader, reader: BytesReader
     ) -> None:
         connection = self._context.connection
         assert connection
 
-        pubrel_result = await parse_pubrel_packet(fixed_header, stream)
+        pubrel_result = parse_pubrel_packet(fixed_header, reader)
 
         logger.debug("mqtt_protocol.handle_pubrel_packet packet:%s", pubrel_result)
 

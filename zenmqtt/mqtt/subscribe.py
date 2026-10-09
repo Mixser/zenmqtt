@@ -3,14 +3,9 @@ import struct
 from dataclasses import dataclass
 from typing import Final, Sequence, Tuple, TypedDict, Union, cast
 
-from zenmqtt.mqtt.packet import (
-    AsyncDataSequence,
-    FixedHeader,
-    PacketType,
-    parse_variable_byte_integer,
-)
+from zenmqtt.mqtt.packet import BytesReader, FixedHeader, PacketType
 from zenmqtt.mqtt.properties import Properties, pack_properties, parse_properties
-from zenmqtt.mqtt.utils import pack_str16, pack_variable_byte_integer, read
+from zenmqtt.mqtt.utils import pack_str16, pack_variable_byte_integer
 
 
 class SubscriptionProperties(TypedDict, total=False):
@@ -139,12 +134,10 @@ def pack_subscription_packet(
     return bytes(packet)
 
 
-async def parse_suback_packet(
-    fixed_header: FixedHeader, stream: AsyncDataSequence
+def parse_suback_packet(
+    fixed_header: FixedHeader, reader: BytesReader
 ) -> SubscribeResult:
-    packet_identifier, properties, reason_codes = await _parse_packet(
-        fixed_header, stream
-    )
+    packet_identifier, properties, reason_codes = _parse_packet(fixed_header, reader)
 
     return SubscribeResult(
         packet_identifier=packet_identifier,
@@ -181,12 +174,10 @@ def pack_unsubscribe_packet(
     return bytes(packet)
 
 
-async def parse_unsubscribe_packet(
-    fixed_header: FixedHeader, stream: AsyncDataSequence
+def parse_unsubscribe_packet(
+    fixed_header: FixedHeader, reader: BytesReader
 ) -> UnsubscribeResult:
-    packet_identifier, properties, reason_codes = await _parse_packet(
-        fixed_header, stream
-    )
+    packet_identifier, properties, reason_codes = _parse_packet(fixed_header, reader)
 
     return UnsubscribeResult(
         packet_identifier=packet_identifier,
@@ -195,24 +186,12 @@ async def parse_unsubscribe_packet(
     )
 
 
-async def _parse_packet(
-    fixed_header: FixedHeader,
-    stream: AsyncDataSequence,
+def _parse_packet(
+    fixed_header: FixedHeader, reader: BytesReader
 ) -> Tuple[int, Properties, Sequence[int]]:
-    packet_identifier, *_ = struct.unpack("!H", await read(stream, 2))
-    property_length, length = await parse_variable_byte_integer(stream)
+    packet_identifier = reader.read_uint16()
+    properties = parse_properties(reader)
+    # one reason code per topic
+    reason_codes = list(reader.read_rest())
 
-    properties = await parse_properties(stream, property_length)
-
-    payload_length = fixed_header.length - length - property_length - 2
-    reason_codes = []
-
-    for _ in range(payload_length):
-        reason_code, *_ = struct.unpack("!B", await anext(stream))
-        reason_codes.append(reason_code)
-
-    return (
-        packet_identifier,
-        properties,
-        reason_codes,
-    )
+    return packet_identifier, properties, reason_codes

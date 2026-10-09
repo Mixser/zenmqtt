@@ -1,7 +1,6 @@
 """Limits of the server from CONNACK."""
 import asyncio
 import logging
-import struct
 
 import pytest
 
@@ -36,7 +35,6 @@ from zenmqtt.mqtt.publish import (
     pack_pubrec_packet,
 )
 from zenmqtt.mqtt.subscribe import Subscription
-from zenmqtt.mqtt.utils import read
 
 pytestmark = pytest.mark.asyncio
 
@@ -268,7 +266,7 @@ async def test_subscription_objects_are_checked_by_server_limits():
     await assert_nothing_leaked(transport, session)
 
     task = asyncio.create_task(protocol.subscribe([Subscription("a/b", qos=1)]))
-    _, stream = await expect(transport, PacketType.SUBSCRIBE)
-    (packet_identifier,) = struct.unpack("!H", await read(stream, 2))
+    _, reader = await expect(transport, PacketType.SUBSCRIBE)
+    packet_identifier = reader.read_uint16()
     transport.feed(pack_suback(packet_identifier, 0x01))
     await asyncio.wait_for(task, TIMEOUT)

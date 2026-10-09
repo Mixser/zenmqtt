@@ -18,7 +18,6 @@ from zenmqtt.connection import MQTTConnection
 from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
 from zenmqtt.mqtt.connect import DisconnectResult, WillMessage, parse_disconnect_packet
 from zenmqtt.mqtt.packet import PacketType
-from zenmqtt.mqtt.utils import read
 
 pytestmark = pytest.mark.asyncio
 
@@ -47,8 +46,8 @@ async def test_connect_with_will():
     will = WillMessage("a/b", b"bye", qos=1, retain=False, properties={})
     task = asyncio.create_task(protocol.connect("client-id", None, None, will=will))
 
-    fixed_header, stream = await expect(transport, PacketType.CONNECT)
-    packet = await read(stream, fixed_header.length)
+    fixed_header, reader = await expect(transport, PacketType.CONNECT)
+    packet = reader.read_rest()
 
     connect_flags = packet[7]
     assert connect_flags & 0x04  # will flag
@@ -81,12 +80,10 @@ async def test_incoming_publish_with_qos_3_closes_connection():
     protocol, _, messages = build_protocol()
     transport = await connect(protocol)
 
-    transport.feed(b"\x36\x0a\x00\x03a/b\x00\x01\x00pay")
+    transport.feed(b"\x36\x0b\x00\x03a/b\x00\x01\x00pay")
 
-    fixed_header, stream = await expect(transport, PacketType.DISCONNECT)
-    assert await parse_disconnect_packet(fixed_header, stream) == DisconnectResult(
-        0x81, {}
-    )
+    fixed_header, reader = await expect(transport, PacketType.DISCONNECT)
+    assert parse_disconnect_packet(fixed_header, reader) == DisconnectResult(0x81, {})
 
     await wait_for_connection_lost(protocol)
 
@@ -133,8 +130,8 @@ async def test_disconnect_with_reason():
         TIMEOUT,
     )
 
-    fixed_header, stream = await expect(transport, PacketType.DISCONNECT)
-    assert await parse_disconnect_packet(fixed_header, stream) == DisconnectResult(
+    fixed_header, reader = await expect(transport, PacketType.DISCONNECT)
+    assert parse_disconnect_packet(fixed_header, reader) == DisconnectResult(
         0x04, {"reason_string": "bye"}
     )
 

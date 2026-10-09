@@ -26,7 +26,6 @@ from zenmqtt.mqtt.publish import (
     pack_publish_packet,
     pack_pubrec_packet,
 )
-from zenmqtt.mqtt.utils import read
 
 pytestmark = pytest.mark.asyncio
 
@@ -162,14 +161,14 @@ async def test_metrics_subscribe_and_unsubscribe():
     transport = await connect(protocol)
 
     task = asyncio.create_task(protocol.subscribe([("a/b", 1), ("c/d", 2)]))
-    _, stream = await expect(transport, PacketType.SUBSCRIBE)
-    (packet_identifier,) = struct.unpack("!H", await read(stream, 2))
+    _, reader = await expect(transport, PacketType.SUBSCRIBE)
+    packet_identifier = reader.read_uint16()
     transport.feed(pack_suback(packet_identifier, 0x01, 0x80))
     await asyncio.wait_for(task, TIMEOUT)
 
     task = asyncio.create_task(protocol.unsubscribe(["a/b"]))
-    _, stream = await expect(transport, PacketType.UNSUBSCRIBE)
-    (packet_identifier,) = struct.unpack("!H", await read(stream, 2))
+    _, reader = await expect(transport, PacketType.UNSUBSCRIBE)
+    packet_identifier = reader.read_uint16()
     unsuback = struct.pack("!HBB", packet_identifier, 0, 0)
     transport.feed(bytes([PacketType.UNSUBACK << 4, len(unsuback)]) + unsuback)
     await asyncio.wait_for(task, TIMEOUT)

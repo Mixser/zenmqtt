@@ -19,18 +19,13 @@ from zenmqtt.mqtt.connect import (
     parse_disconnect_packet,
 )
 from zenmqtt.mqtt.limits import ServerLimits
-from zenmqtt.mqtt.packet import (
-    AsyncDataSequence,
-    FixedHeader,
-    PacketType,
-    parse_fixed_header,
-)
+from zenmqtt.mqtt.packet import BytesReader, FixedHeader, PacketType
 from zenmqtt.mqtt.protocol.commands import Commands
 from zenmqtt.mqtt.protocol.context import ProtocolContext
 from zenmqtt.mqtt.protocol.incoming import IncomingFlow
 from zenmqtt.mqtt.protocol.keepalive import KeepAlive
 from zenmqtt.mqtt.protocol.outgoing import OutgoingFlow
-from zenmqtt.mqtt.protocol.stream import build_data_sequence
+from zenmqtt.mqtt.protocol.stream import PacketReader
 from zenmqtt.mqtt.publish import (
     PublishAcknowledgement,
     PublishProperties,
@@ -45,11 +40,10 @@ from zenmqtt.mqtt.subscribe import (
     UnsubscribeProperties,
     UnsubscribeResult,
 )
-from zenmqtt.mqtt.utils import pack_variable_byte_integer, read
 
 logger = getLogger(__name__)
 
-PacketHandler = Callable[[FixedHeader, AsyncDataSequence], Awaitable[None]]
+PacketHandler = Callable[[FixedHeader, BytesReader], Awaitable[None]]
 
 
 class MQTTProtocol:
@@ -85,6 +79,7 @@ class MQTTProtocol:
         self._keep_alive = KeepAlive(self._context)
 
         self._read_loop_task: Optional[Task[None]] = None
+        self._packet_reader: Optional[PacketReader] = None
         self._connection_future: Optional[asyncio.Future[ConnectionResult]] = None
 
         # True if the connection is closed by disconnect call
@@ -118,8 +113,10 @@ class MQTTProtocol:
         self._disconnecting = False
         self.server_disconnect = None
 
+        self._packet_reader = PacketReader(connection)
         self._read_loop_task = asyncio.create_task(
-            self._read_loop(connection), name="mqtt-protocol-read-loop"
+            self._read_loop(connection, self._packet_reader),
+            name="mqtt-protocol-read-loop",
         )
 
     async def connect(
@@ -143,6 +140,11 @@ class MQTTProtocol:
         properties = properties or {}
 
         self._incoming.on_new_connection(properties)
+
+        if self._packet_reader:
+            self._packet_reader.maximum_packet_size = properties.get(
+                "maximum_packet_size"
+            )
 
         if clean_session:
             await self._session.reset()
@@ -263,11 +265,11 @@ class MQTTProtocol:
         self._outgoing.on_session_lost()
 
     async def _handle_connack(
-        self, fixed_header: FixedHeader, stream: AsyncDataSequence
+        self, fixed_header: FixedHeader, reader: BytesReader
     ) -> None:
         assert self._connection_future
 
-        connection_result = await parse_connack_packet(fixed_header, stream)
+        connection_result = parse_connack_packet(fixed_header, reader)
 
         logger.debug("mqtt_protocol.handle_connack_packet packet:%s", connection_result)
 
@@ -275,12 +277,12 @@ class MQTTProtocol:
             self._connection_future.set_result(connection_result)
 
     async def _handle_disconnect(
-        self, fixed_header: FixedHeader, stream: AsyncDataSequence
+        self, fixed_header: FixedHeader, reader: BytesReader
     ) -> None:
         connection = self._context.connection
         assert connection
 
-        disconnect_packet = await parse_disconnect_packet(fixed_header, stream)
+        disconnect_packet = parse_disconnect_packet(fixed_header, reader)
 
         if disconnect_packet.reason_code >= FAILURE_REASON_CODE:
             logger.warning(
@@ -297,53 +299,46 @@ class MQTTProtocol:
         await connection.disconnect()
 
     async def _handle_unsupported(
-        self, fixed_header: FixedHeader, stream: AsyncDataSequence
+        self, fixed_header: FixedHeader, reader: BytesReader
     ) -> None:
-        # the body must be read anyway, otherwise the stream goes out of sync
-        await read(stream, fixed_header.length)
-
         logger.warning(
             "mqtt_protocol.handle_unsupported_packet type:%s",
             PacketType(fixed_header.packet_type).name,
         )
 
-    async def _read_loop(self, connection: MQTTConnection) -> None:
-        stream = build_data_sequence(connection)
-
+    async def _read_loop(
+        self, connection: MQTTConnection, packet_reader: PacketReader
+    ) -> None:
         try:
-            while header := await parse_fixed_header(stream):
+            while packet := await packet_reader.read_packet():
+                header, reader, size = packet
+
                 logger.debug(
                     "mqtt_protocol.read_loop.new_packet_received header:%s", header
                 )
 
-                packet_type = PacketType(header.packet_type)
+                self._context.metrics.on_packet_received(header.packet_type, size)
 
-                self._context.metrics.on_packet_received(
-                    packet_type,
-                    1 + len(pack_variable_byte_integer(header.length)) + header.length,
-                )
-
-                if (handler := self._handlers.get(packet_type)) is None:
+                if (handler := self._handlers.get(header.packet_type)) is None:
                     raise ValueError(f"Invalid packet type: {header.packet_type}")
 
                 try:
-                    await handler(header, stream)
-                except ProtocolError as exc:
-                    logger.error("mqtt_protocol.protocol_error", exc_info=exc)
-                    await self._context.write(
-                        connection, pack_disconnect_packet(exc.reason_code, {})
-                    )
-                    await connection.disconnect()
-                    break
+                    await handler(header, reader)
+                except ProtocolError:
+                    raise
                 except Exception as exc:
                     logger.error(
                         "mqtt_protocol.handle_incoming_packet.error", exc_info=exc
                     )
+        except ProtocolError as exc:
+            logger.error("mqtt_protocol.protocol_error", exc_info=exc)
+            await self._context.write(
+                connection, pack_disconnect_packet(exc.reason_code, {})
+            )
+            await connection.disconnect()
         except Exception as exc:
             logger.error("mqtt_protocol.read_loop.error", exc_info=exc)
         finally:
-            # stops reading of the connection
-            await stream.aclose()
             await self._handle_connection_lost(connection)
 
     async def _handle_connection_lost(self, connection: MQTTConnection) -> None:
