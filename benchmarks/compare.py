@@ -30,8 +30,10 @@ from benchmarks.run import SCENARIOS
 # marker of the report in pull request comments
 REPORT_MARKER = "<!-- zenmqtt-perf-report -->"
 
-CPU_SCENARIOS = ("in-memory", "pack")
+CPU_SCENARIOS = ("in-memory",)
 BROKER_SCENARIOS = ("publish", "end-to-end")
+# micro-benchmarks of benchmarks/codec (pytest-benchmark)
+CODEC_SCENARIO = "codec"
 
 _BOOTSTRAP_SAMPLES = 2000
 
@@ -39,13 +41,15 @@ _BOOTSTRAP_SAMPLES = 2000
 @dataclass
 class Comparison:
     scenario: str
-    qos: int
-    payload: int
+    qos: Optional[int]
+    payload: Optional[int]
     note: str
+    # messages (scenarios) or operations (codec) per second
     base: list[float] = field(default_factory=list)
     head: list[float] = field(default_factory=list)
     # broker scenarios are too noisy for a verdict
     informational: bool = False
+    group: str = "scenarios"
 
     @property
     def ratio(self) -> Optional[float]:
@@ -79,8 +83,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rounds", type=int, default=10)
     parser.add_argument(
         "--scenarios",
-        default=",".join(CPU_SCENARIOS),
-        help=f"comma separated: {', '.join(SCENARIOS)}",
+        default=",".join((*CPU_SCENARIOS, CODEC_SCENARIO)),
+        help=f"comma separated: {', '.join((*SCENARIOS, CODEC_SCENARIO))}",
+    )
+    parser.add_argument(
+        "--codec-rounds", type=int, default=6, help="rounds of codec benchmarks"
     )
     parser.add_argument("--messages", type=int, default=20_000)
     parser.add_argument("--payload", type=int, nargs="+", default=[64, 16_384])
@@ -159,6 +166,49 @@ def run_once(
     return json.loads(output.read_text())["results"]
 
 
+def run_codec(checkout: Path, workdir: Path) -> dict[str, float]:
+    """
+    Runs the codec micro-benchmarks (from workdir) with the library of the
+    checkout; returns operations per second by benchmark.
+    """
+    output = workdir / "codec.json"
+    command = [
+        sys.executable,
+        "-m",
+        "pytest",
+        "benchmarks/codec",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "--benchmark-only",
+        "--benchmark-json",
+        str(output),
+        # rounds are repeated by compare, one pass may be short
+        "--benchmark-max-time",
+        "0.1",
+        "--benchmark-min-rounds",
+        "5",
+    ]
+
+    completed = subprocess.run(
+        command,
+        cwd=workdir,
+        env={**os.environ, "PYTHONPATH": str(checkout)},
+        capture_output=True,
+        text=True,
+    )
+
+    if completed.returncode:
+        # e.g. the base doesn't have a packed function yet
+        print(completed.stdout[-2000:], completed.stderr[-2000:], file=sys.stderr)
+        return {}
+
+    return {
+        benchmark["name"].removeprefix("test_"): 1 / benchmark["stats"]["median"]
+        for benchmark in json.loads(output.read_text())["benchmarks"]
+    }
+
+
 def measure(args: argparse.Namespace) -> list[Comparison]:
     checkouts = {
         "base": Path(args.base).resolve(),
@@ -166,6 +216,9 @@ def measure(args: argparse.Namespace) -> list[Comparison]:
     }
     selected = args.scenarios.split(",")
     comparisons: dict[tuple, Comparison] = {}
+
+    if unknown := set(selected) - {*SCENARIOS, CODEC_SCENARIO}:
+        raise SystemExit(f"Unknown scenarios: {', '.join(sorted(unknown))}")
 
     with tempfile.TemporaryDirectory() as tmp:
         # benchmarks of the head are used for both sides; the working
@@ -232,34 +285,32 @@ def measure(args: argparse.Namespace) -> list[Comparison]:
                             )
                             getattr(comparison, side).append(result["throughput"])
 
+        if CODEC_SCENARIO in selected:
+            for index in range(args.codec_rounds):
+                order = ("base", "head") if index % 2 == 0 else ("head", "base")
+
+                for side in order:
+                    print(
+                        f"codec round {index + 1}/{args.codec_rounds}, {side}",
+                        file=sys.stderr,
+                    )
+
+                    for name, operations in run_codec(checkouts[side], workdir).items():
+                        comparison = comparisons.setdefault(
+                            (CODEC_SCENARIO, name),
+                            Comparison(name, None, None, "", group=CODEC_SCENARIO),
+                        )
+                        getattr(comparison, side).append(operations)
+
     return list(comparisons.values())
 
 
 def render(comparisons: list[Comparison], args: argparse.Namespace) -> str:
     rng = random.Random(0)
     threshold = args.threshold
+    counts = {"slower": 0, "faster": 0}
 
-    lines = [
-        REPORT_MARKER,
-        "## Performance report",
-        "",
-        "",  # summary, filled below
-        "",
-        f"`{args.head_label}` compared with `{args.base_label}`, "
-        f"Python {platform.python_version()}, {platform.system()} "
-        f"{platform.machine()}, {args.rounds} rounds, "
-        f"{args.messages} messages per run.",
-        "",
-        "| Scenario | QoS | Payload | Base msg/s | Head msg/s | Change | 95% CI | |",
-        "|---|---:|---:|---:|---:|---:|---|---|",
-    ]
-
-    regressions = improvements = 0
-
-    for comparison in comparisons:
-        name = comparison.scenario + (
-            f" ({comparison.note})" if comparison.note else ""
-        )
+    def row(comparison: Comparison) -> list[str]:
         base = f"{statistics.median(comparison.base):,.0f}" if comparison.base else "-"
         head = f"{statistics.median(comparison.head):,.0f}" if comparison.head else "-"
 
@@ -276,25 +327,59 @@ def render(comparisons: list[Comparison], args: argparse.Namespace) -> str:
             verdict = "ℹ️"
         elif interval[0] > 1 + threshold:
             verdict = "🟢 faster"
-            improvements += 1
+            counts["faster"] += 1
         elif interval[1] < 1 - threshold:
             verdict = "🔴 slower"
-            regressions += 1
+            counts["slower"] += 1
         else:
             verdict = "⚪"
 
-        lines.append(
-            f"| {name} | {comparison.qos} | {comparison.payload} B | {base} "
-            f"| {head} | {change} | {bounds} | {verdict} |"
-        )
+        return [base, head, change, bounds, verdict]
 
-    summary = (
-        f"**{regressions} slower, {improvements} faster** "
-        f"(changes beyond ±{threshold:.0%} with 95% confidence)."
-    )
+    scenarios = [c for c in comparisons if c.group != CODEC_SCENARIO]
+    codec = [c for c in comparisons if c.group == CODEC_SCENARIO]
+    tables: list[str] = []
 
-    lines[3] = summary
-    lines += [
+    if scenarios:
+        tables += [
+            "",
+            f"### Scenarios ({args.rounds} rounds, {args.messages} messages per run)",
+            "",
+            "| Scenario | QoS | Payload | Base msg/s | Head msg/s | Change | 95% CI | |",
+            "|---|---:|---:|---:|---:|---:|---|---|",
+        ]
+
+        for comparison in scenarios:
+            name = comparison.scenario + (
+                f" ({comparison.note})" if comparison.note else ""
+            )
+            cells = [name, str(comparison.qos), f"{comparison.payload} B"]
+            tables.append("| " + " | ".join(cells + row(comparison)) + " |")
+
+    if codec:
+        tables += [
+            "",
+            f"### Codec ({args.codec_rounds} rounds of pytest-benchmark)",
+            "",
+            "| Benchmark | Base ops/s | Head ops/s | Change | 95% CI | |",
+            "|---|---:|---:|---:|---|---|",
+        ]
+
+        for comparison in codec:
+            cells = [f"`{comparison.scenario}`"]
+            tables.append("| " + " | ".join(cells + row(comparison)) + " |")
+
+    lines = [
+        REPORT_MARKER,
+        "## Performance report",
+        "",
+        f"**{counts['slower']} slower, {counts['faster']} faster** "
+        f"(changes beyond ±{threshold:.0%} with 95% confidence).",
+        "",
+        f"`{args.head_label}` compared with `{args.base_label}`, "
+        f"Python {platform.python_version()}, {platform.system()} "
+        f"{platform.machine()}.",
+        *tables,
         "",
         "<details><summary>How to read it</summary>",
         "",

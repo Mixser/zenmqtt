@@ -9,11 +9,12 @@ docker run --rm -p 1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth
 make bench                           # all scenarios, all available clients
 MQTT_URL=tcp://localhost:1883 make bench ARGS="--scenarios publish --qos 1 --messages 50000"
 make bench ARGS="--scenarios in-memory --profile"   # no broker needed
+make bench-codec                     # micro-benchmarks of packing and parsing
 ```
 
 | Option | Default | |
 |---|---|---|
-| `--scenarios` | all | `in-memory`, `pack`, `publish`, `end-to-end`, comma separated |
+| `--scenarios` | all | `in-memory`, `publish`, `end-to-end`, comma separated |
 | `--clients` | all available | `zenmqtt`, `aiomqtt` (needs `--with bench`) |
 | `--messages` | 10000 | messages per run; in-memory scenarios need ≤ 65535 for QoS 1/2 |
 | `--payload` | 64 | payload size in bytes |
@@ -29,7 +30,6 @@ make bench ARGS="--scenarios in-memory --profile"   # no broker needed
   no network and no broker: the cost of parsing and delivery in the client
   itself. Every QoS 1/2 message is acknowledged by `ack()`. Runs without
   metrics and with `OpenTelemetryMetrics`, to show the cost of metrics.
-- **pack publish** — packing of PUBLISH packets, the CPU cost of the send path.
 - **publish** — one client publishes with `--concurrency` calls in flight.
   For QoS 1/2 latency is measured until PUBACK/PUBCOMP.
 - **end-to-end** — publisher → broker → subscriber of the same library.
@@ -43,6 +43,20 @@ gmqtt (v1) isn't compared yet: after the rename to `zenmqtt` it can be
 installed next to this package, an adapter in `benchmarks/clients.py` is
 enough. paho-mqtt is synchronous, so it needs a different harness.
 
+## Codec micro-benchmarks
+
+`benchmarks/codec/` measures packing and parsing of packets with
+[pytest-benchmark](https://pytest-benchmark.readthedocs.io/): PUBLISH with
+64 B and 16 KiB payloads, with and without properties, PUBACK, properties,
+SUBSCRIBE/SUBACK and the variable byte integer. pytest-benchmark calibrates,
+warms up and repeats every function, so it's more precise for small functions
+than the scenarios above. Every parse benchmark checks its result.
+
+```sh
+make bench-codec
+poetry run pytest benchmarks/codec --benchmark-only --benchmark-json codec.json
+```
+
 ## Comparing two versions
 
 `benchmarks/compare.py` compares two checkouts of the library on the same
@@ -52,6 +66,10 @@ machine, the same way as CI does for pull requests:
 git worktree add ../zenmqtt-main main
 poetry run python -m benchmarks.compare --base ../zenmqtt-main --head . --rounds 10
 ```
+
+By default it compares the in-memory scenarios and the codec benchmarks
+(`--scenarios in-memory,codec`); the codec suite runs `--codec-rounds` times
+(6) for every side with short pytest-benchmark runs.
 
 Shared machines are noisy, so numbers of two separate runs can't be compared.
 Both versions run in one job, in alternating order (base, head, head, base,
@@ -69,7 +87,8 @@ report is written to `--output-dir` as `report.md` and `results.json`.
   as a comment of the pull request (one comment, updated on every push). It's
   a report only, the check doesn't fail on a slowdown.
 - **History** (`.github/workflows/perf-history.yml`): every push to `main` runs
-  all scenarios on Python 3.12, 3.13 and 3.14 and stores the results on
+  all scenarios and the codec benchmarks on Python 3.12, 3.13 and 3.14 and
+  stores the results on
   the `gh-pages` branch with
   [github-action-benchmark](https://github.com/benchmark-action/github-action-benchmark).
   Charts: **https://mixser.github.io/zenmqtt/perf/** (one chart per scenario
@@ -93,9 +112,6 @@ percent between runs).
 | in-memory receive | zenmqtt | 1 | 36,723 | | | | opentelemetry |
 | in-memory receive | zenmqtt | 2 | 111,875 | | | | no metrics |
 | in-memory receive | zenmqtt | 2 | 34,887 | | | | opentelemetry |
-| pack publish | zenmqtt | 0 | 426,832 | | | | |
-| pack publish | zenmqtt | 1 | 407,412 | | | | |
-| pack publish | zenmqtt | 2 | 398,957 | | | | |
 | publish | zenmqtt | 0 | 67,496 | | | | |
 | publish | zenmqtt | 1 | 21,548 | 3.47 | 4.18 | 22.64 | |
 | publish | zenmqtt | 2 | 14,648 | 5.71 | 6.63 | 21.98 | |
@@ -108,6 +124,30 @@ percent between runs).
 | end-to-end | aiomqtt 2.5.1 | 0 | 8,388 | 649.40 | 656.96 | 665.06 | saturated |
 | end-to-end | aiomqtt 2.5.1 | 1 | 114 | 598.59 | 852.72 | 859.53 | 6977 of 10000 received |
 | end-to-end | aiomqtt 2.5.1 | 2 | 5,063 | 553.33 | 879.46 | 911.26 | |
+
+### Codec
+
+Same machine, `make bench-codec`:
+
+| Benchmark | Median µs | ops/s |
+|---|---:|---:|
+| `pack_publish[64B-qos0]` | 2.25 | 444,453 |
+| `pack_publish[64B-qos1]` | 2.33 | 428,618 |
+| `pack_publish[16KiB-qos0]` | 93.33 | 10,714 |
+| `pack_publish[16KiB-qos1]` | 93.54 | 10,690 |
+| `pack_publish_with_properties` | 5.87 | 170,216 |
+| `parse_publish[64B-qos0]` | 3.12 | 320,007 |
+| `parse_publish[64B-qos1]` | 3.29 | 303,767 |
+| `parse_publish[16KiB-qos0]` | 4.08 | 244,860 |
+| `parse_publish[16KiB-qos1]` | 4.21 | 237,586 |
+| `parse_publish_with_properties` | 6.58 | 151,905 |
+| `pack_puback` | 0.83 | 1,200,550 |
+| `parse_puback` | 3.71 | 269,615 |
+| `pack_properties` | 3.37 | 296,297 |
+| `parse_properties` | 3.58 | 279,093 |
+| `pack_subscribe` | 9.71 | 102,998 |
+| `parse_suback` | 2.63 | 380,945 |
+| `parse_variable_byte_integer` | 0.42 | 2,380,033 |
 
 ### Findings
 
@@ -127,6 +167,6 @@ percent between runs).
   throughput now that parsing is fast (181k -> 53k msg/s for QoS 0). "no
   metrics" runs with the default `MetricsCollector`, whose hooks do nothing;
   their own cost isn't measured separately.
-- **Packing big payloads** is slow: about 10.5k PUBLISH packets of 16 KiB per
-  second, because `pack_publish_packet` copies the payload byte by byte
-  (`bytearray.extend(itertools.chain(...))`).
+- **Packing big payloads** is slow: a PUBLISH of 16 KiB takes 93 µs to pack
+  but only 4 µs to parse, because `pack_publish_packet` copies the payload byte
+  by byte (`bytearray.extend(itertools.chain(...))`).

@@ -67,7 +67,7 @@ jobs:
             --head . \
             --base-label "main ${base_sha}" \
             --head-label "#${PR_NUMBER} merged ${head_sha}" \
-            --scenarios in-memory,pack,publish,end-to-end \
+            --scenarios in-memory,codec,publish,end-to-end \
             --url tcp://localhost:1883 \
             --rounds 10 \
             --output-dir ../perf-report

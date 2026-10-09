@@ -107,29 +107,6 @@ async def in_memory_receive(
     )
 
 
-def pack_publish(messages: int, payload_size: int, qos: int) -> Result:
-    """Packing of PUBLISH packets, the CPU cost of the send path."""
-    payload = b"x" * payload_size
-
-    started = time.perf_counter()
-
-    for index in range(messages):
-        pack_publish_packet(
-            (index % 65535) + 1 if qos else 0, TOPIC, payload, qos, False, False, {}
-        )
-
-    elapsed = time.perf_counter() - started
-
-    return Result(
-        scenario="pack publish",
-        client="zenmqtt",
-        qos=qos,
-        messages=messages,
-        payload=payload_size,
-        throughput=messages / elapsed,
-    )
-
-
 async def publish(
     factory: Callable[[str], BenchClient],
     url: str,
