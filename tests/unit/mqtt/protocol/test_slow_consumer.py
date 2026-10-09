@@ -4,13 +4,6 @@ import logging
 
 import pytest
 
-from gmqtt.mqtt.packet import PacketType
-from gmqtt.mqtt.publish import (
-    PubAckResult,
-    pack_puback_packet,
-    parse_puback_packet,
-    parse_pubrec_packet,
-)
 from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
     FakeTransport,
@@ -23,6 +16,13 @@ from tests.unit.mqtt.protocol.helpers import (
     pack_publish,
     receive,
     wait_for_connection_lost,
+)
+from zenmqtt.mqtt.packet import PacketType
+from zenmqtt.mqtt.publish import (
+    PubAckResult,
+    pack_puback_packet,
+    parse_puback_packet,
+    parse_pubrec_packet,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -61,7 +61,7 @@ async def test_slow_consumer_is_reported(caplog):
     protocol._incoming.buffered_messages_warning = 2
     transport = await connect(protocol)
 
-    with caplog.at_level(logging.WARNING, logger="gmqtt.mqtt.protocol"):
+    with caplog.at_level(logging.WARNING, logger="zenmqtt.mqtt.protocol"):
         # 1 in the queue, 1 waits to be put, the rest in the buffer
         await feed(transport, *(pack_publish(0, 0, b"%d" % i) for i in range(6)))
 

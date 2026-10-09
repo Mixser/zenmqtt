@@ -1,8 +1,8 @@
 import pytest
 
-from gmqtt.mqtt.packet import PacketType, parse_fixed_header
-from gmqtt.mqtt.ping import pack_pingreq_packet, parse_pingresp_packet
 from tests.unit.mqtt.utils import build_async_generator
+from zenmqtt.mqtt.packet import PacketType, parse_fixed_header
+from zenmqtt.mqtt.ping import pack_pingreq_packet, parse_pingresp_packet
 
 pytestmark = pytest.mark.asyncio
 

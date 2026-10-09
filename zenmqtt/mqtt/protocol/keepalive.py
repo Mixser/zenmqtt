@@ -3,10 +3,10 @@ from asyncio import Task
 from logging import getLogger
 from typing import Optional
 
-from gmqtt.exceptions import ConnectionLostError, NotConnectedError
-from gmqtt.mqtt.packet import AsyncDataSequence, FixedHeader
-from gmqtt.mqtt.ping import pack_pingreq_packet, parse_pingresp_packet
-from gmqtt.mqtt.protocol.context import ProtocolContext
+from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
+from zenmqtt.mqtt.packet import AsyncDataSequence, FixedHeader
+from zenmqtt.mqtt.ping import pack_pingreq_packet, parse_pingresp_packet
+from zenmqtt.mqtt.protocol.context import ProtocolContext
 
 logger = getLogger(__name__)
 

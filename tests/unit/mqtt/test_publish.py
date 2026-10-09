@@ -2,9 +2,10 @@ from unittest.mock import ANY
 
 import pytest
 
-from gmqtt.exceptions import MalformedPacketError
-from gmqtt.mqtt.packet import PacketType, parse_fixed_header
-from gmqtt.mqtt.publish import (
+from tests.unit.mqtt.utils import build_async_generator
+from zenmqtt.exceptions import MalformedPacketError
+from zenmqtt.mqtt.packet import PacketType, parse_fixed_header
+from zenmqtt.mqtt.publish import (
     PubAckResult,
     PubCompResult,
     PublishResult,
@@ -21,7 +22,6 @@ from gmqtt.mqtt.publish import (
     parse_pubrec_packet,
     parse_pubrel_packet,
 )
-from tests.unit.mqtt.utils import build_async_generator
 
 pytestmark = pytest.mark.asyncio
 

@@ -4,17 +4,17 @@ from dataclasses import dataclass
 from logging import getLogger
 from typing import Final, Optional, cast
 
-from gmqtt.connection import MQTTConnection
-from gmqtt.exceptions import (
+from zenmqtt.connection import MQTTConnection
+from zenmqtt.exceptions import (
     ConnectionLostError,
     NotConnectedError,
     ServerLimitError,
     SessionLostError,
 )
-from gmqtt.mqtt.connect import ConnectionResult
-from gmqtt.mqtt.packet import AsyncDataSequence, FixedHeader
-from gmqtt.mqtt.protocol.context import ProtocolContext
-from gmqtt.mqtt.publish import (
+from zenmqtt.mqtt.connect import ConnectionResult
+from zenmqtt.mqtt.packet import AsyncDataSequence, FixedHeader
+from zenmqtt.mqtt.protocol.context import ProtocolContext
+from zenmqtt.mqtt.publish import (
     PublishAcknowledgement,
     PublishProperties,
     pack_publish_packet,
@@ -23,8 +23,8 @@ from gmqtt.mqtt.publish import (
     parse_pubcomp_packet,
     parse_pubrec_packet,
 )
-from gmqtt.mqtt.reason_codes import FAILURE_REASON_CODE, PACKET_IDENTIFIER_NOT_FOUND
-from gmqtt.mqtt.session import (
+from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE, PACKET_IDENTIFIER_NOT_FOUND
+from zenmqtt.mqtt.session import (
     MQTTSession,
     OutgoingMessage,
     OutgoingMessageState,

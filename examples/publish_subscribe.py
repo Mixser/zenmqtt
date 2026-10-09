@@ -5,19 +5,19 @@ import asyncio
 import logging
 import os
 
-from gmqtt.client import MQTTClient
+from zenmqtt.client import MQTTClient
 
 MQTT_URL = os.environ.get("MQTT_URL", "tcp://localhost:1883")
 MQTT_USERNAME = os.environ.get("MQTT_USERNAME")
 MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
 
-TOPIC = "gmqtt/examples/publish-subscribe"
+TOPIC = "zenmqtt/examples/publish-subscribe"
 
 logging.basicConfig(level=logging.INFO)
 
 
 async def main():
-    client = MQTTClient("gmqtt-example-publish-subscribe")
+    client = MQTTClient("zenmqtt-example-publish-subscribe")
 
     if MQTT_USERNAME:
         client.authorize(MQTT_USERNAME, MQTT_PASSWORD)

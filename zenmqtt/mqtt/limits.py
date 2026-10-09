@@ -1,14 +1,14 @@
 from dataclasses import dataclass
 from typing import Final, Optional, Sequence
 
-from gmqtt.exceptions import (
+from zenmqtt.exceptions import (
     FeatureNotSupportedError,
     PacketTooLargeError,
     QoSNotSupportedError,
 )
-from gmqtt.mqtt.connect import ConnackProperties
-from gmqtt.mqtt.publish import PublishProperties
-from gmqtt.mqtt.subscribe import (
+from zenmqtt.mqtt.connect import ConnackProperties
+from zenmqtt.mqtt.publish import PublishProperties
+from zenmqtt.mqtt.subscribe import (
     SubscriptionProperties,
     SubscriptionRequest,
     to_subscription,

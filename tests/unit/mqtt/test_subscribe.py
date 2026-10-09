@@ -1,7 +1,8 @@
 import pytest
 
-from gmqtt.mqtt.packet import PacketType, parse_fixed_header
-from gmqtt.mqtt.subscribe import (
+from tests.unit.mqtt.utils import build_async_generator
+from zenmqtt.mqtt.packet import PacketType, parse_fixed_header
+from zenmqtt.mqtt.subscribe import (
     SubscribeResult,
     Subscription,
     UnsubscribeResult,
@@ -10,7 +11,6 @@ from gmqtt.mqtt.subscribe import (
     parse_suback_packet,
     parse_unsubscribe_packet,
 )
-from tests.unit.mqtt.utils import build_async_generator
 
 pytestmark = pytest.mark.asyncio
 

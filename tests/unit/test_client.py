@@ -3,11 +3,11 @@ import struct
 
 import pytest
 
-from gmqtt.client import MQTTClient
-from gmqtt.connection import register_implementation
-from gmqtt.mqtt.packet import PacketType
-from gmqtt.mqtt.utils import read
 from tests.unit.mqtt.protocol.helpers import TIMEOUT, FakeTransport, pack_connack
+from zenmqtt.client import MQTTClient
+from zenmqtt.connection import register_implementation
+from zenmqtt.mqtt.packet import PacketType
+from zenmqtt.mqtt.utils import read
 
 pytestmark = pytest.mark.asyncio
 

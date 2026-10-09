@@ -1,4 +1,4 @@
-SOURCE=gmqtt
+SOURCE=zenmqtt
 TEST=tests
 TEST_UNIT=$(TEST)/unit
 

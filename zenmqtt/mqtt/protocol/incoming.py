@@ -6,15 +6,15 @@ from dataclasses import dataclass, field
 from logging import getLogger
 from typing import Final, Optional, cast
 
-from gmqtt.exceptions import (
+from zenmqtt.exceptions import (
     ProtocolError,
     ReceiveMaximumExceededError,
     TopicAliasInvalidError,
 )
-from gmqtt.mqtt.connect import ConnectProperties
-from gmqtt.mqtt.packet import AsyncDataSequence, FixedHeader
-from gmqtt.mqtt.protocol.context import ProtocolContext
-from gmqtt.mqtt.publish import (
+from zenmqtt.mqtt.connect import ConnectProperties
+from zenmqtt.mqtt.packet import AsyncDataSequence, FixedHeader
+from zenmqtt.mqtt.protocol.context import ProtocolContext
+from zenmqtt.mqtt.publish import (
     PublishResult,
     pack_puback_packet,
     pack_pubcomp_packet,
@@ -22,8 +22,8 @@ from gmqtt.mqtt.publish import (
     parse_publish_packet,
     parse_pubrel_packet,
 )
-from gmqtt.mqtt.reason_codes import FAILURE_REASON_CODE, PACKET_IDENTIFIER_NOT_FOUND
-from gmqtt.mqtt.session import MQTTSession, PacketIdentifier
+from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE, PACKET_IDENTIFIER_NOT_FOUND
+from zenmqtt.mqtt.session import MQTTSession, PacketIdentifier
 
 logger = getLogger(__name__)
 

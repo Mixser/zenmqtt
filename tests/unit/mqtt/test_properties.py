@@ -1,13 +1,13 @@
 import pytest
 
-from gmqtt.mqtt.packet import parse_variable_byte_integer
-from gmqtt.mqtt.properties import (
+from tests.unit.mqtt.utils import build_async_generator
+from zenmqtt.mqtt.packet import parse_variable_byte_integer
+from zenmqtt.mqtt.properties import (
     _NAME_TO_CODE_MAP,
     Property,
     pack_properties,
     parse_properties,
 )
-from tests.unit.mqtt.utils import build_async_generator
 
 pytestmark = pytest.mark.asyncio
 

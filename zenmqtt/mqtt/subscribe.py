@@ -3,14 +3,14 @@ import struct
 from dataclasses import dataclass
 from typing import Final, Sequence, Tuple, TypedDict, Union, cast
 
-from gmqtt.mqtt.packet import (
+from zenmqtt.mqtt.packet import (
     AsyncDataSequence,
     FixedHeader,
     PacketType,
     parse_variable_byte_integer,
 )
-from gmqtt.mqtt.properties import Properties, pack_properties, parse_properties
-from gmqtt.mqtt.utils import pack_str16, pack_variable_byte_integer, read
+from zenmqtt.mqtt.properties import Properties, pack_properties, parse_properties
+from zenmqtt.mqtt.utils import pack_str16, pack_variable_byte_integer, read
 
 
 class SubscriptionProperties(TypedDict, total=False):

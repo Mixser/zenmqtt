@@ -3,14 +3,6 @@ import asyncio
 
 import pytest
 
-from gmqtt.mqtt.packet import PacketType
-from gmqtt.mqtt.publish import (
-    pack_publish_packet,
-    pack_pubrel_packet,
-    parse_puback_packet,
-    parse_pubcomp_packet,
-    parse_pubrec_packet,
-)
 from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
     FakeTransport,
@@ -22,6 +14,14 @@ from tests.unit.mqtt.protocol.helpers import (
     pack_publish,
     receive,
     wait_for_connection_lost,
+)
+from zenmqtt.mqtt.packet import PacketType
+from zenmqtt.mqtt.publish import (
+    pack_publish_packet,
+    pack_pubrel_packet,
+    parse_puback_packet,
+    parse_pubcomp_packet,
+    parse_pubrec_packet,
 )
 
 pytestmark = pytest.mark.asyncio

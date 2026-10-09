@@ -3,8 +3,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from gmqtt.connection import MQTTConnection, create_connection, register_implementation
-from gmqtt.connection.tcp import TCPConnectionTransport
+from zenmqtt.connection import (
+    MQTTConnection,
+    create_connection,
+    register_implementation,
+)
+from zenmqtt.connection.tcp import TCPConnectionTransport
 
 pytestmark = pytest.mark.asyncio
 
@@ -12,7 +16,7 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 def open_connection():
     with patch(
-        "gmqtt.connection.tcp.asyncio.open_connection",
+        "zenmqtt.connection.tcp.asyncio.open_connection",
         AsyncMock(return_value=(MagicMock(), MagicMock())),
     ) as mock:
         yield mock

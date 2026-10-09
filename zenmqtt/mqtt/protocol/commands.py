@@ -3,11 +3,11 @@ from dataclasses import dataclass
 from logging import getLogger
 from typing import Optional, Sequence
 
-from gmqtt.exceptions import NotConnectedError, ServerLimitError
-from gmqtt.mqtt.packet import AsyncDataSequence, FixedHeader
-from gmqtt.mqtt.protocol.context import ProtocolContext
-from gmqtt.mqtt.session import MQTTSession, PacketIdentifier
-from gmqtt.mqtt.subscribe import (
+from zenmqtt.exceptions import NotConnectedError, ServerLimitError
+from zenmqtt.mqtt.packet import AsyncDataSequence, FixedHeader
+from zenmqtt.mqtt.protocol.context import ProtocolContext
+from zenmqtt.mqtt.session import MQTTSession, PacketIdentifier
+from zenmqtt.mqtt.subscribe import (
     SubscribeResult,
     SubscriptionProperties,
     SubscriptionRequest,

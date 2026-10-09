@@ -12,8 +12,8 @@ import os
 import sqlite3
 from typing import Optional, Sequence
 
-from gmqtt.client import MQTTClient
-from gmqtt.mqtt.session import (
+from zenmqtt.client import MQTTClient
+from zenmqtt.mqtt.session import (
     BaseSession,
     OutgoingMessage,
     OutgoingMessageState,
@@ -25,8 +25,8 @@ MQTT_URL = os.environ.get("MQTT_URL", "tcp://localhost:1883")
 MQTT_USERNAME = os.environ.get("MQTT_USERNAME")
 MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
 
-DATABASE = os.environ.get("SESSION_DATABASE", "gmqtt-session.sqlite3")
-TOPIC = "gmqtt/examples/sqlite-session"
+DATABASE = os.environ.get("SESSION_DATABASE", "zenmqtt-session.sqlite3")
+TOPIC = "zenmqtt/examples/sqlite-session"
 
 logging.basicConfig(level=logging.INFO)
 
@@ -163,7 +163,7 @@ async def main():
     pending = await session.get_pending_outgoing_messages()
     print("restored pending messages:", len(pending))
 
-    client = MQTTClient("gmqtt-example-sqlite-session", session=session)
+    client = MQTTClient("zenmqtt-example-sqlite-session", session=session)
 
     if MQTT_USERNAME:
         client.authorize(MQTT_USERNAME, MQTT_PASSWORD)
