@@ -115,8 +115,8 @@ percent between runs).
   110k QoS 1/2 messages per second in memory (it was 40–50k with the
   byte-by-byte stream). For QoS 1/2 the acknowledgements cost more than
   parsing now.
-- **Publish**: zenmqtt publishes 2–4× faster than aiomqtt with less than half
-  of the ack latency. End-to-end it delivers 2–6× more messages per second.
+- **Publish**: zenmqtt publishes 1.7–3.8× faster than aiomqtt (QoS 2 to QoS 0)
+  with about half of the ack latency. End-to-end it delivers 2–6× more messages per second.
 - **End-to-end QoS 0** latency is high because the publisher sends faster
   than the subscriber receives: messages wait in queues.
 - **aiomqtt end-to-end QoS 1** received only 6977 of 10000 messages within
