@@ -71,8 +71,13 @@ report is written to `--output-dir` as `report.md` and `results.json`.
 - **History** (`.github/workflows/perf-history.yml`): every push to `main` runs
   all scenarios on Python 3.12, 3.13, 3.14 and 3.15 and stores the results on
   the `gh-pages` branch with
-  [github-action-benchmark](https://github.com/benchmark-action/github-action-benchmark);
-  charts are at `https://<owner>.github.io/<repository>/perf/`.
+  [github-action-benchmark](https://github.com/benchmark-action/github-action-benchmark).
+  Charts: **https://mixser.github.io/zenmqtt/perf/** (one chart per scenario
+  and Python version). The workflow can also be started by hand
+  (`workflow_dispatch`).
+
+The history needs GitHub Pages: Settings -> Pages -> Deploy from a branch ->
+`gh-pages`, folder `/ (root)`.
 
 ## Results
 
