@@ -1,7 +1,7 @@
 import asyncio
 import dataclasses
 from asyncio import Task
-from collections import deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from logging import getLogger
 from typing import Final, Optional, cast
@@ -52,8 +52,12 @@ class _ConnectionState:
     # PUBREL, the number is limited by "Receive Maximum" of the client
     inflight: set[PacketIdentifier] = field(default_factory=set)
     # QoS 1/2 messages in the order of receiving: PUBACK and PUBREC must be
-    # sent in this order (MQTT 5, 4.6)
-    pending_acks: dict[PacketIdentifier, _PendingAck] = field(default_factory=dict)
+    # sent in this order (MQTT 5, 4.6). OrderedDict: getting the first item of
+    # a dict after deletions from its beginning gets slower with every deleted
+    # item, of an OrderedDict it takes constant time
+    pending_acks: OrderedDict[PacketIdentifier, _PendingAck] = field(
+        default_factory=OrderedDict
+    )
 
 
 class IncomingFlow:
