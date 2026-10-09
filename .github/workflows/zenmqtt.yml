@@ -17,11 +17,11 @@ jobs:
   linting:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install poetry
         run: pipx install poetry
       - name: Set up Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: "poetry"
@@ -42,11 +42,11 @@ jobs:
     continue-on-error: ${{ matrix.python-version == '3.15' }}
     name: testing (Python ${{ matrix.python-version }})
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install poetry
         run: pipx install poetry
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           allow-prereleases: true
