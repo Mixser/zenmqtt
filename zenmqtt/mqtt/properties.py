@@ -3,17 +3,9 @@ import struct
 from enum import IntEnum
 from typing import Any, Callable, List, Literal, Sequence, Tuple, TypedDict, cast
 
-from zenmqtt.mqtt.packet import (
-    AsyncDataSequence,
-    PacketType,
-    parse_variable_byte_integer,
-)
-from zenmqtt.mqtt.utils import (
-    pack_binaries,
-    pack_str16,
-    pack_variable_byte_integer,
-    read,
-)
+from zenmqtt.exceptions import MalformedPacketError
+from zenmqtt.mqtt.packet import BytesReader, PacketType
+from zenmqtt.mqtt.utils import pack_binaries, pack_str16, pack_variable_byte_integer
 
 
 class Property(IntEnum):
@@ -223,46 +215,42 @@ class Properties(TypedDict, total=False):
     shared_subscription_available: bool
 
 
-_MAP_PROPERTY_PARSER: dict[Property, Callable[[AsyncDataSequence], Any]] = {
-    Property.PAYLOAD_FORMAT_INDICATOR: lambda stream: _parse_property_value(
-        stream, 1, "!B"
-    ),
-    Property.MESSAGE_EXPIRY_INTERVAL: lambda stream: _parse_property_value(
-        stream, 4, "!L"
-    ),
-    Property.CONTENT_TYPE: lambda stream: _parse_string_property_value(stream),
-    Property.RESPONSE_TOPIC: lambda stream: _parse_string_property_value(stream),
-    Property.CORRELATION_DATA: lambda stream: _parse_bytes_property_value(stream),
-    Property.SUBSCRIPTION_IDENTIFIER: lambda stream: parse_variable_byte_integer(
-        stream
-    ),
-    Property.SESSION_EXPIRY_INTERVAL: lambda stream: _parse_property_value(
-        stream, 4, "!L"
-    ),
-    Property.ASSIGNED_CLIENT_IDENTIFIER: lambda stream: _parse_string_property_value(
-        stream
-    ),
-    Property.SERVER_KEEP_ALIVE: lambda stream: _parse_property_value(stream, 2, "!H"),
-    Property.AUTHENTICATION_METHOD: lambda stream: _parse_string_property_value(stream),
-    Property.AUTHENTICATION_DATA: lambda stream: _parse_bytes_property_value(stream),
-    Property.REQUEST_PROBLEM_INFORMATION: lambda stream: _parse_bool_value(stream),
-    Property.WILL_DELAY_INTERVAL: lambda stream: _parse_property_value(stream, 4, "!L"),
-    Property.REQUEST_RESPONSE_INFORMATION: lambda stream: _parse_bool_value(stream),
-    Property.RESPONSE_INFORMATION: lambda stream: _parse_string_property_value(stream),
-    Property.SERVER_REFERENCE: lambda stream: _parse_string_property_value(stream),
-    Property.REASON_STRING: lambda stream: _parse_string_property_value(stream),
-    Property.RECEIVE_MAXIMUM: lambda stream: _parse_property_value(stream, 2, "!H"),
-    Property.TOPIC_ALIAS_MAXIMUM: lambda stream: _parse_property_value(stream, 2, "!H"),
-    Property.TOPIC_ALIAS: lambda stream: _parse_property_value(stream, 2, "!H"),
-    Property.MAXIMUM_QOS: lambda stream: _parse_property_value(stream, 1, "!B"),
-    Property.RETAIN_AVAILABLE: lambda stream: _parse_bool_value(stream),
-    Property.USER_PROPERTY: lambda stream: _parse_user_property_value(stream),
-    Property.MAXIMUM_PACKET_SIZE: lambda stream: _parse_property_value(stream, 4, "!L"),
-    Property.WILDCARD_SUBSCRIPTION_AVAILABLE: lambda stream: _parse_bool_value(stream),
-    Property.SUBSCRIPTION_IDENTIFIER_AVAILABLE: lambda stream: _parse_bool_value(
-        stream
-    ),
-    Property.SHARED_SUBSCRIPTION_AVAILABLE: lambda stream: _parse_bool_value(stream),
+def _read_bool(reader: BytesReader) -> bool:
+    return bool(reader.read_byte())
+
+
+def _read_user_property(reader: BytesReader) -> Tuple[str, str]:
+    return reader.read_str(), reader.read_str()
+
+
+_MAP_PROPERTY_PARSER: dict[Property, Callable[[BytesReader], Any]] = {
+    Property.PAYLOAD_FORMAT_INDICATOR: BytesReader.read_byte,
+    Property.MESSAGE_EXPIRY_INTERVAL: BytesReader.read_uint32,
+    Property.CONTENT_TYPE: BytesReader.read_str,
+    Property.RESPONSE_TOPIC: BytesReader.read_str,
+    Property.CORRELATION_DATA: BytesReader.read_binary,
+    Property.SUBSCRIPTION_IDENTIFIER: BytesReader.read_variable_byte_integer,
+    Property.SESSION_EXPIRY_INTERVAL: BytesReader.read_uint32,
+    Property.ASSIGNED_CLIENT_IDENTIFIER: BytesReader.read_str,
+    Property.SERVER_KEEP_ALIVE: BytesReader.read_uint16,
+    Property.AUTHENTICATION_METHOD: BytesReader.read_str,
+    Property.AUTHENTICATION_DATA: BytesReader.read_binary,
+    Property.REQUEST_PROBLEM_INFORMATION: _read_bool,
+    Property.WILL_DELAY_INTERVAL: BytesReader.read_uint32,
+    Property.REQUEST_RESPONSE_INFORMATION: _read_bool,
+    Property.RESPONSE_INFORMATION: BytesReader.read_str,
+    Property.SERVER_REFERENCE: BytesReader.read_str,
+    Property.REASON_STRING: BytesReader.read_str,
+    Property.RECEIVE_MAXIMUM: BytesReader.read_uint16,
+    Property.TOPIC_ALIAS_MAXIMUM: BytesReader.read_uint16,
+    Property.TOPIC_ALIAS: BytesReader.read_uint16,
+    Property.MAXIMUM_QOS: BytesReader.read_byte,
+    Property.RETAIN_AVAILABLE: _read_bool,
+    Property.USER_PROPERTY: _read_user_property,
+    Property.MAXIMUM_PACKET_SIZE: BytesReader.read_uint32,
+    Property.WILDCARD_SUBSCRIPTION_AVAILABLE: _read_bool,
+    Property.SUBSCRIPTION_IDENTIFIER_AVAILABLE: _read_bool,
+    Property.SHARED_SUBSCRIPTION_AVAILABLE: _read_bool,
 }
 
 
@@ -297,32 +285,37 @@ _MAP_PROPERTY_PACKERS = {
 }
 
 
-async def parse_properties(stream: AsyncDataSequence, length: int) -> Properties:
-    assert length >= 0
+def parse_properties(reader: BytesReader) -> Properties:
+    """Reads the length of properties and the properties."""
+    length = reader.read_variable_byte_integer()
 
     if not length:
         return {}
 
-    read_bytes = 0
+    if length > reader.remaining():
+        raise MalformedPacketError("Properties are longer than the packet")
+
+    end = reader.remaining() - length
     properties: Properties = {}
     user_properties: List[Tuple[str, str]] = []
 
-    while read_bytes < length:
-        code, n_bytes = await parse_variable_byte_integer(stream)
+    while reader.remaining() > end:
+        code = reader.read_variable_byte_integer()
 
-        read_bytes += n_bytes
+        try:
+            prop = Property(code)
+        except ValueError as exc:
+            raise MalformedPacketError(f"Unknown property 0x{code:02X}") from exc
 
-        property_name: PropertyName = cast(PropertyName, Property(code).name.lower())
-        value, n_bytes = await _MAP_PROPERTY_PARSER[Property(code)](stream)
+        value = _MAP_PROPERTY_PARSER[prop](reader)
 
-        read_bytes += n_bytes
-
-        if code == Property.USER_PROPERTY:
+        if prop == Property.USER_PROPERTY:
             user_properties.append(value)
         else:
-            properties[property_name] = value
+            properties[cast(PropertyName, prop.name.lower())] = value
 
-    assert length == read_bytes
+    if reader.remaining() != end:
+        raise MalformedPacketError("Properties don't match their length")
 
     if user_properties:
         properties["user_property"] = user_properties
@@ -358,35 +351,3 @@ def pack_properties(properties: Properties) -> bytes:
     result += data
 
     return bytes(result)
-
-
-async def _parse_property_value(
-    stream: AsyncDataSequence, bytes_num: int, format: str
-) -> Tuple[int, int]:
-    value, *_ = struct.unpack(format, await read(stream, bytes_num))
-
-    return value, bytes_num
-
-
-async def _parse_bytes_property_value(stream: AsyncDataSequence) -> Tuple[bytes, int]:
-    length, *_ = struct.unpack("!H", await read(stream, 2))
-    return await read(stream, length), 2 + length
-
-
-async def _parse_string_property_value(stream: AsyncDataSequence) -> Tuple[str, int]:
-    value, length = await _parse_bytes_property_value(stream)
-    return value.decode(), length
-
-
-async def _parse_bool_value(stream: AsyncDataSequence) -> Tuple[bool, int]:
-    result, *_ = struct.unpack("!B", await anext(stream))
-    return bool(result), 1
-
-
-async def _parse_user_property_value(
-    stream: AsyncDataSequence,
-) -> Tuple[Tuple[str, str], int]:
-    name, name_length = await _parse_string_property_value(stream)
-    value, value_length = await _parse_string_property_value(stream)
-
-    return (name, value), name_length + value_length

@@ -1,15 +1,6 @@
 import struct
 
-from zenmqtt.mqtt.packet import AsyncDataSequence, PacketType
-
-
-async def read(stream: AsyncDataSequence, size: int) -> bytes:
-    result = []
-
-    for _ in range(size):
-        result.append(await anext(stream))
-
-    return b"".join(result)
+from zenmqtt.mqtt.packet import PacketType
 
 
 def pack_variable_byte_integer(value: int) -> bytes:

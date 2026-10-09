@@ -4,7 +4,7 @@ from logging import getLogger
 from typing import Optional, Sequence
 
 from zenmqtt.exceptions import NotConnectedError, ServerLimitError
-from zenmqtt.mqtt.packet import AsyncDataSequence, FixedHeader
+from zenmqtt.mqtt.packet import BytesReader, FixedHeader
 from zenmqtt.mqtt.protocol.context import ProtocolContext
 from zenmqtt.mqtt.session import MQTTSession, PacketIdentifier
 from zenmqtt.mqtt.subscribe import (
@@ -70,18 +70,18 @@ class Commands:
         )
 
     async def handle_suback(
-        self, fixed_header: FixedHeader, stream: AsyncDataSequence
+        self, fixed_header: FixedHeader, reader: BytesReader
     ) -> None:
-        suback_packet = await parse_suback_packet(fixed_header, stream)
+        suback_packet = parse_suback_packet(fixed_header, reader)
 
         logger.debug("mqtt_protocol.handle_suback_packet packet:%s", suback_packet)
 
         await self._complete(suback_packet.packet_identifier, suback_packet)
 
     async def handle_unsuback(
-        self, fixed_header: FixedHeader, stream: AsyncDataSequence
+        self, fixed_header: FixedHeader, reader: BytesReader
     ) -> None:
-        unsuback_packet = await parse_unsubscribe_packet(fixed_header, stream)
+        unsuback_packet = parse_unsubscribe_packet(fixed_header, reader)
 
         logger.debug("mqtt_protocol.handle_unsuback_packet packet:%s", unsuback_packet)
 

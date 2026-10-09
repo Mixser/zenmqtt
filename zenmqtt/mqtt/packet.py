@@ -1,7 +1,9 @@
 import struct
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import AsyncGenerator, Final, Optional, Tuple
+from typing import Final, Tuple
+
+from zenmqtt.exceptions import MalformedPacketError
 
 
 class PacketType(IntEnum):
@@ -43,6 +45,12 @@ class PacketType(IntEnum):
 
 FIXED_HEADER_SIZE: Final[int] = 1
 
+# "Remaining Length" is encoded in at most 4 bytes
+_MAX_VARIABLE_BYTE_INTEGER_SIZE: Final[int] = 4
+
+_UINT16: Final[struct.Struct] = struct.Struct("!H")
+_UINT32: Final[struct.Struct] = struct.Struct("!L")
+
 
 @dataclass(frozen=True)
 class FixedHeader:
@@ -53,40 +61,118 @@ class FixedHeader:
     length: int
 
 
-_MAX_VARIABLE_BYTES_LENGTH: Final[int] = 128 * 128 * 128
+def parse_variable_byte_integer(data: bytes, offset: int = 0) -> Tuple[int, int]:
+    """
+    Returns the value and the number of bytes it takes.
 
-
-AsyncDataSequence = AsyncGenerator[bytes, None]
-
-
-async def parse_variable_byte_integer(stream: AsyncDataSequence) -> Tuple[int, int]:
+    :raises IndexError: data ends before the end of the value
+    :raises MalformedPacketError: the value takes more than 4 bytes
+    """
     value = 0
     multiplier = 1
-    length = 0
 
-    while True:
-        byte, *_ = struct.unpack("!B", await anext(stream))
+    for size in range(1, _MAX_VARIABLE_BYTE_INTEGER_SIZE + 1):
+        byte = data[offset + size - 1]
         value += (byte & 0x7F) * multiplier
-        length += 1
 
         if byte & 0x80 == 0:
-            break
+            return value, size
 
         multiplier *= 128
-        assert multiplier <= _MAX_VARIABLE_BYTES_LENGTH
 
-    return value, length
+    raise MalformedPacketError("Variable byte integer is longer than 4 bytes")
 
 
-async def parse_fixed_header(stream: AsyncDataSequence) -> Optional[FixedHeader]:
-    fixed_header_raw = await anext(stream, None)
+def parse_fixed_header(data: bytes) -> Tuple[FixedHeader, int]:
+    """Returns the fixed header and its size."""
+    try:
+        length, size = parse_variable_byte_integer(data, 1)
+    except IndexError as exc:
+        raise MalformedPacketError("Incomplete fixed header") from exc
 
-    if fixed_header_raw is None:
-        return None
-
-    byte_1, *_ = struct.unpack("!B", fixed_header_raw)
-    length, _ = await parse_variable_byte_integer(stream)
-
-    return FixedHeader(
-        packet_type=(byte_1 & 0xF0) >> 4, flags=byte_1 & 0xF, length=length
+    header = FixedHeader(
+        packet_type=PacketType(data[0] >> 4), flags=data[0] & 0xF, length=length
     )
+
+    return header, FIXED_HEADER_SIZE + size
+
+
+def split_packet(data: bytes) -> Tuple[FixedHeader, "BytesReader"]:
+    """Splits a whole packet into the fixed header and a reader of the body."""
+    header, header_size = parse_fixed_header(data)
+
+    if len(data) != header_size + header.length:
+        raise MalformedPacketError(
+            f"Packet size {len(data)} doesn't match {header_size + header.length}"
+        )
+
+    return header, BytesReader(data[header_size:])
+
+
+class BytesReader:
+    """
+    Reads values from the body of a packet. Reading past the end means that
+    the packet is malformed.
+    """
+
+    __slots__ = ("_data", "_offset")
+
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+        self._offset = 0
+
+    def remaining(self) -> int:
+        return len(self._data) - self._offset
+
+    def read(self, size: int) -> bytes:
+        start = self._offset
+        end = start + size
+
+        if end > len(self._data):
+            raise MalformedPacketError("Unexpected end of the packet")
+
+        self._offset = end
+        return self._data[start:end]
+
+    def read_byte(self) -> int:
+        if self._offset >= len(self._data):
+            raise MalformedPacketError("Unexpected end of the packet")
+
+        value = self._data[self._offset]
+        self._offset += 1
+        return value
+
+    def read_uint16(self) -> int:
+        return _UINT16.unpack(self.read(2))[0]
+
+    def read_uint32(self) -> int:
+        return _UINT32.unpack(self.read(4))[0]
+
+    def read_variable_byte_integer(self) -> int:
+        try:
+            value, size = parse_variable_byte_integer(self._data, self._offset)
+        except IndexError as exc:
+            raise MalformedPacketError("Unexpected end of the packet") from exc
+
+        self._offset += size
+        return value
+
+    def read_binary(self) -> bytes:
+        """Binary data with 2 bytes of length."""
+        return self.read(self.read_uint16())
+
+    def read_str(self) -> str:
+        """UTF-8 string with 2 bytes of length."""
+        try:
+            return self.read_binary().decode()
+        except UnicodeDecodeError as exc:
+            raise MalformedPacketError("Invalid UTF-8 string") from exc
+
+    def read_rest(self) -> bytes:
+        return self.read(self.remaining())
+
+    def ensure_end(self) -> None:
+        if self.remaining():
+            raise MalformedPacketError(
+                f"{self.remaining()} unexpected bytes at the end of the packet"
+            )

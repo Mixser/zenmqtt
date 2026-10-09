@@ -2,14 +2,9 @@ import struct
 from dataclasses import dataclass
 from typing import Final, Optional, Sequence, Tuple, TypedDict, cast
 
-from zenmqtt.mqtt.packet import (
-    AsyncDataSequence,
-    FixedHeader,
-    PacketType,
-    parse_variable_byte_integer,
-)
+from zenmqtt.mqtt.packet import BytesReader, FixedHeader, PacketType
 from zenmqtt.mqtt.properties import Properties, pack_properties, parse_properties
-from zenmqtt.mqtt.utils import pack_binaries, pack_fixed_header, pack_str16, read
+from zenmqtt.mqtt.utils import pack_binaries, pack_fixed_header, pack_str16
 
 
 class ConnackProperties(TypedDict, total=False):
@@ -40,15 +35,14 @@ class ConnectionResult:
     properties: ConnackProperties
 
 
-async def parse_connack_packet(
-    fixed_header: FixedHeader, stream: AsyncDataSequence
+def parse_connack_packet(
+    fixed_header: FixedHeader, reader: BytesReader
 ) -> ConnectionResult:
-    flags, result_code, *_ = struct.unpack("!BB", await read(stream, 2))
+    flags = reader.read_byte()
+    result_code = reader.read_byte()
+    properties = parse_properties(reader)
 
-    properties_length, length = await parse_variable_byte_integer(stream)
-    properties = await parse_properties(stream, properties_length)
-
-    assert fixed_header.length == 2 + length + properties_length
+    reader.ensure_end()
 
     return ConnectionResult(flags=flags, result_code=result_code, properties=properties)
 
@@ -192,22 +186,16 @@ class DisconnectResult:
     properties: DisconnectProperties
 
 
-async def parse_disconnect_packet(
-    fixed_header: FixedHeader, stream: AsyncDataSequence
+def parse_disconnect_packet(
+    fixed_header: FixedHeader, reader: BytesReader
 ) -> DisconnectResult:
-    payload_length = fixed_header.length
+    # both the reason code and properties may be omitted
+    reason_code = reader.read_byte() if reader.remaining() else 0x0
+    properties = parse_properties(reader) if reader.remaining() else {}
 
-    if not payload_length:
-        reason_code = 0x0
-    else:
-        reason_code, *_ = struct.unpack("!B", await anext(stream))
-        payload_length -= 1
+    reader.ensure_end()
 
-    if not payload_length:
-        properties_length = 0
-    else:
-        properties_length, _ = await parse_variable_byte_integer(stream)
-
-    properties = await parse_properties(stream, properties_length)
-
-    return DisconnectResult(reason_code=reason_code, properties=properties)
+    return DisconnectResult(
+        reason_code=reason_code,
+        properties=cast(DisconnectProperties, properties),
+    )

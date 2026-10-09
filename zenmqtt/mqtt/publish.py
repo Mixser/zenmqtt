@@ -4,14 +4,9 @@ from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple, TypedDict, cast
 
 from zenmqtt.exceptions import MalformedPacketError
-from zenmqtt.mqtt.packet import (
-    AsyncDataSequence,
-    FixedHeader,
-    PacketType,
-    parse_variable_byte_integer,
-)
+from zenmqtt.mqtt.packet import BytesReader, FixedHeader, PacketType
 from zenmqtt.mqtt.properties import Properties, pack_properties, parse_properties
-from zenmqtt.mqtt.utils import pack_fixed_header, pack_str16, read
+from zenmqtt.mqtt.utils import pack_fixed_header, pack_str16
 
 
 class PublishProperties(TypedDict, total=False):
@@ -103,8 +98,8 @@ class PublishResult:
     properties: PublishProperties
 
 
-async def parse_publish_packet(
-    fixed_header: FixedHeader, stream: AsyncDataSequence
+def parse_publish_packet(
+    fixed_header: FixedHeader, reader: BytesReader
 ) -> PublishResult:
     dup = (fixed_header.flags & 0x8) >> 3
     qos = (fixed_header.flags & 0x6) >> 1
@@ -113,32 +108,17 @@ async def parse_publish_packet(
     if qos == 3:
         raise MalformedPacketError("PUBLISH with QoS 3")
 
-    payload_length = fixed_header.length
-
-    topic_length, *_ = struct.unpack("!H", await read(stream, 2))
-    payload_length -= 2
-
-    topic, *_ = struct.unpack(f"!{topic_length}s", await read(stream, topic_length))
-    payload_length -= topic_length
-
-    packet_identifier: Optional[int] = None
-    if qos:
-        packet_identifier, *_ = struct.unpack("!H", await read(stream, 2))
-        payload_length -= 2
-
-    property_length, length = await parse_variable_byte_integer(stream)
-    properties = await parse_properties(stream, property_length)
-    payload_length -= property_length + length
-
-    payload = await read(stream, payload_length)
+    topic = reader.read_str()
+    packet_identifier = reader.read_uint16() if qos else None
+    properties = parse_properties(reader)
 
     return PublishResult(
         dup=dup,
         qos=qos,
         retain=retain,
         packet_identifier=packet_identifier,
-        topic=topic.decode(),
-        payload=payload,
+        topic=topic,
+        payload=reader.read_rest(),
         properties=properties,
     )
 
@@ -152,11 +132,9 @@ class PubAckResult:
     properties: PubackProperties
 
 
-async def parse_puback_packet(
-    fixed_header: FixedHeader, stream: AsyncDataSequence
-) -> PubAckResult:
-    packet_identifier, reason_code, properties = await _parse_publish_response_packet(
-        fixed_header, stream
+def parse_puback_packet(fixed_header: FixedHeader, reader: BytesReader) -> PubAckResult:
+    packet_identifier, reason_code, properties = _parse_publish_response_packet(
+        fixed_header, reader
     )
 
     return PubAckResult(
@@ -192,11 +170,9 @@ class PubRecResult:
     properties: PubrecProperties
 
 
-async def parse_pubrec_packet(
-    fixed_header: FixedHeader, stream: AsyncDataSequence
-) -> PubRecResult:
-    packet_identifier, reason_code, properties = await _parse_publish_response_packet(
-        fixed_header, stream
+def parse_pubrec_packet(fixed_header: FixedHeader, reader: BytesReader) -> PubRecResult:
+    packet_identifier, reason_code, properties = _parse_publish_response_packet(
+        fixed_header, reader
     )
 
     return PubRecResult(
@@ -231,11 +207,9 @@ class PubRelResult:
     properties: PubrelProperties
 
 
-async def parse_pubrel_packet(
-    fixed_header: FixedHeader, stream: AsyncDataSequence
-) -> PubRelResult:
-    packet_identifier, reason_code, properties = await _parse_publish_response_packet(
-        fixed_header, stream
+def parse_pubrel_packet(fixed_header: FixedHeader, reader: BytesReader) -> PubRelResult:
+    packet_identifier, reason_code, properties = _parse_publish_response_packet(
+        fixed_header, reader
     )
 
     return PubRelResult(
@@ -270,11 +244,11 @@ class PubCompResult:
     properties: PubcompProperties
 
 
-async def parse_pubcomp_packet(
-    fixed_header: FixedHeader, stream: AsyncDataSequence
+def parse_pubcomp_packet(
+    fixed_header: FixedHeader, reader: BytesReader
 ) -> PubCompResult:
-    packet_identifier, reason_code, properties = await _parse_publish_response_packet(
-        fixed_header, stream
+    packet_identifier, reason_code, properties = _parse_publish_response_packet(
+        fixed_header, reader
     )
 
     return PubCompResult(
@@ -300,25 +274,15 @@ def pack_pubcomp_packet(
     return bytes(payload)
 
 
-async def _parse_publish_response_packet(
-    fixed_header: FixedHeader, stream: AsyncDataSequence
+def _parse_publish_response_packet(
+    fixed_header: FixedHeader, reader: BytesReader
 ) -> Tuple[int, int, Properties]:
-    packet_identifier, *_ = struct.unpack("!H", await read(stream, 2))
-    packet_size = 2
+    packet_identifier = reader.read_uint16()
+    # both the reason code and properties may be omitted
+    reason_code = reader.read_byte() if reader.remaining() else 0
+    properties = parse_properties(reader) if reader.remaining() else {}
 
-    reason_code = 0
-    properties: Properties = {}
-
-    if fixed_header.length > 2:
-        packet_size += 1
-        reason_code, *_ = struct.unpack("!B", await anext(stream))
-
-    if fixed_header.length > 3:
-        property_length, size = await parse_variable_byte_integer(stream)
-        packet_size += property_length + size
-        properties = await parse_properties(stream, property_length)
-
-    assert fixed_header.length == packet_size
+    reader.ensure_end()
 
     return packet_identifier, reason_code, properties
 

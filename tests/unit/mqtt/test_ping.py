@@ -1,7 +1,6 @@
 import pytest
 
-from tests.unit.mqtt.utils import build_async_generator
-from zenmqtt.mqtt.packet import PacketType, parse_fixed_header
+from zenmqtt.mqtt.packet import PacketType, split_packet
 from zenmqtt.mqtt.ping import pack_pingreq_packet, parse_pingresp_packet
 
 pytestmark = pytest.mark.asyncio
@@ -12,12 +11,10 @@ def test_pack_pingreq_packet():
 
 
 async def test_parse_pingresp_packet():
-    stream = build_async_generator(b"\xd0\x00")
-
-    fixed_header = await parse_fixed_header(stream)
+    fixed_header, reader = split_packet(b"\xd0\x00")
 
     assert fixed_header.packet_type == PacketType.PINGRESP
-    assert await parse_pingresp_packet(fixed_header, stream) is None
+    assert parse_pingresp_packet(fixed_header, reader) is None
 
 
 @pytest.mark.parametrize(
@@ -28,9 +25,7 @@ async def test_parse_pingresp_packet():
     ),
 )
 async def test_parse_malformed_pingresp_packet(input):
-    stream = build_async_generator(input)
-
-    fixed_header = await parse_fixed_header(stream)
+    fixed_header, reader = split_packet(input)
 
     with pytest.raises(ValueError):
-        await parse_pingresp_packet(fixed_header, stream)
+        parse_pingresp_packet(fixed_header, reader)

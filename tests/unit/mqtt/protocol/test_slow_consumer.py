@@ -102,8 +102,8 @@ async def test_acks_keep_the_order_with_duplicates():
 
     await protocol.ack(message)
 
-    puback = await parse_puback_packet(*await expect(transport, PacketType.PUBACK))
-    pubrec = await parse_pubrec_packet(*await expect(transport, PacketType.PUBREC))
+    puback = parse_puback_packet(*await expect(transport, PacketType.PUBACK))
+    pubrec = parse_pubrec_packet(*await expect(transport, PacketType.PUBREC))
     assert (puback.packet_identifier, pubrec.packet_identifier) == (1, 2)
 
     # the duplicate isn't delivered

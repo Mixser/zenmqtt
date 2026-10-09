@@ -4,7 +4,7 @@ from logging import getLogger
 from typing import Optional
 
 from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
-from zenmqtt.mqtt.packet import AsyncDataSequence, FixedHeader
+from zenmqtt.mqtt.packet import BytesReader, FixedHeader
 from zenmqtt.mqtt.ping import pack_pingreq_packet, parse_pingresp_packet
 from zenmqtt.mqtt.protocol.context import ProtocolContext
 
@@ -43,9 +43,9 @@ class KeepAlive:
         await asyncio.shield(future)
 
     async def handle_pingresp(
-        self, fixed_header: FixedHeader, stream: AsyncDataSequence
+        self, fixed_header: FixedHeader, reader: BytesReader
     ) -> None:
-        await parse_pingresp_packet(fixed_header, stream)
+        parse_pingresp_packet(fixed_header, reader)
 
         logger.debug("mqtt_protocol.handle_pingresp_packet")
 
