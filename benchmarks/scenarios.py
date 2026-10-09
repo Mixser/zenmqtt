@@ -5,14 +5,14 @@ from typing import Callable, Optional
 
 from benchmarks.clients import BenchClient
 from benchmarks.stats import Result, percentiles
-from gmqtt.connection import MQTTConnection, MQTTConnectionTransport
-from gmqtt.metrics import MetricsCollector
-from gmqtt.mqtt.packet import PacketType
-from gmqtt.mqtt.protocol import MQTTProtocol
-from gmqtt.mqtt.publish import pack_publish_packet
-from gmqtt.mqtt.session import InMemorySession
+from zenmqtt.connection import MQTTConnection, MQTTConnectionTransport
+from zenmqtt.metrics import MetricsCollector
+from zenmqtt.mqtt.packet import PacketType
+from zenmqtt.mqtt.protocol import MQTTProtocol
+from zenmqtt.mqtt.publish import pack_publish_packet
+from zenmqtt.mqtt.session import InMemorySession
 
-TOPIC = "gmqtt/benchmarks"
+TOPIC = "zenmqtt/benchmarks"
 # timeout for the delivery of all messages in broker scenarios, seconds
 DELIVERY_TIMEOUT = 60
 
@@ -98,7 +98,7 @@ async def in_memory_receive(
 
     return Result(
         scenario="in-memory receive",
-        client="gmqtt-v2",
+        client="zenmqtt",
         qos=qos,
         messages=messages,
         payload=payload_size,
@@ -122,7 +122,7 @@ def pack_publish(messages: int, payload_size: int, qos: int) -> Result:
 
     return Result(
         scenario="pack publish",
-        client="gmqtt-v2",
+        client="zenmqtt",
         qos=qos,
         messages=messages,
         payload=payload_size,

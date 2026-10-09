@@ -89,7 +89,7 @@ def opentelemetry_metrics():
     try:
         from opentelemetry.sdk.metrics import MeterProvider
 
-        from gmqtt.contrib.opentelemetry import OpenTelemetryMetrics
+        from zenmqtt.contrib.opentelemetry import OpenTelemetryMetrics
     except ImportError:
         return None
 

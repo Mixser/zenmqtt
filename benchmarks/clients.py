@@ -5,7 +5,7 @@ don't depend on a client library.
 from typing import AsyncIterator, Callable, Protocol
 from urllib.parse import urlparse
 
-from gmqtt.client import MQTTClient
+from zenmqtt.client import MQTTClient
 
 
 class BenchClient(Protocol):
@@ -27,8 +27,8 @@ class BenchClient(Protocol):
         ...
 
 
-class GmqttClient:
-    name = "gmqtt-v2"
+class ZenmqttClient:
+    name = "zenmqtt"
 
     def __init__(self, client_id: str) -> None:
         self._client = MQTTClient(client_id, reconnect=None)
@@ -94,7 +94,7 @@ class AiomqttClient:
 
 
 def available_clients() -> dict[str, Callable[[str], BenchClient]]:
-    clients: dict[str, Callable[[str], BenchClient]] = {"gmqtt-v2": GmqttClient}
+    clients: dict[str, Callable[[str], BenchClient]] = {"zenmqtt": ZenmqttClient}
 
     try:
         import aiomqtt  # noqa: F401
