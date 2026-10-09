@@ -129,7 +129,7 @@ async def test_pubrel_with_unknown_packet_identifier():
 
     transport.feed(pack_pubrel_packet(42, 0, {}))
 
-    pubcomp = await parse_pubcomp_packet(*await expect(transport, PacketType.PUBCOMP))
+    pubcomp = parse_pubcomp_packet(*await expect(transport, PacketType.PUBCOMP))
     assert pubcomp.packet_identifier == 42
     assert pubcomp.reason_code == 0x92
 
@@ -144,7 +144,7 @@ async def test_pubrel_with_known_packet_identifier():
 
     transport.feed(pack_pubrel_packet(7, 0, {}))
 
-    pubcomp = await parse_pubcomp_packet(*await expect(transport, PacketType.PUBCOMP))
+    pubcomp = parse_pubcomp_packet(*await expect(transport, PacketType.PUBCOMP))
     assert pubcomp.reason_code == 0x00
 
 

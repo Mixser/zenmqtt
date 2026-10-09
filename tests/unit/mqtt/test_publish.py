@@ -2,9 +2,8 @@ from unittest.mock import ANY
 
 import pytest
 
-from tests.unit.mqtt.utils import build_async_generator
 from zenmqtt.exceptions import MalformedPacketError
-from zenmqtt.mqtt.packet import PacketType, parse_fixed_header
+from zenmqtt.mqtt.packet import PacketType, split_packet
 from zenmqtt.mqtt.publish import (
     PubAckResult,
     PubCompResult,
@@ -44,12 +43,10 @@ pytestmark = pytest.mark.asyncio
     ),
 )
 async def test_parse_publish_packet_from_bytes(input: bytes, expected_result):
-    stream = build_async_generator(input)
-
-    fixed_header = await parse_fixed_header(stream)
+    fixed_header, reader = split_packet(input)
     assert fixed_header.packet_type == PacketType.PUBLISH
 
-    assert await parse_publish_packet(fixed_header, stream) == expected_result
+    assert parse_publish_packet(fixed_header, reader) == expected_result
 
 
 @pytest.mark.parametrize(
@@ -136,13 +133,11 @@ def test_pack_publish_packet(
     ),
 )
 async def test_parse_puback_packet(input, expected_result):
-    stream = build_async_generator(input)
-
-    fixed_header = await parse_fixed_header(stream)
+    fixed_header, reader = split_packet(input)
 
     assert fixed_header.packet_type == PacketType.PUBACK
 
-    assert await parse_puback_packet(fixed_header, stream) == expected_result
+    assert parse_puback_packet(fixed_header, reader) == expected_result
 
 
 @pytest.mark.parametrize(
@@ -182,13 +177,11 @@ def test_pack_puback_packet(
     ),
 )
 async def test_parse_pubrec_packet(input, expected_result):
-    stream = build_async_generator(input)
-
-    fixed_header = await parse_fixed_header(stream)
+    fixed_header, reader = split_packet(input)
 
     assert fixed_header.packet_type == PacketType.PUBREC
 
-    assert await parse_pubrec_packet(fixed_header, stream) == expected_result
+    assert parse_pubrec_packet(fixed_header, reader) == expected_result
 
 
 @pytest.mark.parametrize(
@@ -253,13 +246,11 @@ def test_pack_pubrel_packet(
     ),
 )
 async def test_parse_pubrel_packet(input, expected_result):
-    stream = build_async_generator(input)
-
-    fixed_header = await parse_fixed_header(stream)
+    fixed_header, reader = split_packet(input)
 
     assert fixed_header.packet_type == PacketType.PUBREL
 
-    assert await parse_pubrel_packet(fixed_header, stream) == expected_result
+    assert parse_pubrel_packet(fixed_header, reader) == expected_result
 
 
 @pytest.mark.parametrize(
@@ -303,13 +294,11 @@ def test_pack_pubcomp_packet(
     ),
 )
 async def test_parse_pubcomp_packet(input, expected_result):
-    stream = build_async_generator(input)
-
-    fixed_header = await parse_fixed_header(stream)
+    fixed_header, reader = split_packet(input)
 
     assert fixed_header.packet_type == PacketType.PUBCOMP
 
-    assert await parse_pubcomp_packet(fixed_header, stream) == expected_result
+    assert parse_pubcomp_packet(fixed_header, reader) == expected_result
 
 
 @pytest.mark.parametrize("qos", (-1, 3, 8))
@@ -319,8 +308,7 @@ def test_pack_publish_packet_with_invalid_qos(qos):
 
 
 async def test_parse_publish_packet_with_qos_3():
-    stream = build_async_generator(b"\x36\x0a\x00\x03a/b\x00\x01\x00pay")
-    fixed_header = await parse_fixed_header(stream)
+    fixed_header, reader = split_packet(b"\x36\x0b\x00\x03a/b\x00\x01\x00pay")
 
     with pytest.raises(MalformedPacketError):
-        await parse_publish_packet(fixed_header, stream)
+        parse_publish_packet(fixed_header, reader)

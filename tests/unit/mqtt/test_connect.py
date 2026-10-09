@@ -1,6 +1,5 @@
 import pytest
 
-from tests.unit.mqtt.utils import build_async_generator
 from zenmqtt.mqtt.connect import (
     ConnectionResult,
     DisconnectResult,
@@ -10,7 +9,7 @@ from zenmqtt.mqtt.connect import (
     parse_connack_packet,
     parse_disconnect_packet,
 )
-from zenmqtt.mqtt.packet import PacketType, parse_fixed_header
+from zenmqtt.mqtt.packet import PacketType, split_packet
 
 pytestmark = pytest.mark.asyncio
 
@@ -245,12 +244,10 @@ def test_pack_connect_packet_with_invalid_will_qos():
     ),
 )
 async def test_parse_connack_packet(input, expected_result):
-    stream = build_async_generator(input)
-
-    fixed_header = await parse_fixed_header(stream)
+    fixed_header, reader = split_packet(input)
 
     assert fixed_header.packet_type == PacketType.CONNACK
-    assert await parse_connack_packet(fixed_header, stream) == expected_result
+    assert parse_connack_packet(fixed_header, reader) == expected_result
 
 
 @pytest.mark.parametrize(
@@ -276,8 +273,6 @@ def test_pack_disconnect_packet(reason, properties, expected_result):
     ),
 )
 async def test_parse_disconnect_packet(input, expected_result):
-    stream = build_async_generator(input)
-
-    fixed_header = await parse_fixed_header(stream)
+    fixed_header, reader = split_packet(input)
     assert fixed_header.packet_type == PacketType.DISCONNECT
-    assert await parse_disconnect_packet(fixed_header, stream) == expected_result
+    assert parse_disconnect_packet(fixed_header, reader) == expected_result

@@ -12,7 +12,7 @@ from zenmqtt.exceptions import (
     TopicAliasInvalidError,
 )
 from zenmqtt.mqtt.connect import ConnectProperties
-from zenmqtt.mqtt.packet import AsyncDataSequence, FixedHeader
+from zenmqtt.mqtt.packet import BytesReader, FixedHeader
 from zenmqtt.mqtt.protocol.context import ProtocolContext
 from zenmqtt.mqtt.publish import (
     PublishResult,
@@ -130,11 +130,9 @@ class IncomingFlow:
         self._enqueue(None)
 
     async def handle_publish(
-        self, fixed_header: FixedHeader, stream: AsyncDataSequence
+        self, fixed_header: FixedHeader, reader: BytesReader
     ) -> None:
-        message = self._resolve_topic_alias(
-            await parse_publish_packet(fixed_header, stream)
-        )
+        message = self._resolve_topic_alias(parse_publish_packet(fixed_header, reader))
 
         logger.debug("mqtt_protocol.handle_publish_packet packet:%s", message)
 
@@ -176,12 +174,12 @@ class IncomingFlow:
         self._enqueue(message)
 
     async def handle_pubrel(
-        self, fixed_header: FixedHeader, stream: AsyncDataSequence
+        self, fixed_header: FixedHeader, reader: BytesReader
     ) -> None:
         connection = self._context.connection
         assert connection
 
-        pubrel_result = await parse_pubrel_packet(fixed_header, stream)
+        pubrel_result = parse_pubrel_packet(fixed_header, reader)
 
         logger.debug("mqtt_protocol.handle_pubrel_packet packet:%s", pubrel_result)
 

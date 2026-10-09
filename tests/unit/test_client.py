@@ -7,7 +7,6 @@ from tests.unit.mqtt.protocol.helpers import TIMEOUT, FakeTransport, pack_connac
 from zenmqtt.client import MQTTClient
 from zenmqtt.connection import register_implementation
 from zenmqtt.mqtt.packet import PacketType
-from zenmqtt.mqtt.utils import read
 
 pytestmark = pytest.mark.asyncio
 
@@ -26,13 +25,14 @@ async def connect(client: MQTTClient, transport: FakeTransport, connack: bytes):
 
     task = asyncio.create_task(client.connect("fake://broker", keepalive=0))
 
-    fixed_header, stream = await transport.next_packet()
+    fixed_header, reader = await transport.next_packet()
+    body = reader.read_rest()
     assert fixed_header.packet_type == PacketType.CONNECT
 
     # protocol name, version, flags, keep alive, properties length
-    await read(stream, 2 + 4 + 1 + 1 + 2 + 1)
-    (client_id_length,) = struct.unpack("!H", await read(stream, 2))
-    client_id = (await read(stream, client_id_length)).decode()
+    offset = 2 + 4 + 1 + 1 + 2 + 1
+    (client_id_length,) = struct.unpack_from("!H", body, offset)
+    client_id = body[offset + 2 : offset + 2 + client_id_length].decode()
 
     transport.feed(connack)
     await asyncio.wait_for(task, TIMEOUT)

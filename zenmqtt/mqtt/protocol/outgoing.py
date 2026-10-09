@@ -12,7 +12,7 @@ from zenmqtt.exceptions import (
     SessionLostError,
 )
 from zenmqtt.mqtt.connect import ConnectionResult
-from zenmqtt.mqtt.packet import AsyncDataSequence, FixedHeader
+from zenmqtt.mqtt.packet import BytesReader, FixedHeader
 from zenmqtt.mqtt.protocol.context import ProtocolContext
 from zenmqtt.mqtt.publish import (
     PublishAcknowledgement,
@@ -218,21 +218,21 @@ class OutgoingFlow:
         self._fail_all(exc)
 
     async def handle_puback(
-        self, fixed_header: FixedHeader, stream: AsyncDataSequence
+        self, fixed_header: FixedHeader, reader: BytesReader
     ) -> None:
-        puback_result = await parse_puback_packet(fixed_header, stream)
+        puback_result = parse_puback_packet(fixed_header, reader)
 
         logger.debug("mqtt_protocol.handle_puback_packet packet:%s", puback_result)
 
         await self._complete(puback_result.packet_identifier, puback_result)
 
     async def handle_pubrec(
-        self, fixed_header: FixedHeader, stream: AsyncDataSequence
+        self, fixed_header: FixedHeader, reader: BytesReader
     ) -> None:
         connection = self._context.connection
         assert connection
 
-        pubrec_packet = await parse_pubrec_packet(fixed_header, stream)
+        pubrec_packet = parse_pubrec_packet(fixed_header, reader)
         packet_identifier = pubrec_packet.packet_identifier
 
         logger.debug("mqtt_protocol.handle_pubrec_packet packet:%s", pubrec_packet)
@@ -255,9 +255,9 @@ class OutgoingFlow:
         )
 
     async def handle_pubcomp(
-        self, fixed_header: FixedHeader, stream: AsyncDataSequence
+        self, fixed_header: FixedHeader, reader: BytesReader
     ) -> None:
-        pubcomp_packet = await parse_pubcomp_packet(fixed_header, stream)
+        pubcomp_packet = parse_pubcomp_packet(fixed_header, reader)
 
         logger.debug("mqtt_protocol.handle_pubcomp_packet packet:%s", pubcomp_packet)
 

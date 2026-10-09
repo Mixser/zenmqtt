@@ -3,7 +3,6 @@ import asyncio
 import struct
 from typing import Optional
 
-from tests.unit.mqtt.utils import build_async_generator
 from zenmqtt.connection import MQTTConnection, MQTTConnectionTransport
 from zenmqtt.metrics import MetricsCollector
 from zenmqtt.mqtt.connect import (
@@ -11,7 +10,7 @@ from zenmqtt.mqtt.connect import (
     DisconnectResult,
     parse_disconnect_packet,
 )
-from zenmqtt.mqtt.packet import PacketType, parse_fixed_header
+from zenmqtt.mqtt.packet import PacketType, split_packet
 from zenmqtt.mqtt.protocol import MQTTProtocol
 from zenmqtt.mqtt.publish import pack_publish_packet, parse_publish_packet
 from zenmqtt.mqtt.session import InMemorySession
@@ -48,11 +47,7 @@ class FakeTransport(MQTTConnectionTransport):
     async def next_packet(self, timeout: float = TIMEOUT):
         payload = await asyncio.wait_for(self._sent.get(), timeout)
 
-        stream = build_async_generator(payload)
-        fixed_header = await parse_fixed_header(stream)
-        assert fixed_header
-
-        return fixed_header, stream
+        return split_packet(payload)
 
     def has_sent_packets(self) -> bool:
         return not self._sent.empty()
@@ -159,10 +154,10 @@ async def wait_for_connection_lost(protocol: MQTTProtocol):
 
 
 async def expect(transport: FakeTransport, packet_type: PacketType):
-    fixed_header, stream = await transport.next_packet()
+    fixed_header, reader = await transport.next_packet()
     assert fixed_header.packet_type == packet_type
 
-    return fixed_header, stream
+    return fixed_header, reader
 
 
 async def receive_and_ack(protocol: MQTTProtocol, messages: asyncio.Queue):
@@ -172,12 +167,12 @@ async def receive_and_ack(protocol: MQTTProtocol, messages: asyncio.Queue):
 
 
 async def expect_publish(transport: FakeTransport):
-    return await parse_publish_packet(*await expect(transport, PacketType.PUBLISH))
+    return parse_publish_packet(*await expect(transport, PacketType.PUBLISH))
 
 
 async def expect_disconnect(transport: FakeTransport, reason_code: int):
-    fixed_header, stream = await expect(transport, PacketType.DISCONNECT)
-    assert await parse_disconnect_packet(fixed_header, stream) == DisconnectResult(
+    fixed_header, reader = await expect(transport, PacketType.DISCONNECT)
+    assert parse_disconnect_packet(fixed_header, reader) == DisconnectResult(
         reason_code, {}
     )
 

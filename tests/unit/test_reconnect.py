@@ -21,7 +21,6 @@ from zenmqtt.mqtt.connect import pack_disconnect_packet
 from zenmqtt.mqtt.packet import PacketType
 from zenmqtt.mqtt.publish import PubAckResult, pack_puback_packet, pack_publish_packet
 from zenmqtt.mqtt.subscribe import Subscription
-from zenmqtt.mqtt.utils import read
 from zenmqtt.reconnect import ReconnectPolicy
 
 pytestmark = pytest.mark.asyncio
@@ -61,8 +60,8 @@ class FakeBroker:
         """Returns the transport and the CONNECT packet without fixed header."""
         transport = await asyncio.wait_for(self.connections.get(), timeout)
 
-        fixed_header, stream = await expect(transport, PacketType.CONNECT)
-        connect = await read(stream, fixed_header.length)
+        fixed_header, reader = await expect(transport, PacketType.CONNECT)
+        connect = reader.read_rest()
 
         transport.feed(connack)
 
@@ -89,8 +88,8 @@ def connect_client_id(connect: bytes) -> str:
 
 
 async def subscribed_topics(transport: FakeTransport) -> tuple[int, list[str]]:
-    fixed_header, stream = await expect(transport, PacketType.SUBSCRIBE)
-    payload = await read(stream, fixed_header.length)
+    fixed_header, reader = await expect(transport, PacketType.SUBSCRIBE)
+    payload = reader.read_rest()
 
     (packet_identifier,) = struct.unpack("!H", payload[:2])
     offset = 2 + 1 + payload[2]  # properties length (single byte here)
@@ -441,8 +440,8 @@ async def test_subscriptions_are_restored_when_session_is_lost(broker, session_p
     await asyncio.wait_for(task, TIMEOUT)
 
     task = asyncio.create_task(client.unsubscribe(["c/d"]))
-    _, stream = await expect(transport, PacketType.UNSUBSCRIBE)
-    (packet_identifier,) = struct.unpack("!H", await read(stream, 2))
+    _, reader = await expect(transport, PacketType.UNSUBSCRIBE)
+    packet_identifier = reader.read_uint16()
     transport.feed(pack_unsuback(packet_identifier, 0x00))
     await asyncio.wait_for(task, TIMEOUT)
 

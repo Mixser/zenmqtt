@@ -77,6 +77,12 @@ class MalformedPacketError(ProtocolError):
     reason_code = 0x81
 
 
+class IncomingPacketTooLargeError(ProtocolError):
+    """The server sent a packet bigger than "Maximum Packet Size" of the client."""
+
+    reason_code = 0x95
+
+
 class ReceiveMaximumExceededError(ProtocolError):
     """The server sent more QoS 1/2 messages than the client's "Receive Maximum"."""
 

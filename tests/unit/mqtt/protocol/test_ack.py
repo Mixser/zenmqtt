@@ -28,11 +28,11 @@ pytestmark = pytest.mark.asyncio
 
 
 async def expect_puback(transport: FakeTransport):
-    return await parse_puback_packet(*await expect(transport, PacketType.PUBACK))
+    return parse_puback_packet(*await expect(transport, PacketType.PUBACK))
 
 
 async def expect_pubrec(transport: FakeTransport):
-    return await parse_pubrec_packet(*await expect(transport, PacketType.PUBREC))
+    return parse_pubrec_packet(*await expect(transport, PacketType.PUBREC))
 
 
 async def test_qos1_is_acknowledged_by_ack():
@@ -68,7 +68,7 @@ async def test_qos2_is_acknowledged_by_ack():
     assert await session.has_incoming_message(1)
 
     transport.feed(pack_pubrel_packet(1, 0, {}))
-    pubcomp = await parse_pubcomp_packet(*await expect(transport, PacketType.PUBCOMP))
+    pubcomp = parse_pubcomp_packet(*await expect(transport, PacketType.PUBCOMP))
     assert pubcomp.reason_code == 0
     assert not await session.has_incoming_message(1)
 

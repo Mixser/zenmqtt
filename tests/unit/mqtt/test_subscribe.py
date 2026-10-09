@@ -1,7 +1,6 @@
 import pytest
 
-from tests.unit.mqtt.utils import build_async_generator
-from zenmqtt.mqtt.packet import PacketType, parse_fixed_header
+from zenmqtt.mqtt.packet import PacketType, split_packet
 from zenmqtt.mqtt.subscribe import (
     SubscribeResult,
     Subscription,
@@ -37,12 +36,10 @@ pytestmark = pytest.mark.asyncio
     ),
 )
 async def test_parse_suback_packet(input, expected_result):
-    stream = build_async_generator(input)
-
-    fixed_header = await parse_fixed_header(stream)
+    fixed_header, reader = split_packet(input)
     assert fixed_header.packet_type == PacketType.SUBACK
 
-    assert await parse_suback_packet(fixed_header, stream) == expected_result
+    assert parse_suback_packet(fixed_header, reader) == expected_result
 
 
 @pytest.mark.parametrize(
@@ -55,12 +52,10 @@ async def test_parse_suback_packet(input, expected_result):
     ),
 )
 async def test_parse_unsubscribe_packet(input, expected_result):
-    stream = build_async_generator(input)
-
-    fixed_header = await parse_fixed_header(stream)
+    fixed_header, reader = split_packet(input)
     assert fixed_header.packet_type == PacketType.UNSUBACK
 
-    assert await parse_unsubscribe_packet(fixed_header, stream) == expected_result
+    assert parse_unsubscribe_packet(fixed_header, reader) == expected_result
 
 
 @pytest.mark.parametrize(

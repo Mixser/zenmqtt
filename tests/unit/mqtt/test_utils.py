@@ -3,7 +3,6 @@ from unittest.mock import ANY
 
 import pytest
 
-from tests.unit.mqtt.utils import build_async_generator
 from zenmqtt.mqtt.packet import (
     FixedHeader,
     PacketType,
@@ -12,14 +11,13 @@ from zenmqtt.mqtt.packet import (
 )
 from zenmqtt.mqtt.utils import pack_fixed_header, pack_str16, pack_variable_byte_integer
 
-pytestmark = pytest.mark.asyncio
-
 
 @pytest.mark.parametrize("value", range(2048))
-async def test_pack_variable_byte_integer(value: int):
-    assert await parse_variable_byte_integer(
-        build_async_generator([x.to_bytes() for x in pack_variable_byte_integer(value)])
-    ) == (value, ANY)
+def test_pack_variable_byte_integer(value: int):
+    assert parse_variable_byte_integer(pack_variable_byte_integer(value)) == (
+        value,
+        ANY,
+    )
 
 
 @pytest.mark.parametrize(
@@ -44,19 +42,11 @@ def test_pack_str16(value: str):
         FixedHeader(PacketType.CONNACK, flags=0xB, length=99),
     ),
 )
-async def test_pack_fixed_header(fixed_header: FixedHeader):
-    assert (
-        await parse_fixed_header(
-            build_async_generator(
-                [
-                    x.to_bytes()
-                    for x in pack_fixed_header(
-                        fixed_header.packet_type,
-                        fixed_header.flags,
-                        fixed_header.length,
-                    )
-                ]
-            )
+def test_pack_fixed_header(fixed_header: FixedHeader):
+    header, _ = parse_fixed_header(
+        pack_fixed_header(
+            fixed_header.packet_type, fixed_header.flags, fixed_header.length
         )
-        == fixed_header
     )
+
+    assert header == fixed_header

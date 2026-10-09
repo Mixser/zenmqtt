@@ -57,7 +57,7 @@ async def test_qos2_publish_flow():
     publish = await expect_publish(transport)
     transport.feed(pack_pubrec_packet(publish.packet_identifier, 0, {}))
 
-    pubrel = await parse_pubrel_packet(*await expect(transport, PacketType.PUBREL))
+    pubrel = parse_pubrel_packet(*await expect(transport, PacketType.PUBREL))
     assert pubrel.packet_identifier == publish.packet_identifier
 
     (pending,) = await session.get_pending_outgoing_messages()
@@ -121,7 +121,7 @@ async def test_connection_lost_then_resend_with_session_present():
     transport = await connect(protocol, session_present=True)
 
     # the original order is kept: PUBREL for the first message, then PUBLISH
-    pubrel = await parse_pubrel_packet(*await expect(transport, PacketType.PUBREL))
+    pubrel = parse_pubrel_packet(*await expect(transport, PacketType.PUBREL))
     assert pubrel.packet_identifier == qos2_publish.packet_identifier
 
     resent = await expect_publish(transport)
@@ -219,6 +219,6 @@ async def test_pubrec_with_unknown_packet_identifier():
 
     transport.feed(pack_pubrec_packet(42, 0, {}))
 
-    pubrel = await parse_pubrel_packet(*await expect(transport, PacketType.PUBREL))
+    pubrel = parse_pubrel_packet(*await expect(transport, PacketType.PUBREL))
     assert pubrel.packet_identifier == 42
     assert pubrel.reason_code == 0x92
