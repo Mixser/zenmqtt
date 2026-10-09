@@ -1,0 +1,331 @@
+"""
+A/B comparison of two checkouts of the library, for example the base branch
+and a pull request, on the same machine.
+
+    python -m benchmarks.compare --base ../base --head . --output-dir report
+
+Shared CI machines are noisy, so absolute numbers of two runs can't be
+compared. Both checkouts are measured in the same job, in alternating order
+(base, head, head, base, ...), several rounds each. For every scenario the
+change is the ratio of medians head/base, with a 95% confidence interval from
+bootstrap resampling. A change is reported only if the whole interval is
+outside of the threshold.
+"""
+import argparse
+import json
+import os
+import platform
+import random
+import shutil
+import statistics
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+from benchmarks.run import SCENARIOS
+
+# marker of the report in pull request comments
+REPORT_MARKER = "<!-- zenmqtt-perf-report -->"
+
+CPU_SCENARIOS = ("in-memory", "pack")
+BROKER_SCENARIOS = ("publish", "end-to-end")
+
+_BOOTSTRAP_SAMPLES = 2000
+
+
+@dataclass
+class Comparison:
+    scenario: str
+    qos: int
+    payload: int
+    note: str
+    base: list[float] = field(default_factory=list)
+    head: list[float] = field(default_factory=list)
+    # broker scenarios are too noisy for a verdict
+    informational: bool = False
+
+    @property
+    def ratio(self) -> Optional[float]:
+        if not self.base or not self.head:
+            return None
+
+        return statistics.median(self.head) / statistics.median(self.base)
+
+    def confidence_interval(self, rng: random.Random) -> Optional[tuple[float, float]]:
+        if len(self.base) < 2 or len(self.head) < 2:
+            return None
+
+        ratios = sorted(
+            statistics.median(rng.choices(self.head, k=len(self.head)))
+            / statistics.median(rng.choices(self.base, k=len(self.base)))
+            for _ in range(_BOOTSTRAP_SAMPLES)
+        )
+
+        return (
+            ratios[int(0.025 * _BOOTSTRAP_SAMPLES)],
+            ratios[int(0.975 * _BOOTSTRAP_SAMPLES) - 1],
+        )
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--base", required=True, help="checkout of the base")
+    parser.add_argument("--head", required=True, help="checkout of the change")
+    parser.add_argument("--base-label", default="base")
+    parser.add_argument("--head-label", default="head")
+    parser.add_argument("--rounds", type=int, default=10)
+    parser.add_argument(
+        "--scenarios",
+        default=",".join(CPU_SCENARIOS),
+        help=f"comma separated: {', '.join(SCENARIOS)}",
+    )
+    parser.add_argument("--messages", type=int, default=20_000)
+    parser.add_argument("--payload", type=int, nargs="+", default=[64, 16_384])
+    parser.add_argument(
+        "--url", help="broker for publish and end-to-end scenarios, if selected"
+    )
+    parser.add_argument(
+        "--broker-rounds", type=int, default=3, help="rounds of broker scenarios"
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.05,
+        help="changes within +/- threshold are reported as no change",
+    )
+    parser.add_argument("--output-dir", default="perf-report")
+    return parser.parse_args()
+
+
+def imported_from(python_path: Path, workdir: Path) -> Path:
+    """Where zenmqtt is imported from with this PYTHONPATH."""
+    output = subprocess.run(
+        [sys.executable, "-c", "import zenmqtt; print(zenmqtt.__file__)"],
+        cwd=workdir,
+        env={**os.environ, "PYTHONPATH": str(python_path)},
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+    return Path(output).resolve()
+
+
+def run_once(
+    checkout: Path,
+    workdir: Path,
+    scenarios: list[str],
+    payload: int,
+    messages: int,
+    url: Optional[str],
+) -> list[dict]:
+    """Runs benchmarks.run (from workdir) with the library of the checkout."""
+    output = workdir / "result.json"
+    command = [
+        sys.executable,
+        "-m",
+        "benchmarks.run",
+        "--scenarios",
+        ",".join(scenarios),
+        "--clients",
+        "zenmqtt",
+        "--messages",
+        str(messages),
+        "--payload",
+        str(payload),
+        "--json",
+        str(output),
+    ]
+
+    if url:
+        command += ["--url", url]
+
+    completed = subprocess.run(
+        command,
+        cwd=workdir,
+        env={**os.environ, "PYTHONPATH": str(checkout)},
+        capture_output=True,
+        text=True,
+    )
+
+    if completed.returncode:
+        # e.g. the base doesn't support a scenario yet
+        print(completed.stdout[-2000:], completed.stderr[-2000:], file=sys.stderr)
+        return []
+
+    return json.loads(output.read_text())["results"]
+
+
+def measure(args: argparse.Namespace) -> list[Comparison]:
+    checkouts = {
+        "base": Path(args.base).resolve(),
+        "head": Path(args.head).resolve(),
+    }
+    selected = args.scenarios.split(",")
+    comparisons: dict[tuple, Comparison] = {}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        # benchmarks of the head are used for both sides; the working
+        # directory is the first entry of sys.path, so it must not contain
+        # the library itself
+        workdir = Path(tmp)
+        shutil.copytree(
+            checkouts["head"] / "benchmarks",
+            workdir / "benchmarks",
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
+
+        for side, checkout in checkouts.items():
+            location = imported_from(checkout, workdir)
+
+            if checkouts[side] not in location.parents:
+                raise SystemExit(f"{side}: zenmqtt is imported from {location}")
+
+        groups = [
+            (
+                [scenario for scenario in selected if scenario in CPU_SCENARIOS],
+                args.rounds,
+                False,
+            ),
+            (
+                [scenario for scenario in selected if scenario in BROKER_SCENARIOS],
+                args.broker_rounds if args.url else 0,
+                True,
+            ),
+        ]
+
+        for scenarios, rounds, informational in groups:
+            if not scenarios or not rounds:
+                continue
+
+            for payload in args.payload:
+                for index in range(rounds):
+                    # base, head, head, base, ...: a slow drift of the machine
+                    # affects both sides equally
+                    order = ("base", "head") if index % 2 == 0 else ("head", "base")
+
+                    for side in order:
+                        print(
+                            f"round {index + 1}/{rounds}, {payload} B, {side}",
+                            file=sys.stderr,
+                        )
+
+                        for result in run_once(
+                            checkouts[side],
+                            workdir,
+                            scenarios,
+                            payload,
+                            args.messages,
+                            args.url,
+                        ):
+                            key = (
+                                result["scenario"],
+                                result["qos"],
+                                result["payload"],
+                                result["note"],
+                            )
+                            comparison = comparisons.setdefault(
+                                key, Comparison(*key, informational=informational)
+                            )
+                            getattr(comparison, side).append(result["throughput"])
+
+    return list(comparisons.values())
+
+
+def render(comparisons: list[Comparison], args: argparse.Namespace) -> str:
+    rng = random.Random(0)
+    threshold = args.threshold
+
+    lines = [
+        REPORT_MARKER,
+        "## Performance report",
+        "",
+        "",  # summary, filled below
+        "",
+        f"`{args.head_label}` compared with `{args.base_label}`, "
+        f"Python {platform.python_version()}, {platform.system()} "
+        f"{platform.machine()}, {args.rounds} rounds, "
+        f"{args.messages} messages per run.",
+        "",
+        "| Scenario | QoS | Payload | Base msg/s | Head msg/s | Change | 95% CI | |",
+        "|---|---:|---:|---:|---:|---:|---|---|",
+    ]
+
+    regressions = improvements = 0
+
+    for comparison in comparisons:
+        name = comparison.scenario + (
+            f" ({comparison.note})" if comparison.note else ""
+        )
+        base = f"{statistics.median(comparison.base):,.0f}" if comparison.base else "-"
+        head = f"{statistics.median(comparison.head):,.0f}" if comparison.head else "-"
+
+        ratio = comparison.ratio
+        interval = comparison.confidence_interval(rng)
+        change = f"{(ratio - 1) * 100:+.1f}%" if ratio else "n/a"
+        bounds = (
+            f"{(interval[0] - 1) * 100:+.1f}% .. {(interval[1] - 1) * 100:+.1f}%"
+            if interval
+            else "-"
+        )
+
+        if comparison.informational or not interval:
+            verdict = "ℹ️"
+        elif interval[0] > 1 + threshold:
+            verdict = "🟢 faster"
+            improvements += 1
+        elif interval[1] < 1 - threshold:
+            verdict = "🔴 slower"
+            regressions += 1
+        else:
+            verdict = "⚪"
+
+        lines.append(
+            f"| {name} | {comparison.qos} | {comparison.payload} B | {base} "
+            f"| {head} | {change} | {bounds} | {verdict} |"
+        )
+
+    summary = (
+        f"**{regressions} slower, {improvements} faster** "
+        f"(changes beyond ±{threshold:.0%} with 95% confidence)."
+    )
+
+    lines[3] = summary
+    lines += [
+        "",
+        "<details><summary>How to read it</summary>",
+        "",
+        "Both versions run on the same machine in the same job, in alternating "
+        "order. Change is the ratio of median throughputs; 95% CI is its "
+        "confidence interval from bootstrap resampling. 🟢/🔴 mean that the "
+        f"whole interval is beyond ±{threshold:.0%}, ⚪ means no significant "
+        "change. ℹ️ rows go through a broker and are too noisy for a verdict.",
+        "",
+        "</details>",
+    ]
+
+    return "\n".join(lines) + "\n"
+
+
+def main() -> None:
+    args = parse_args()
+
+    comparisons = measure(args)
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    report = render(comparisons, args)
+    (output_dir / "report.md").write_text(report)
+    (output_dir / "results.json").write_text(
+        json.dumps([vars(comparison) for comparison in comparisons], indent=2)
+    )
+
+    print(report)
+
+
+if __name__ == "__main__":
+    main()

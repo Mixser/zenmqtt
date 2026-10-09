@@ -43,6 +43,37 @@ gmqtt (v1) isn't compared yet: after the rename to `zenmqtt` it can be
 installed next to this package, an adapter in `benchmarks/clients.py` is
 enough. paho-mqtt is synchronous, so it needs a different harness.
 
+## Comparing two versions
+
+`benchmarks/compare.py` compares two checkouts of the library on the same
+machine, the same way as CI does for pull requests:
+
+```sh
+git worktree add ../zenmqtt-main main
+poetry run python -m benchmarks.compare --base ../zenmqtt-main --head . --rounds 10
+```
+
+Shared machines are noisy, so numbers of two separate runs can't be compared.
+Both versions run in one job, in alternating order (base, head, head, base,
+...). The change of every scenario is the ratio of medians head/base with a 95%
+confidence interval from bootstrap resampling; it's reported as faster or
+slower only if the whole interval is beyond ±5% (`--threshold`). Broker
+scenarios (`--url`) are shown without a verdict, they are too noisy. The
+report is written to `--output-dir` as `report.md` and `results.json`.
+
+## CI
+
+- **Pull requests** (`.github/workflows/perf.yml`): the pull request merged
+  into `main` is compared with `main` by `benchmarks/compare.py` on Python
+  3.13. The report is shown in the job summary, and `perf-comment.yml` posts it
+  as a comment of the pull request (one comment, updated on every push). It's
+  a report only, the check doesn't fail on a slowdown.
+- **History** (`.github/workflows/perf-history.yml`): every push to `main` runs
+  all scenarios on Python 3.12, 3.13, 3.14 and 3.15 and stores the results on
+  the `gh-pages` branch with
+  [github-action-benchmark](https://github.com/benchmark-action/github-action-benchmark);
+  charts are at `https://<owner>.github.io/<repository>/perf/`.
+
 ## Results
 
 Apple M2 Pro, Python 3.12.0, Mosquitto 2 in Docker Desktop 29.7 on the same
@@ -51,43 +82,46 @@ percent between runs).
 
 | scenario | client | QoS | msg/s | p50 ms | p95 ms | p99 ms | note |
 |---|---|---|---:|---:|---:|---:|---|
-| in-memory receive | zenmqtt | 0 | 49,606 | | | | no metrics |
-| in-memory receive | zenmqtt | 0 | 32,997 | | | | opentelemetry |
-| in-memory receive | zenmqtt | 1 | 40,500 | | | | no metrics |
-| in-memory receive | zenmqtt | 1 | 24,855 | | | | opentelemetry |
-| in-memory receive | zenmqtt | 2 | 39,136 | | | | no metrics |
-| in-memory receive | zenmqtt | 2 | 24,482 | | | | opentelemetry |
-| pack publish | zenmqtt | 0 | 440,806 | | | | |
-| pack publish | zenmqtt | 1 | 416,193 | | | | |
-| pack publish | zenmqtt | 2 | 412,171 | | | | |
-| publish | zenmqtt | 0 | 70,065 | | | | |
-| publish | zenmqtt | 1 | 20,514 | 3.79 | 4.11 | 21.38 | |
-| publish | zenmqtt | 2 | 13,780 | 6.19 | 6.69 | 22.22 | |
-| publish | aiomqtt 2.5.1 | 0 | 18,320 | | | | |
-| publish | aiomqtt 2.5.1 | 1 | 10,234 | 8.78 | 9.84 | 23.17 | |
-| publish | aiomqtt 2.5.1 | 2 | 8,439 | 10.71 | 11.77 | 24.54 | |
-| end-to-end | zenmqtt | 0 | 27,390 | 272.72 | 317.64 | 320.94 | saturated |
-| end-to-end | zenmqtt | 1 | 12,457 | 7.15 | 8.06 | 8.96 | |
-| end-to-end | zenmqtt | 2 | 8,347 | 11.12 | 12.06 | 13.18 | |
-| end-to-end | aiomqtt 2.5.1 | 0 | 8,176 | 640.94 | 694.46 | 696.14 | saturated |
-| end-to-end | aiomqtt 2.5.1 | 1 | 118 | 575.44 | 839.81 | 847.20 | 7223 of 10000 received |
-| end-to-end | aiomqtt 2.5.1 | 2 | 4,808 | 570.90 | 921.66 | 970.10 | |
+| in-memory receive | zenmqtt | 0 | 181,509 | | | | no metrics |
+| in-memory receive | zenmqtt | 0 | 53,249 | | | | opentelemetry |
+| in-memory receive | zenmqtt | 1 | 114,661 | | | | no metrics |
+| in-memory receive | zenmqtt | 1 | 36,723 | | | | opentelemetry |
+| in-memory receive | zenmqtt | 2 | 111,875 | | | | no metrics |
+| in-memory receive | zenmqtt | 2 | 34,887 | | | | opentelemetry |
+| pack publish | zenmqtt | 0 | 426,832 | | | | |
+| pack publish | zenmqtt | 1 | 407,412 | | | | |
+| pack publish | zenmqtt | 2 | 398,957 | | | | |
+| publish | zenmqtt | 0 | 67,496 | | | | |
+| publish | zenmqtt | 1 | 21,548 | 3.47 | 4.18 | 22.64 | |
+| publish | zenmqtt | 2 | 14,648 | 5.71 | 6.63 | 21.98 | |
+| publish | aiomqtt 2.5.1 | 0 | 17,664 | | | | |
+| publish | aiomqtt 2.5.1 | 1 | 10,465 | 8.36 | 10.21 | 24.10 | |
+| publish | aiomqtt 2.5.1 | 2 | 8,478 | 10.79 | 11.58 | 23.71 | |
+| end-to-end | zenmqtt | 0 | 46,918 | 124.80 | 166.03 | 169.31 | saturated |
+| end-to-end | zenmqtt | 1 | 14,742 | 5.53 | 7.15 | 24.22 | |
+| end-to-end | zenmqtt | 2 | 9,948 | 8.97 | 10.14 | 20.17 | |
+| end-to-end | aiomqtt 2.5.1 | 0 | 8,388 | 649.40 | 656.96 | 665.06 | saturated |
+| end-to-end | aiomqtt 2.5.1 | 1 | 114 | 598.59 | 852.72 | 859.53 | 6977 of 10000 received |
+| end-to-end | aiomqtt 2.5.1 | 2 | 5,063 | 553.33 | 879.46 | 911.26 | |
 
 ### Findings
 
-- **Publish**: zenmqtt publishes 2–4× faster than aiomqtt with about half
-  the ack latency.
-- **End-to-end QoS 0** latency is high for both clients because the publisher
-  sends faster than the subscriber receives: messages wait in queues.
-- **aiomqtt end-to-end QoS 1** received only 7223 of 10000 messages within
+- **Receive path**: the buffered packet reader receives 180k QoS 0 and about
+  110k QoS 1/2 messages per second in memory (it was 40–50k with the
+  byte-by-byte stream). For QoS 1/2 the acknowledgements cost more than
+  parsing now.
+- **Publish**: zenmqtt publishes 2–4× faster than aiomqtt with less than half
+  of the ack latency. End-to-end it delivers 2–6× more messages per second.
+- **End-to-end QoS 0** latency is high because the publisher sends faster
+  than the subscriber receives: messages wait in queues.
+- **aiomqtt end-to-end QoS 1** received only 6977 of 10000 messages within
   60 seconds: Mosquitto keeps at most 1000 QoS 1/2 messages per client
   (`max_queued_messages`) and drops the rest when the subscriber is slower.
   zenmqtt received all messages.
-- **The receive path is the bottleneck** of zenmqtt: about 40–50k msg/s in
-  memory, while packing runs at 410–440k/s. `--profile` shows that about 70%
-  of the time is in reading the stream byte by byte (`build_data_sequence`
-  yields every byte, `utils.read` joins them again: about 87 steps per 64
-  byte message). A buffered reader is the next optimisation.
-- **OpenTelemetry metrics** cost about 35–40% of the in-memory receive
-  throughput. "no metrics" runs with the default `MetricsCollector`, whose
-  hooks do nothing; their own cost isn't measured separately.
+- **OpenTelemetry metrics** cost about 70% of the in-memory receive
+  throughput now that parsing is fast (181k -> 53k msg/s for QoS 0). "no
+  metrics" runs with the default `MetricsCollector`, whose hooks do nothing;
+  their own cost isn't measured separately.
+- **Packing big payloads** is slow: about 10.5k PUBLISH packets of 16 KiB per
+  second, because `pack_publish_packet` copies the payload byte by byte
+  (`bytearray.extend(itertools.chain(...))`).

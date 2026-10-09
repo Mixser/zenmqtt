@@ -1,0 +1,75 @@
+# Records benchmark results of every push to main for every supported Python
+# version. github-action-benchmark keeps the data and charts on the gh-pages
+# branch, see https://<owner>.github.io/<repo>/perf/
+name: perf-history
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# pushes to gh-pages must not race
+concurrency:
+  group: perf-history
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        python-version: [ "3.12", "3.13", "3.14", "3.15" ]
+    continue-on-error: ${{ matrix.python-version == '3.15' }}
+    name: benchmark (Python ${{ matrix.python-version }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install poetry
+        run: pipx install poetry
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+          cache: "poetry"
+
+      - name: Install dependencies
+        run: |
+          poetry env use python
+          poetry install
+
+      - name: Start Mosquitto
+        run: |
+          docker run -d --name mosquitto -p 1883:1883 eclipse-mosquitto:2 \
+            mosquitto -c /mosquitto-no-auth.conf
+          timeout 30 bash -c 'until (echo > /dev/tcp/localhost/1883) 2>/dev/null; do sleep 1; done'
+
+      - name: Run benchmarks
+        run: |
+          poetry run python -m benchmarks.run \
+            --url tcp://localhost:1883 \
+            --clients zenmqtt \
+            --messages 20000 \
+            --json results.json
+          poetry run python -m benchmarks.history results.json > history.json
+
+      - name: Store the results
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: zenmqtt (Python ${{ matrix.python-version }})
+          tool: customBiggerIsBetter
+          output-file-path: history.json
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: perf
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          # report only: history and charts, no alerts
+          comment-on-alert: false
+          fail-on-alert: false
