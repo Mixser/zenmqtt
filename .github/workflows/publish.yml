@@ -1,0 +1,86 @@
+name: publish
+
+# Publishes the package when a GitHub release is published:
+#   gh release create v0.2.0 --target main --generate-notes
+# A pre-release (e.g. v0.2.0rc1, created with --prerelease) goes to TestPyPI.
+#
+# Uses trusted publishing, no tokens: PyPI and TestPyPI need a publisher for
+# this repository, the workflow "publish.yml" and the environment "pypi" /
+# "testpypi".
+
+on:
+  release:
+    types: [ published ]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: The tag matches the version and is on main
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml)
+
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::The tag $TAG doesn't match the version $version in pyproject.toml"
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::The tag $TAG isn't on the main branch"
+            exit 1
+          fi
+
+  testing:
+    needs: [ check ]
+    uses: ./.github/workflows/zenmqtt.yml
+
+  build:
+    needs: [ testing ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install poetry
+        run: pipx install poetry
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Build
+        run: poetry build
+      - name: Check the package
+        run: pipx run twine check --strict dist/*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.release.prerelease && 'testpypi' || 'pypi' }}
+      url: ${{ github.event.release.prerelease && 'https://test.pypi.org/p/zenmqtt' || 'https://pypi.org/p/zenmqtt' }}
+    permissions:
+      # trusted publishing
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to TestPyPI
+        if: github.event.release.prerelease
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+      - name: Publish to PyPI
+        if: ${{ !github.event.release.prerelease }}
+        uses: pypa/gh-action-pypi-publish@release/v1

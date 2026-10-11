@@ -5,6 +5,8 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  # the publish workflow runs the tests before the release
+  workflow_call:
 
 permissions:
   contents: read
