@@ -1,8 +1,9 @@
 # zenmqtt
 
+[![PyPI](https://img.shields.io/pypi/v/zenmqtt.svg)](https://pypi.org/project/zenmqtt/)
 [![CI](https://github.com/Mixser/zenmqtt/actions/workflows/zenmqtt.yml/badge.svg)](https://github.com/Mixser/zenmqtt/actions/workflows/zenmqtt.yml)
 [![Benchmarks](https://img.shields.io/badge/benchmarks-history-blue)](https://mixser.github.io/zenmqtt/perf/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/Mixser/zenmqtt/blob/main/LICENSE)
 
 An asyncio MQTT 5 client for Python, built for long-running services: it
 reconnects by itself, keeps QoS 1/2 messages in a session until the broker
@@ -35,17 +36,20 @@ async for message in client.messages:
 - **Metrics**: hooks for every client event, an OpenTelemetry adapter included.
 - **Typed** API, no dependencies besides the standard library.
 - **Fast**: about 180k received messages per second in memory, 1.7–3.8× the
-  publish throughput of aiomqtt (see [benchmarks](benchmarks/README.md)).
+  publish throughput of aiomqtt (see [benchmarks](https://github.com/Mixser/zenmqtt/blob/main/benchmarks/README.md)).
 
 ## Installation
 
-Requires Python 3.12 or newer. The package isn't on PyPI yet:
+Requires Python 3.12 or newer.
 
 ```sh
-pip install "zenmqtt @ git+https://github.com/Mixser/zenmqtt"
+pip install zenmqtt
 
 # with the OpenTelemetry adapter
-pip install "zenmqtt[otel] @ git+https://github.com/Mixser/zenmqtt"
+pip install "zenmqtt[otel]"
+
+# the latest main branch
+pip install "zenmqtt @ git+https://github.com/Mixser/zenmqtt"
 ```
 
 ## Quick start
@@ -211,25 +215,25 @@ from zenmqtt.contrib.opentelemetry import OpenTelemetryMetrics
 client = MQTTClient("my-client", metrics=OpenTelemetryMetrics(meter))
 ```
 
-See [examples/opentelemetry_metrics.py](examples/opentelemetry_metrics.py).
+See [examples/opentelemetry_metrics.py](https://github.com/Mixser/zenmqtt/blob/main/examples/opentelemetry_metrics.py).
 
 ### Custom session storage
 
 QoS 1/2 messages wait in the session until they are acknowledged. The default
 session is in memory; to keep messages across restarts of the application,
 subclass `zenmqtt.BaseSession` and implement its storage methods.
-[examples/sqlite_session.py](examples/sqlite_session.py) stores the session in
+[examples/sqlite_session.py](https://github.com/Mixser/zenmqtt/blob/main/examples/sqlite_session.py) stores the session in
 SQLite.
 
 ## Examples
 
-[examples/](examples/README.md): publish and subscribe, persistent session with
+[examples/](https://github.com/Mixser/zenmqtt/blob/main/examples/README.md): publish and subscribe, persistent session with
 reconnect, SQLite session, acknowledgement of processed messages, OpenTelemetry
 metrics.
 
 ## Performance
 
-[benchmarks/](benchmarks/README.md) measures the receive path in memory,
+[benchmarks/](https://github.com/Mixser/zenmqtt/blob/main/benchmarks/README.md) measures the receive path in memory,
 publish and end-to-end delivery through a broker, compared with aiomqtt, and
 packing and parsing of packets with pytest-benchmark. Every pull request gets a performance report against `main`, and the
 history of `main` is at https://mixser.github.io/zenmqtt/perf/.
@@ -253,4 +257,4 @@ docker run --rm -p 1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/Mixser/zenmqtt/blob/main/LICENSE)
