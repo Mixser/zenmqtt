@@ -58,8 +58,9 @@ jobs:
         run: make test
 
   integration:
-    # the client against a real broker, through the public API
-    needs: [ linting ]
+    # the client against a real broker, through the public API; runs only if
+    # the unit tests pass on all Python versions
+    needs: [ testing ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
