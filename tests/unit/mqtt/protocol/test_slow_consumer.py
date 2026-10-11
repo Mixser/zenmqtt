@@ -26,14 +26,14 @@ from zenmqtt.mqtt.publish import (
 
 
 async def feed(transport: FakeTransport, *packets: bytes) -> None:
-    """Feeds packets one by one, so the delivery task runs in between."""
+    """Feeds packets one by one, so each is handled before the next one."""
     for packet in packets:
         transport.feed(packet)
         await asyncio.sleep(0.01)
 
 
-async def test_control_packets_are_handled_while_queue_is_full():
-    protocol, _, _ = build_protocol(queue_size=1)
+async def test_control_packets_are_handled_while_nobody_reads():
+    protocol, _, _ = build_protocol()
     transport = await connect(protocol)
 
     # nobody reads the messages
@@ -54,12 +54,11 @@ async def test_control_packets_are_handled_while_queue_is_full():
 
 async def test_slow_consumer_is_reported(caplog):
     metrics = RecordingMetrics()
-    protocol, _, messages = build_protocol(queue_size=1, metrics=metrics)
+    protocol, _, messages = build_protocol(metrics=metrics)
     set_buffered_messages_warning(protocol, 2)
     transport = await connect(protocol)
 
     with caplog.at_level(logging.WARNING, logger="zenmqtt.mqtt.protocol"):
-        # 1 in the queue, 1 waits to be put, the rest in the buffer
         await feed(transport, *(pack_publish(0, 0, b"%d" % i) for i in range(6)))
 
     # nothing is dropped; the size is reported when the buffer reaches the
@@ -78,7 +77,7 @@ async def test_slow_consumer_is_reported(caplog):
 
 async def test_buffer_size_is_reported_periodically():
     metrics = RecordingMetrics()
-    protocol, _, _ = build_protocol(queue_size=1, metrics=metrics)
+    protocol, _, _ = build_protocol(metrics=metrics)
     set_buffered_messages_warning(protocol, 2)
     transport = await connect(protocol)
 
@@ -89,11 +88,11 @@ async def test_buffer_size_is_reported_periodically():
     await asyncio.sleep(0.15)
     await feed(transport, pack_publish(0, 0, b"4"))
 
-    assert metrics.get("on_messages_buffered") == [(2,), (3,)]
+    assert metrics.get("on_messages_buffered") == [(2,), (5,)]
 
 
 async def test_acks_keep_the_order_with_duplicates():
-    protocol, session, messages = build_protocol(queue_size=1)
+    protocol, session, messages = build_protocol()
     transport = await connect(protocol)
 
     # PUBREC for message 2 was sent before, PUBREL is not received yet
@@ -126,15 +125,15 @@ async def test_acks_keep_the_order_with_duplicates():
 
 
 async def test_connection_lost_drops_buffered_qos1_and_keeps_qos0():
-    protocol, _, messages = build_protocol(queue_size=1)
+    protocol, _, messages = build_protocol()
     transport = await connect(protocol)
 
     await feed(
         transport,
-        pack_publish(0, 0, b"filler"),
-        pack_publish(1, 1, b"1"),  # waits to be put into the queue
-        pack_publish(2, 1, b"2"),  # in the buffer
-        pack_publish(0, 0, b"qos0"),  # in the buffer
+        pack_publish(0, 0, b"first"),
+        pack_publish(1, 1, b"1"),
+        pack_publish(2, 1, b"2"),
+        pack_publish(0, 0, b"qos0"),
     )
 
     transport.drop()
@@ -144,5 +143,5 @@ async def test_connection_lost_drops_buffered_qos1_and_keeps_qos0():
     while (message := await receive(messages)) is not None:
         payloads.append(message.payload)
 
-    # the server re-sends message 2, it isn't acknowledged
-    assert payloads == [b"filler", b"1", b"qos0"]
+    # the server re-sends messages 1 and 2, they aren't acknowledged
+    assert payloads == [b"first", b"qos0"]

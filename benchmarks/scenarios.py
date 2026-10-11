@@ -68,8 +68,16 @@ async def in_memory_receive(
     Parsing and delivery of incoming messages without network and broker:
     shows the cost of the client itself.
     """
-    queue: asyncio.Queue = asyncio.Queue()
-    protocol = MQTTProtocol(queue, InMemorySession(), metrics)
+    if hasattr(MQTTProtocol, "next_message"):
+        protocol = MQTTProtocol(InMemorySession(), metrics)
+        next_message = protocol.next_message
+    else:
+        # the messages queue before the single buffer, for A/B comparisons with
+        # older versions; can be removed when main has next_message()
+        queue: asyncio.Queue = asyncio.Queue()
+        protocol = MQTTProtocol(queue, InMemorySession(), metrics)  # type: ignore
+        next_message = queue.get
+
     transport = MemoryTransport()
     protocol.set_connection(MQTTConnection(transport))
 
@@ -89,7 +97,8 @@ async def in_memory_receive(
     transport.feed(packets)
 
     for _ in range(messages):
-        message = await queue.get()
+        message = await next_message()
+        assert message
         await protocol.ack(message)
 
     elapsed = time.perf_counter() - started

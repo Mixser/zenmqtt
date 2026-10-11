@@ -55,23 +55,19 @@ class MQTTProtocol:
 
     def __init__(
         self,
-        messages: asyncio.Queue[Optional[PublishResult]],
         session: MQTTSession,
         metrics: Optional[MetricsCollector] = None,
     ) -> None:
         """
         A lost connection doesn't end anything: QoS 1/2 publish calls keep
         waiting for the acknowledgement of the message re-sent on the next
-        connect, and the messages queue stays open. The owner calls close()
+        connect, and next_message() keeps waiting. The owner calls close()
         when nothing will connect anymore.
-
-        :param messages: incoming messages; QoS 1/2 messages must be
-            acknowledged by ack()
         """
         self._session = session
         self._context = ProtocolContext(metrics or MetricsCollector())
 
-        self._incoming = IncomingFlow(self._context, session, messages)
+        self._incoming = IncomingFlow(self._context, session)
         self._outgoing = OutgoingFlow(self._context, session)
         self._commands = Commands(self._context, session)
         self._keep_alive = KeepAlive(self._context)
@@ -215,7 +211,7 @@ class MQTTProtocol:
     async def close(self, exc: Exception) -> None:
         """
         Nothing will connect anymore: fails publish calls which wait for
-        acknowledgements and closes the messages queue.
+        acknowledgements and ends the messages.
         """
         self._outgoing.close(exc)
         self._incoming.close()
@@ -229,6 +225,13 @@ class MQTTProtocol:
         properties: Optional[PublishProperties] = None,
     ) -> Optional[PublishAcknowledgement]:
         return await self._outgoing.publish(topic, payload, qos, retain, properties)
+
+    async def next_message(self) -> Optional[PublishResult]:
+        """
+        The next incoming message, None after close(); QoS 1/2 messages must
+        be acknowledged by ack().
+        """
+        return await self._incoming.next_message()
 
     async def ack(self, message: PublishResult, reason_code: int = 0) -> None:
         await self._incoming.ack(message, reason_code)
