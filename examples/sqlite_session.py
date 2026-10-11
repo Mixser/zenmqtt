@@ -171,7 +171,7 @@ async def main():
     # pending messages are re-sent here, if the server still has the session
     await client.connect(
         MQTT_URL,
-        clean_session=False,
+        clean_start=False,
         properties={"session_expiry_interval": 3600},
     )
 

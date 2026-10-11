@@ -35,7 +35,7 @@ async def main():
     if MQTT_USERNAME:
         client.authorize(MQTT_USERNAME, MQTT_PASSWORD)
 
-    await client.connect(MQTT_URL, clean_session=True)
+    await client.connect(MQTT_URL, clean_start=True)
     await client.subscribe([(TOPIC, 1)])
 
     # the trace context of "request" travels in the user properties of PUBLISH

@@ -13,7 +13,7 @@ from zenmqtt.mqtt.packet import PacketType, split_packet
 
 
 @pytest.mark.parametrize(
-    "client_id, username, password, clean_session, keepalive, properties, expected_value",
+    "client_id, username, password, clean_start, keepalive, properties, expected_value",
     (
         (
             "client-id",
@@ -63,14 +63,14 @@ from zenmqtt.mqtt.packet import PacketType, split_packet
     ),
 )
 def test_pack_connect_packet(
-    client_id, username, password, clean_session, keepalive, properties, expected_value
+    client_id, username, password, clean_start, keepalive, properties, expected_value
 ):
     assert (
         pack_connect_packet(
             client_id,
             username,
             password,
-            clean_session=clean_session,
+            clean_start=clean_start,
             keepalive=keepalive,
             properties=properties,
         )
@@ -113,7 +113,7 @@ def test_pack_connect_packet_credentials_and_properties(
             "client-id",
             username,
             password,
-            clean_session=False,
+            clean_start=False,
             keepalive=0,
             properties=properties,
         )
@@ -129,7 +129,7 @@ def test_pack_connect_packet_with_non_ascii_client_id():
             client_id,
             None,
             None,
-            clean_session=False,
+            clean_start=False,
             keepalive=False,
             properties={},
         )
@@ -138,7 +138,7 @@ def test_pack_connect_packet_with_non_ascii_client_id():
 
 
 @pytest.mark.parametrize(
-    "username, password, clean_session, will, expected_value",
+    "username, password, clean_start, will, expected_value",
     (
         (
             None,
@@ -174,14 +174,14 @@ def test_pack_connect_packet_with_non_ascii_client_id():
     ),
 )
 def test_pack_connect_packet_with_will(
-    username, password, clean_session, will, expected_value
+    username, password, clean_start, will, expected_value
 ):
     assert (
         pack_connect_packet(
             "client-id",
             username,
             password,
-            clean_session=clean_session,
+            clean_start=clean_start,
             keepalive=False,
             properties={},
             will=will,
@@ -197,7 +197,7 @@ def test_pack_connect_packet_with_invalid_keep_alive(keepalive):
             "client-id",
             None,
             None,
-            clean_session=False,
+            clean_start=False,
             keepalive=keepalive,
             properties={},
         )
@@ -208,7 +208,7 @@ def test_pack_connect_packet_with_keep_alive():
         "client-id",
         None,
         None,
-        clean_session=False,
+        clean_start=False,
         keepalive=60,
         properties={},
     ) == (b"\x10\x16\x00\x04MQTT\x05\x00\x00\x3c\x00\x00\tclient-id")
@@ -220,7 +220,7 @@ def test_pack_connect_packet_with_invalid_will_qos():
             "client-id",
             None,
             None,
-            clean_session=False,
+            clean_start=False,
             keepalive=False,
             properties={},
             will=WillMessage("a/b", b"bye", qos=3, retain=False, properties={}),
@@ -290,7 +290,7 @@ def test_will_message_defaults():
             "client-id",
             None,
             None,
-            clean_session=False,
+            clean_start=False,
             keepalive=0,
             properties={},
             will=message,

@@ -150,7 +150,7 @@ async def test_keep_alive_stops_on_disconnect():
     task = keep_alive_task(protocol)
     assert task
 
-    await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
+    await asyncio.wait_for(protocol.disconnect(reason_code=0), TIMEOUT)
 
     assert task.cancelled()
     assert keep_alive_task(protocol) is None

@@ -118,19 +118,19 @@ class Reconnector:
                 logger.warning("mqtt_client.reconnect.failed: %r", exc)
                 continue
 
-            if connack.result_code >= FAILURE_REASON_CODE:
-                if connack.result_code in NON_RETRYABLE_CONNACK_REASON_CODES:
+            if connack.reason_code >= FAILURE_REASON_CODE:
+                if connack.reason_code in NON_RETRYABLE_CONNACK_REASON_CODES:
                     logger.error(
                         "mqtt_client.reconnect.stopped: the server rejected the "
                         "connection with reason 0x%02X",
-                        connack.result_code,
+                        connack.reason_code,
                     )
                     await self._give_up(lost)
                     return False
 
                 logger.warning(
                     "mqtt_client.reconnect.rejected: reason 0x%02X",
-                    connack.result_code,
+                    connack.reason_code,
                 )
                 continue
 
