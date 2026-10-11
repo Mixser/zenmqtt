@@ -41,35 +41,32 @@ def on_disconnect(exc: ConnectionLostError) -> None:
 
 
 async def main():
-    client = MQTTClient(
+    async with MQTTClient(
         "zenmqtt-example-persistent-session",
         reconnect=ReconnectPolicy(initial_delay=1, max_delay=10),
-    )
-    client.on_connect = on_connect
-    client.on_disconnect = on_disconnect
+    ) as client:
+        client.on_connect = on_connect
+        client.on_disconnect = on_disconnect
 
-    if MQTT_USERNAME:
-        client.authorize(MQTT_USERNAME, MQTT_PASSWORD)
+        await client.connect(
+            MQTT_URL,
+            username=MQTT_USERNAME,
+            password=MQTT_PASSWORD,
+            clean_start=False,
+            properties={"session_expiry_interval": SESSION_EXPIRY_INTERVAL},
+        )
 
-    await client.connect(
-        MQTT_URL,
-        clean_session=False,
-        properties={"session_expiry_interval": SESSION_EXPIRY_INTERVAL},
-    )
+        for counter in range(60):
+            payload = f"message #{counter}".encode()
 
-    for counter in range(60):
-        payload = f"message #{counter}".encode()
+            try:
+                result = await client.publish(TOPIC, payload, qos=1)
+                print("published:", payload, result)
+            except SessionLostError:
+                # the server didn't keep the session, e.g. it expired
+                print("message is lost with the session:", payload)
 
-        try:
-            result = await client.publish(TOPIC, payload, qos=1)
-            print("published:", payload, result)
-        except SessionLostError:
-            # the server didn't keep the session, e.g. it expired
-            print("message is lost with the session:", payload)
-
-        await asyncio.sleep(1)
-
-    await client.disconnect()
+            await asyncio.sleep(1)
 
 
 if __name__ == "__main__":

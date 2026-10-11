@@ -83,6 +83,12 @@ service needs:
 - **Graceful shutdown.** `disconnect(timeout=...)` rejects new operations and
   waits until the server acknowledged the outgoing QoS 1/2 messages in flight,
   then sends DISCONNECT. See [Graceful shutdown](#graceful-shutdown).
+- **Lifecycle.** `async with MQTTClient(...) as client:` disconnects the client
+  when the block ends, so no reconnect task is left running: gracefully on a
+  normal exit (up to 10 s for messages in flight), at once after an exception
+  or cancellation. All connect options, also the credentials, are arguments of
+  `connect()` and are reused by reconnects; `client_id` is read-only and
+  becomes the identifier assigned by the server, if it assigned one.
 
 ```mermaid
 stateDiagram-v2
@@ -188,7 +194,7 @@ sequenceDiagram
     C->>P: set_connection(connection)
     Note over P: starts the read loop
     C->>P: connect(client_id, ...)
-    opt clean_session
+    opt clean_start
         P->>S: reset()
     end
     P->>B: CONNECT
@@ -331,7 +337,7 @@ PUBREC and PUBREL.
   survive a restart of the application.
 
 The session survives reconnects only if the server keeps its session too:
-`clean_session=False` and `session_expiry_interval > 0` in the connect
+`clean_start=False` and `session_expiry_interval > 0` in the connect
 properties. If CONNACK says that the session isn't present, the client
 discards its own session.
 

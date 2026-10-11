@@ -170,7 +170,7 @@ async def test_disconnect_with_pending_publish():
     task = asyncio.create_task(protocol.publish("a/b", b"payload", qos=1))
     await expect_publish(transport)
 
-    await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
+    await asyncio.wait_for(protocol.disconnect(reason_code=0), TIMEOUT)
     await expect(transport, PacketType.DISCONNECT)
 
     with pytest.raises(ConnectionLostError):

@@ -35,28 +35,27 @@ async def main():
     metrics = OpenTelemetryMetrics(
         provider.get_meter("zenmqtt"), attributes={"client.name": "example"}
     )
-    client = MQTTClient("zenmqtt-example-opentelemetry-metrics", metrics=metrics)
+    async with MQTTClient(
+        "zenmqtt-example-opentelemetry-metrics", metrics=metrics
+    ) as client:
+        await client.connect(
+            MQTT_URL, username=MQTT_USERNAME, password=MQTT_PASSWORD, clean_start=True
+        )
+        await client.subscribe([(TOPIC, 2)])
 
-    if MQTT_USERNAME:
-        client.authorize(MQTT_USERNAME, MQTT_PASSWORD)
+        for qos in (0, 1, 2):
+            for i in range(10):
+                await client.publish(TOPIC, f"message {i}".encode(), qos=qos)
 
-    await client.connect(MQTT_URL, clean_session=True)
-    await client.subscribe([(TOPIC, 2)])
+        received = 0
+        async for message in client.messages:
+            await client.ack(message)
+            received += 1
 
-    for qos in (0, 1, 2):
-        for i in range(10):
-            await client.publish(TOPIC, f"message {i}".encode(), qos=qos)
+            if received == 30:
+                break
 
-    received = 0
-    async for message in client.messages:
-        await client.ack(message)
-        received += 1
-
-        if received == 30:
-            break
-
-    await client.ping()
-    await client.disconnect()
+        await client.ping()
 
     # flushes metrics to the console
     provider.shutdown()

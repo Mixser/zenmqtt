@@ -2,6 +2,7 @@
 The main scenarios of the client against a real broker, end to end.
 """
 import asyncio
+import uuid
 from typing import Any, Callable
 
 import pytest
@@ -250,3 +251,32 @@ async def test_disconnect_ends_the_iteration_over_messages(
     await receiver.disconnect()
 
     assert await asyncio.wait_for(reader, TIMEOUT) == []
+
+
+async def test_async_with_delivers_messages_in_flight_on_exit(
+    broker_url, make_client, topic
+):
+    count = 100
+    receiver = await subscriber(make_client, broker_url, topic, qos=1)
+
+    async with MQTTClient(f"zenmqtt-publisher-{uuid.uuid4().hex[:12]}") as sender:
+        await sender.connect(broker_url)
+
+        publishes = [
+            asyncio.create_task(sender.publish(topic, b"%d" % i, qos=1))
+            for i in range(count)
+        ]
+        await asyncio.sleep(0)
+
+    # the exit waited for the acknowledgements of all messages in flight
+    assert all(publish.done() for publish in publishes)
+    await asyncio.gather(*publishes)
+
+    received = set()
+
+    while len(received) < count:
+        message = await receive(receiver)
+        received.add(message.payload)
+        await receiver.ack(message)
+
+    assert received == {b"%d" % i for i in range(count)}

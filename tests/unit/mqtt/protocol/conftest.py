@@ -13,7 +13,7 @@ async def close_protocols():
         protocol = _protocols.pop()
 
         if has_connection(protocol):
-            await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
+            await asyncio.wait_for(protocol.disconnect(reason_code=0), TIMEOUT)
 
     # e.g. a reader of messages which a test doesn't end; asyncio.run()
     # cancels such tasks at the end, the event loop of pytest-asyncio is just

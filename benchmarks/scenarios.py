@@ -96,7 +96,7 @@ async def in_memory_receive(
 
     elapsed = time.perf_counter() - started
 
-    await protocol.disconnect(reason=0)
+    await protocol.disconnect(reason_code=0)
 
     return Result(
         scenario="in-memory receive",

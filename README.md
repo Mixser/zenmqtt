@@ -62,19 +62,18 @@ from zenmqtt import MQTTClient
 
 
 async def main():
-    client = MQTTClient("my-client")
-    await client.connect("tcp://localhost:1883")
+    # the client is disconnected when the block ends, also on errors
+    async with MQTTClient("my-client") as client:
+        await client.connect("tcp://localhost:1883")
 
-    await client.subscribe([("sensors/+/temperature", 1)])
-    await client.publish("sensors/kitchen/temperature", b"21.5", qos=1)
+        await client.subscribe([("sensors/+/temperature", 1)])
+        await client.publish("sensors/kitchen/temperature", b"21.5", qos=1)
 
-    async for message in client.messages:
-        print(message.topic, message.payload)
-        # QoS 1/2 messages must be acknowledged after they are processed
-        await client.ack(message)
-        break
-
-    await client.disconnect()
+        async for message in client.messages:
+            print(message.topic, message.payload)
+            # QoS 1/2 messages must be acknowledged after they are processed
+            await client.ack(message)
+            break
 
 
 asyncio.run(main())
@@ -92,25 +91,34 @@ PUBCOMP) for QoS 1/2. Received messages are `PublishResult` objects with
 import ssl
 
 client = MQTTClient("my-client")
-client.authorize("user", "password")
 
 await client.connect(
     "mqtts://broker.example.com",  # 8883 by default for mqtts://, 1883 for tcp://
+    username="user",  # optional, reconnects use the same credentials
+    password="password",
     ssl=ssl.create_default_context(cafile="ca.pem"),  # optional, system CAs by default
     keepalive=60,
-    clean_session=False,
+    clean_start=False,
     properties={"session_expiry_interval": 3600},
 )
 ```
 
-`connect()` returns the CONNACK (`ConnectionResult` with `result_code`,
+`connect()` returns the CONNACK (`ConnectionResult` with `reason_code`,
 `session_present` and server `properties`). If the first connect fails, the error is raised.
+`client.client_id` is the identifier which the server assigned, if the client
+id was empty.
+
+`async with MQTTClient(...) as client:` disconnects the client when the block
+ends: on a normal exit gracefully (it waits up to 10 s for outgoing QoS 1/2
+messages in flight, see [Graceful shutdown](#graceful-shutdown)), after an
+exception or cancellation at once, without hiding the exception. Without
+`async with`, call `await client.disconnect()` yourself.
 
 ### Sessions and reconnect
 
 After a successful connect the client reconnects by itself with exponential
 backoff. To keep QoS 1/2 messages and subscriptions across a reconnect, the
-broker must keep the session: use `clean_session=False` with
+broker must keep the session: use `clean_start=False` with
 `session_expiry_interval > 0`.
 
 ```python
@@ -120,9 +128,13 @@ client = MQTTClient(
     "my-client",
     reconnect=ReconnectPolicy(initial_delay=1, max_delay=60, max_attempts=None),
 )
-client.on_connect = lambda result: print("connected", result.result_code)
+client.on_connect = lambda result: print("connected", result.reason_code)
 client.on_disconnect = lambda exc: print("connection lost", exc)
 ```
+
+`on_connect` and `on_disconnect` hold one callback each (a function or a
+coroutine function): assigning a new one replaces the previous one. Exceptions
+in callbacks are logged and don't affect the client.
 
 - `publish()`, `subscribe()` and `unsubscribe()` wait while the client
   reconnects; use `asyncio.wait_for()` to limit the time.
@@ -211,7 +223,7 @@ will = WillMessage("devices/1/status", b"offline", qos=1, retain=True)
 await client.connect("tcp://localhost:1883", will=will)
 
 # 0x04 asks the broker to publish the will message
-await client.disconnect(reason=0x04)
+await client.disconnect(reason_code=0x04)
 ```
 
 If the broker closes the connection with DISCONNECT, its reason code is
@@ -232,6 +244,8 @@ left = await client.disconnect(timeout=10)
 if left:
     logger.warning("%s messages weren't acknowledged by the broker", left)
 ```
+
+`async with MQTTClient(...)` does this on a normal exit, with a 10 s timeout.
 
 While the client waits, new `publish()`, `subscribe()` and `unsubscribe()`
 calls fail with `NotConnectedError`. With automatic reconnect a lost
