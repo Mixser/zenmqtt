@@ -1,6 +1,5 @@
 import asyncio
 import dataclasses
-from asyncio import Task
 from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from logging import getLogger
@@ -14,6 +13,7 @@ from zenmqtt.exceptions import (
 from zenmqtt.mqtt.connect import ConnectProperties
 from zenmqtt.mqtt.limits import DEFAULT_RECEIVE_MAXIMUM
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader
+from zenmqtt.mqtt.protocol.buffer_monitor import BufferMonitor
 from zenmqtt.mqtt.protocol.context import ProtocolContext
 from zenmqtt.mqtt.publish import (
     PublishResult,
@@ -28,14 +28,6 @@ from zenmqtt.mqtt.session import MQTTSession, PacketIdentifier
 
 logger = getLogger(__name__)
 
-# number of messages waiting for delivery to the messages queue, starting from
-# which the client warns about a slow application
-BUFFERED_MESSAGES_WARNING: Final[int] = 1000
-# seconds between warnings about a slow application
-_BUFFERED_WARNING_INTERVAL: Final[float] = 10.0
-# seconds between reports of the buffer size to metrics while it's above the
-# warning threshold; it changes with every message, the last value is enough
-_BUFFERED_REPORT_INTERVAL: Final[float] = 0.1
 # seconds after which a not acknowledged message which holds back acks of
 # later messages is logged
 ACK_BLOCKED_WARNING: Final[float] = 30.0
@@ -70,24 +62,17 @@ class _ConnectionState:
 class IncomingFlow:
     """
     Incoming PUBLISH. The read loop never waits for the application: messages
-    wait in a buffer and a separate task moves them to the messages queue, so
-    control packets (PINGRESP, PUBACK, ...) are handled for a slow application.
+    wait in a buffer which the application reads by next_message(), so control
+    packets (PINGRESP, PUBACK, ...) are handled for a slow application.
 
     QoS 1/2 messages are acknowledged by ack(), so their number in the buffer
-    is limited by "Receive Maximum"; QoS 0 messages aren't limited. While at
-    least BUFFERED_MESSAGES_WARNING messages wait in the buffer, a warning is
-    logged and the size of the buffer is reported by metrics.
+    is limited by "Receive Maximum"; QoS 0 messages aren't limited. A big
+    buffer is reported by BufferMonitor.
     """
 
-    def __init__(
-        self,
-        context: ProtocolContext,
-        session: MQTTSession,
-        messages: asyncio.Queue[Optional[PublishResult]],
-    ) -> None:
+    def __init__(self, context: ProtocolContext, session: MQTTSession) -> None:
         self._context = context
         self._session = session
-        self._messages_queue = messages
 
         # limits sent by the client in CONNECT
         self._receive_maximum = DEFAULT_RECEIVE_MAXIMUM
@@ -99,17 +84,11 @@ class IncomingFlow:
         self._ack_blocked_timer: Optional[asyncio.TimerHandle] = None
         self._ack_blocked_head: Optional[_PendingAck] = None
 
-        # messages which wait for delivery to the messages queue; None marks
-        # the end of messages
+        # messages which wait for the application; None marks the end of
+        # messages
         self._buffer: deque[Optional[PublishResult]] = deque()
         self._buffer_ready = asyncio.Event()
-        self._delivery_task: Optional[Task[None]] = None
-
-        self.buffered_messages_warning = BUFFERED_MESSAGES_WARNING
-        # the buffer reached the warning threshold
-        self._buffer_overloaded = False
-        self._buffered_reported_at: Optional[float] = None
-        self._buffered_warning_at: Optional[float] = None
+        self.buffer_monitor = BufferMonitor(context)
 
     @property
     def inflight(self) -> set[PacketIdentifier]:
@@ -138,6 +117,20 @@ class IncomingFlow:
     def close(self) -> None:
         """The client stops for good: the end of messages."""
         self._enqueue(None)
+
+    async def next_message(self) -> Optional[PublishResult]:
+        """
+        Waits for the next message, None is the end of messages. Meant for one
+        reader: the end of messages goes to one of the waiting readers only.
+        """
+        while not self._buffer:
+            self._buffer_ready.clear()
+            await self._buffer_ready.wait()
+
+        message = self._buffer.popleft()
+        self.buffer_monitor.update(len(self._buffer))
+
+        return message
 
     async def handle_publish(
         self, fixed_header: FixedHeader, reader: BytesReader
@@ -361,65 +354,4 @@ class IncomingFlow:
     def _enqueue(self, message: Optional[PublishResult]) -> None:
         self._buffer.append(message)
         self._buffer_ready.set()
-        self._report_buffer_size()
-
-        if self._delivery_task is None or self._delivery_task.done():
-            self._delivery_task = asyncio.create_task(
-                self._delivery_loop(), name="mqtt-protocol-delivery"
-            )
-
-    async def _delivery_loop(self) -> None:
-        """Moves messages from the buffer to the messages queue."""
-        while True:
-            if not self._buffer:
-                self._buffer_ready.clear()
-                await self._buffer_ready.wait()
-                continue
-
-            message = self._buffer.popleft()
-            self._report_buffer_size()
-
-            await self._messages_queue.put(message)
-
-            # the end of messages, a new message starts the task again
-            if message is None and not self._buffer:
-                return
-
-    def _report_buffer_size(self) -> None:
-        """
-        Reports the size of the buffer when it reaches the warning threshold,
-        then at most every _BUFFERED_REPORT_INTERVAL while it's above, and once
-        when it falls below.
-        """
-        size = len(self._buffer)
-        overloaded = size >= self.buffered_messages_warning
-
-        if not overloaded:
-            if self._buffer_overloaded:
-                self._buffer_overloaded = False
-                self._context.metrics.on_messages_buffered(size)
-
-            return
-
-        now = self._context.now()
-
-        if (
-            not self._buffer_overloaded
-            or self._buffered_reported_at is None
-            or now - self._buffered_reported_at >= _BUFFERED_REPORT_INTERVAL
-        ):
-            self._context.metrics.on_messages_buffered(size)
-            self._buffered_reported_at = now
-
-        self._buffer_overloaded = True
-
-        if (
-            self._buffered_warning_at is None
-            or now - self._buffered_warning_at >= _BUFFERED_WARNING_INTERVAL
-        ):
-            logger.warning(
-                "mqtt_protocol.slow_consumer: %s incoming messages wait for the "
-                "application, it doesn't read client.messages fast enough",
-                size,
-            )
-            self._buffered_warning_at = now
+        self.buffer_monitor.update(len(self._buffer))

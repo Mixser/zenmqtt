@@ -39,9 +39,6 @@ logger = getLogger(__name__)
 
 DEFAULT_KEEP_ALIVE: Final[int] = 60
 
-# messages handed over to the application; when the queue is full, the next
-# messages wait in the buffer of the protocol, which doesn't block reading
-MESSAGES_QUEUE_SIZE: Final[int] = 50
 
 T = TypeVar("T")
 
@@ -50,14 +47,16 @@ OnDisconnect = Callable[[ConnectionLostError], Any]
 
 
 class AsyncMessageIterator:
-    def __init__(self, queue: "asyncio.Queue[Optional[PublishResult]]") -> None:
-        self._queue = queue
+    def __init__(
+        self, next_message: Callable[[], Awaitable[Optional[PublishResult]]]
+    ) -> None:
+        self._next_message = next_message
 
     def __aiter__(self) -> "AsyncMessageIterator":
         return self
 
     async def __anext__(self) -> PublishResult:
-        value = await self._queue.get()
+        value = await self._next_message()
 
         if value is None:
             raise StopAsyncIteration
@@ -89,19 +88,10 @@ class MQTTClient:
         :param reconnect: automatic reconnect after the connection is lost,
             None disables it; see connect() for details
         """
-        messages: asyncio.Queue[Optional[PublishResult]] = asyncio.Queue(
-            maxsize=MESSAGES_QUEUE_SIZE
-        )
-
         self._metrics = metrics or MetricsCollector()
         self._reconnect_policy = reconnect
 
-        self._protocol = MQTTProtocol(
-            messages,
-            session or build_default_session(),
-            self._metrics,
-        )
-        self._messages = messages
+        self._protocol = MQTTProtocol(session or build_default_session(), self._metrics)
 
         self.client_id = client_id
 
@@ -109,6 +99,8 @@ class MQTTClient:
         self._password: Optional[str] = None
 
         self._connect_options: Optional[_ConnectOptions] = None
+        # a task waits for the next message, see messages
+        self._reading = False
 
         self._subscriptions = SubscriptionRegistry()
         self._reconnector: Optional[Reconnector] = None
@@ -377,8 +369,26 @@ class MQTTClient:
         "receive_maximum" of connect properties; QoS 0 messages aren't
         limited. While 1000 or more messages wait, a warning is logged and
         metrics get on_messages_buffered events.
+
+        Messages are read by one task: if another task waits for a message at
+        the same time, it gets RuntimeError. To process messages concurrently,
+        read them in one task and hand them to workers.
         """
-        return AsyncMessageIterator(self._messages)
+        return AsyncMessageIterator(self._next_message)
+
+    async def _next_message(self) -> Optional[PublishResult]:
+        if self._reading:
+            raise RuntimeError(
+                "client.messages is read by another task; read messages in one "
+                "task and hand them to workers to process them concurrently"
+            )
+
+        self._reading = True
+
+        try:
+            return await self._protocol.next_message()
+        finally:
+            self._reading = False
 
     async def _connect(self, clean_session: bool) -> ConnectionResult:
         options = self._connect_options

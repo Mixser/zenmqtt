@@ -13,7 +13,11 @@ from zenmqtt.mqtt.connect import (
 )
 from zenmqtt.mqtt.packet import PacketType, split_packet
 from zenmqtt.mqtt.protocol import MQTTProtocol
-from zenmqtt.mqtt.publish import pack_publish_packet, parse_publish_packet
+from zenmqtt.mqtt.publish import (
+    PublishResult,
+    pack_publish_packet,
+    parse_publish_packet,
+)
 from zenmqtt.mqtt.session import InMemorySession
 
 TIMEOUT = 1
@@ -183,7 +187,7 @@ async def expect(transport: FakeTransport, packet_type: PacketType):
     return fixed_header, reader
 
 
-async def receive_and_ack(protocol: MQTTProtocol, messages: asyncio.Queue):
+async def receive_and_ack(protocol: MQTTProtocol, messages: "Messages"):
     message = await asyncio.wait_for(messages.get(), TIMEOUT)
     await protocol.ack(message)
     return message
@@ -226,20 +230,26 @@ _protocols: list[MQTTProtocol] = []
 _watchers: list[asyncio.Task[None]] = []
 
 
-def build_protocol(
-    metrics: Optional[MetricsCollector] = None, *, queue_size: int = 0, **kwargs
-):
-    """
-    :param queue_size: size of the messages queue, 0 means unlimited; a small
-        queue makes the application slow
-    """
-    session = InMemorySession()
-    messages: asyncio.Queue = asyncio.Queue(maxsize=queue_size)
+class Messages:
+    """Incoming messages of the protocol, read like the application does."""
 
-    protocol = MQTTProtocol(messages, session, metrics, **kwargs)
+    def __init__(self, protocol: MQTTProtocol) -> None:
+        self._protocol = protocol
+
+    async def get(self) -> Optional[PublishResult]:
+        return await self._protocol.next_message()
+
+    def empty(self) -> bool:
+        return not buffered_messages(self._protocol)
+
+
+def build_protocol(metrics: Optional[MetricsCollector] = None):
+    session = InMemorySession()
+
+    protocol = MQTTProtocol(session, metrics)
     _protocols.append(protocol)
 
-    return protocol, session, messages
+    return protocol, session, Messages(protocol)
 
 
 def pack_publish(
@@ -248,7 +258,7 @@ def pack_publish(
     return pack_publish_packet(packet_identifier, "a/b", payload, qos, False, dup, {})
 
 
-async def receive(messages: asyncio.Queue):
+async def receive(messages: Messages):
     return await asyncio.wait_for(messages.get(), TIMEOUT)
 
 
@@ -279,7 +289,12 @@ def incoming_inflight(protocol: MQTTProtocol) -> set[int]:
 
 
 def set_buffered_messages_warning(protocol: MQTTProtocol, value: int) -> None:
-    protocol._incoming.buffered_messages_warning = value
+    protocol._incoming.buffer_monitor.threshold = value
+
+
+def buffered_messages(protocol: MQTTProtocol) -> int:
+    """Messages which wait for the application."""
+    return len(protocol._incoming._buffer)
 
 
 def acquired_packet_identifiers(session: InMemorySession) -> set[int]:

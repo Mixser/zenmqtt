@@ -5,14 +5,17 @@ import pytest
 
 from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
+    buffered_messages,
     build_protocol,
     connect,
     expect,
     expect_disconnect,
     pack_qos0,
+    receive,
     receive_and_ack,
     wait_for_connection_lost,
 )
+from zenmqtt.exceptions import ConnectionLostError
 from zenmqtt.mqtt.connect import ConnectProperties
 from zenmqtt.mqtt.packet import PacketType
 from zenmqtt.mqtt.publish import (
@@ -201,3 +204,55 @@ async def test_client_receive_maximum_is_reset_on_reconnect():
 
     transport.feed(pack_pubrel_packet(1, 0, {}))
     await expect(transport, PacketType.PUBCOMP)
+
+
+async def test_messages_are_read_from_the_buffer():
+    protocol, _, messages = build_protocol()
+    transport = await connect(protocol, reconnect=True)
+
+    transport.feed(b"".join(pack_qos0("a/b", b"%d" % i) for i in range(3)))
+    await asyncio.sleep(0.01)
+
+    # the read loop doesn't wait for the application, nothing is read yet
+    assert buffered_messages(protocol) == 3
+
+    # a waiting reader gets a message as soon as it's received
+    reader = asyncio.create_task(protocol.next_message())
+    assert [(await receive(messages)).payload for _ in range(3)] == [b"0", b"1", b"2"]
+    await asyncio.sleep(0.01)
+    assert not reader.done()
+
+    transport.feed(pack_qos0("a/b", b"3"))
+    assert (await asyncio.wait_for(reader, TIMEOUT)).payload == b"3"
+
+
+async def test_close_ends_the_reader():
+    protocol, _, messages = build_protocol()
+    transport = await connect(protocol, reconnect=True)
+
+    reader = asyncio.create_task(protocol.next_message())
+    await asyncio.sleep(0.01)
+
+    await protocol.close(ConnectionLostError())
+    assert await asyncio.wait_for(reader, TIMEOUT) is None
+
+    # the end is taken, messages received later are read again, e.g. after
+    # a new connect
+    transport.feed(pack_qos0("a/b", b"later"))
+    assert (await receive(messages)).payload == b"later"
+
+
+async def test_cancelled_reader_doesnt_lose_messages():
+    protocol, _, messages = build_protocol()
+    transport = await connect(protocol, reconnect=True)
+
+    reader = asyncio.create_task(protocol.next_message())
+    await asyncio.sleep(0.01)
+
+    transport.feed(pack_qos0("a/b", b"payload"))
+    reader.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await reader
+
+    assert (await receive(messages)).payload == b"payload"
