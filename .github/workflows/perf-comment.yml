@@ -1,11 +1,12 @@
-# Posts the report of perf.yml to the pull request, or updates the previous
-# report. It's a separate workflow, so code of the pull request never runs
-# with a token which can write comments: this one only reads the report.
+# Posts the report of the compare job (zenmqtt.yml) to the pull request, or
+# updates the previous report. It's a separate workflow, so code of the pull
+# request never runs with a token which can write comments: this one only
+# reads the report.
 name: perf-comment
 
 on:
   workflow_run:
-    workflows: [ "perf" ]
+    workflows: [ "zenmqtt" ]
     types: [ completed ]
 
 permissions:
@@ -14,6 +15,8 @@ permissions:
 
 jobs:
   comment:
+    # the run of a pull request succeeds only when the compare job was
+    # approved and passed, so the report is there
     if: >-
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.conclusion == 'success'

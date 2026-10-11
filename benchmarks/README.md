@@ -81,11 +81,14 @@ report is written to `--output-dir` as `report.md` and `results.json`.
 
 ## CI
 
-- **Pull requests** (`.github/workflows/perf.yml`): the pull request merged
-  into `main` is compared with `main` by `benchmarks/compare.py` on Python
-  3.13. The report is shown in the job summary, and `perf-comment.yml` posts it
-  as a comment of the pull request (one comment, updated on every push). It's
-  a report only, the check doesn't fail on a slowdown.
+- **Pull requests** (job `compare` in `.github/workflows/zenmqtt.yml`): a
+  manual step after the tests. It waits for an approval in the `benchmarks`
+  environment (the page of the run -> Review deployments). Then the pull
+  request merged into `main` is compared with `main` by `benchmarks/compare.py`
+  on Python 3.13. The report is shown in the job summary, and
+  `perf-comment.yml` posts it as a comment of the pull request (one comment,
+  updated on every approved run). It's a report only, it doesn't fail on a
+  slowdown.
 - **History** (`.github/workflows/perf-history.yml`): every push to `main` runs
   all scenarios and the codec benchmarks on Python 3.12, 3.13 and 3.14 and
   stores the results on
