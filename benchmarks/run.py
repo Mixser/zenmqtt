@@ -91,12 +91,7 @@ def opentelemetry_metrics():
     except ImportError:
         return None
 
-    try:
-        from zenmqtt.instrumentation.opentelemetry import OpenTelemetryMetrics
-    except ImportError:
-        # older versions, compare.py runs these benchmarks against the base
-        # branch too; can be removed when main has zenmqtt.instrumentation
-        from zenmqtt.contrib.opentelemetry import OpenTelemetryMetrics
+    from zenmqtt.instrumentation.opentelemetry import OpenTelemetryMetrics
 
     return OpenTelemetryMetrics(MeterProvider().get_meter("bench"))
 

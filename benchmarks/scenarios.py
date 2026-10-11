@@ -6,17 +6,11 @@ from typing import Callable, Optional
 from benchmarks.clients import BenchClient
 from benchmarks.stats import Result, percentiles
 from zenmqtt.connection import MQTTConnection, MQTTConnectionTransport
+from zenmqtt.instrumentation.metrics import MetricsCollector
 from zenmqtt.mqtt.packet import PacketType
 from zenmqtt.mqtt.protocol import MQTTProtocol
 from zenmqtt.mqtt.publish import pack_publish_packet
 from zenmqtt.mqtt.session import InMemorySession
-
-try:
-    from zenmqtt.instrumentation.metrics import MetricsCollector
-except ImportError:
-    # older versions, compare.py runs these benchmarks against the base
-    # branch too; can be removed when main has zenmqtt.instrumentation
-    from zenmqtt.metrics import MetricsCollector  # type: ignore[no-redef]
 
 TOPIC = "zenmqtt/benchmarks"
 # timeout for the delivery of all messages in broker scenarios, seconds
@@ -74,15 +68,8 @@ async def in_memory_receive(
     Parsing and delivery of incoming messages without network and broker:
     shows the cost of the client itself.
     """
-    if hasattr(MQTTProtocol, "next_message"):
-        protocol = MQTTProtocol(InMemorySession(), metrics)
-        next_message = protocol.next_message
-    else:
-        # the messages queue before the single buffer, for A/B comparisons with
-        # older versions; can be removed when main has next_message()
-        queue: asyncio.Queue = asyncio.Queue()
-        protocol = MQTTProtocol(queue, InMemorySession(), metrics)  # type: ignore
-        next_message = queue.get
+    protocol = MQTTProtocol(InMemorySession(), metrics)
+    next_message = protocol.next_message
 
     transport = MemoryTransport()
     protocol.set_connection(MQTTConnection(transport))
