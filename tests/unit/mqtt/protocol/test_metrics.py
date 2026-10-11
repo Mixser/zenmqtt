@@ -49,7 +49,7 @@ async def test_metrics_connect_and_disconnect():
     [(packet_type, size)] = metrics.get("on_packet_sent")
     assert packet_type == PacketType.CONNECT and size > 0
 
-    await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
+    await asyncio.wait_for(protocol.disconnect(reason_code=0), TIMEOUT)
     await expect(transport, PacketType.DISCONNECT)
 
     assert metrics.get("on_packet_sent")[-1] == (PacketType.DISCONNECT, 4)
@@ -74,7 +74,7 @@ async def test_metrics_failed_connect_is_not_closed_connection():
 
     assert [code for code, _ in metrics.get("on_connect")] == [0x87]
 
-    await asyncio.wait_for(protocol.disconnect(reason=0), TIMEOUT)
+    await asyncio.wait_for(protocol.disconnect(reason_code=0), TIMEOUT)
 
     assert metrics.get("on_connection_closed") == []
 

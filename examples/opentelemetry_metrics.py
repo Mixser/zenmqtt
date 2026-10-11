@@ -40,7 +40,7 @@ async def main():
     if MQTT_USERNAME:
         client.authorize(MQTT_USERNAME, MQTT_PASSWORD)
 
-    await client.connect(MQTT_URL, clean_session=True)
+    await client.connect(MQTT_URL, clean_start=True)
     await client.subscribe([(TOPIC, 2)])
 
     for qos in (0, 1, 2):
