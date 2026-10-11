@@ -7,7 +7,7 @@ from typing import Any, Awaitable, Callable, Final, Optional, Sequence, TypeVar
 
 from zenmqtt.connection import create_connection
 from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
-from zenmqtt.instrumentation.metrics import MetricsCollector
+from zenmqtt.instrumentation.metrics import MetricsCollector, guard_metrics
 from zenmqtt.mqtt.connect import (
     SESSION_PRESENT_FLAG,
     ConnectionResult,
@@ -88,7 +88,8 @@ class MQTTClient:
         :param reconnect: automatic reconnect after the connection is lost,
             None disables it; see connect() for details
         """
-        self._metrics = metrics or MetricsCollector()
+        # hooks are guarded once here, the protocol keeps the guarded collector
+        self._metrics = guard_metrics(metrics)
         self._reconnect_policy = reconnect
 
         self._protocol = MQTTProtocol(session or build_default_session(), self._metrics)

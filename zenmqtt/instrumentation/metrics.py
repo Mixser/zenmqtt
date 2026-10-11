@@ -1,6 +1,13 @@
-from typing import Sequence
+import time
+from logging import getLogger
+from typing import Any, Callable, Final, Optional, Sequence
 
 from zenmqtt.mqtt.packet import PacketType
+
+logger = getLogger(__name__)
+
+# seconds between logs of a hook which keeps failing
+_ERROR_LOG_INTERVAL: Final[float] = 60.0
 
 
 class MetricsCollector:
@@ -9,7 +16,11 @@ class MetricsCollector:
 
     The default implementation does nothing, subclasses override only the
     events they need. Methods are called from the event loop, so they must
-    be fast, must not block and must not raise.
+    be fast and must not block.
+
+    An exception in a method doesn't affect the client: it's logged with the
+    traceback the first time, then at most once a minute with the number of
+    errors. Methods are taken from the collector when the client is created.
 
     Durations are in seconds.
     """
@@ -81,3 +92,74 @@ class MetricsCollector:
         self, reason_codes: Sequence[int], duration: float
     ) -> None:
         """UNSUBACK is received, duration is measured from sending UNSUBSCRIBE"""
+
+
+class _GuardedMetrics(MetricsCollector):
+    """
+    Calls the hooks of a collector, an exception in a hook is logged and never
+    reaches the client. Hooks which the collector doesn't override stay the
+    no-op methods of MetricsCollector, without a wrapper.
+    """
+
+    def __init__(self, metrics: MetricsCollector) -> None:
+        self.wrapped = metrics
+        # number of exceptions per hook
+        self.errors: dict[str, int] = {}
+        self._logged_at: dict[str, float] = {}
+        self._suppressed: dict[str, int] = {}
+
+        for name in _HOOKS:
+            hook = getattr(metrics, name)
+
+            if getattr(hook, "__func__", None) is not getattr(MetricsCollector, name):
+                setattr(self, name, self._guard(name, hook))
+
+    def _guard(self, name: str, hook: Callable[..., None]) -> Callable[..., None]:
+        def guarded(*args: Any, **kwargs: Any) -> None:
+            try:
+                hook(*args, **kwargs)
+            except Exception as exc:
+                self._on_error(name, exc)
+
+        return guarded
+
+    def _on_error(self, name: str, exc: Exception) -> None:
+        self.errors[name] = self.errors.get(name, 0) + 1
+        now = time.monotonic()
+        logged_at = self._logged_at.get(name)
+
+        # the first error and then one log per interval: a hook which fails on
+        # every packet doesn't flood the logs, but stays visible
+        if logged_at is not None and now - logged_at < _ERROR_LOG_INTERVAL:
+            self._suppressed[name] = self._suppressed.get(name, 0) + 1
+            return
+
+        logger.error(
+            "mqtt_metrics.hook_error: %s.%s raised, %s errors since the last log; "
+            "metrics don't affect the client",
+            type(self.wrapped).__name__,
+            name,
+            self._suppressed.pop(name, 0) + 1,
+            exc_info=exc,
+        )
+        self._logged_at[name] = now
+
+
+_HOOKS: Final[tuple[str, ...]] = tuple(
+    name for name in vars(MetricsCollector) if name.startswith("on_")
+)
+
+
+def guard_metrics(metrics: Optional[MetricsCollector]) -> MetricsCollector:
+    """
+    Wraps a collector, so its exceptions never reach the client; a guarded
+    collector is returned as it is.
+    """
+    if metrics is None:
+        return MetricsCollector()
+
+    # nothing to guard: the default collector, or one guarded already
+    if type(metrics) is MetricsCollector or isinstance(metrics, _GuardedMetrics):
+        return metrics
+
+    return _GuardedMetrics(metrics)
