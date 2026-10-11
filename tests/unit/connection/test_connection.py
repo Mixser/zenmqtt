@@ -149,3 +149,15 @@ async def test_write_to_a_lost_connection_doesnt_raise():
     await TCPConnectionTransport(reader, writer).write(b"payload")
 
     writer.write.assert_called_once_with(b"payload")
+
+
+@pytest.mark.parametrize("failing", ("write_eof", "wait_closed"))
+async def test_close_of_broken_connection_doesnt_raise(failing):
+    reader, writer = MagicMock(), MagicMock()
+    writer.can_write_eof.return_value = True
+    writer.wait_closed = AsyncMock()
+    getattr(writer, failing).side_effect = OSError(57, "Socket is not connected")
+
+    await TCPConnectionTransport(reader, writer).close()
+
+    writer.close.assert_called_once()
