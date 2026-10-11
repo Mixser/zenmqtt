@@ -27,9 +27,17 @@ from zenmqtt.exceptions import (
 from zenmqtt.instrumentation.metrics import MetricsCollector
 from zenmqtt.mqtt.connect import ConnectionResult, DisconnectResult, WillMessage
 from zenmqtt.mqtt.publish import PublishResult
-from zenmqtt.mqtt.session import BaseSession, InMemorySession, MQTTSession
 from zenmqtt.mqtt.subscribe import Subscription
 from zenmqtt.reconnect import ReconnectPolicy
+from zenmqtt.session import (
+    BaseSession,
+    InMemorySession,
+    MQTTSession,
+    OutgoingMessage,
+    OutgoingMessageState,
+    PacketIdentifier,
+    SessionOptions,
+)
 
 try:
     __version__ = version("zenmqtt")
@@ -50,6 +58,9 @@ __all__ = [
     "MQTTConnectionError",
     "MQTTSession",
     "NotConnectedError",
+    "OutgoingMessage",
+    "OutgoingMessageState",
+    "PacketIdentifier",
     "PacketTooLargeError",
     "ProtocolError",
     "PublishResult",
@@ -58,6 +69,7 @@ __all__ = [
     "ReconnectPolicy",
     "ServerLimitError",
     "SessionLostError",
+    "SessionOptions",
     "Subscription",
     "TopicAliasInvalidError",
     "WillMessage",

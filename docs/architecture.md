@@ -50,10 +50,10 @@ zenmqtt/
   reconnector.py        Reconnector: reconnect loop with backoff
   reconnect.py          ReconnectPolicy, reason codes that stop reconnecting
   subscriptions.py      SubscriptionRegistry: subscriptions to restore
+  session.py            MQTTSession, BaseSession, InMemorySession
   exceptions.py         all public exceptions
   connection/           transports: registry of URL schemes, TCP and TLS
   mqtt/                 packets: CONNECT, PUBLISH, SUBSCRIBE, properties, limits
-  mqtt/session.py       MQTTSession, BaseSession, InMemorySession
   mqtt/protocol/        the protocol: core and its parts
   instrumentation/      MetricsCollector, monitors, OpenTelemetry adapter
 ```

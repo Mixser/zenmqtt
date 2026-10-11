@@ -4,7 +4,7 @@ from tests.unit.mqtt.protocol.helpers import (
     acquired_packet_identifiers,
     free_packet_identifiers,
 )
-from zenmqtt.mqtt.session import InMemorySession, OutgoingMessage, OutgoingMessageState
+from zenmqtt.session import InMemorySession, OutgoingMessage, OutgoingMessageState
 
 
 def build_message(packet_identifier: int, qos: int = 1) -> OutgoingMessage:

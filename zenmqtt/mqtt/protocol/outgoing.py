@@ -25,7 +25,7 @@ from zenmqtt.mqtt.publish import (
     parse_pubrec_packet,
 )
 from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE, PACKET_IDENTIFIER_NOT_FOUND
-from zenmqtt.mqtt.session import (
+from zenmqtt.session import (
     MQTTSession,
     OutgoingMessage,
     OutgoingMessageState,

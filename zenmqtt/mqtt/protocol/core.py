@@ -32,7 +32,6 @@ from zenmqtt.mqtt.publish import (
     PublishResult,
 )
 from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE, IMPLEMENTATION_SPECIFIC_ERROR
-from zenmqtt.mqtt.session import MQTTSession
 from zenmqtt.mqtt.subscribe import (
     SubscribeResult,
     SubscriptionProperties,
@@ -40,6 +39,7 @@ from zenmqtt.mqtt.subscribe import (
     UnsubscribeProperties,
     UnsubscribeResult,
 )
+from zenmqtt.session import MQTTSession
 
 logger = getLogger(__name__)
 

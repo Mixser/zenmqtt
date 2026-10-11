@@ -18,7 +18,7 @@ from zenmqtt.mqtt.publish import (
     pack_publish_packet,
     parse_publish_packet,
 )
-from zenmqtt.mqtt.session import InMemorySession
+from zenmqtt.session import InMemorySession
 
 TIMEOUT = 1
 
