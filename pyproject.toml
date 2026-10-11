@@ -71,3 +71,7 @@ exclude_also = [
     "if TYPE_CHECKING:",
     "^\\s*\\.\\.\\.$",
 ]
+
+[tool.coverage.html]
+# the published report lists all modules, also the fully covered ones
+skip_covered = false

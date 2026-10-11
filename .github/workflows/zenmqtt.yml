@@ -121,7 +121,62 @@ jobs:
           echo "## Coverage" >> "$GITHUB_STEP_SUMMARY"
           coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
           coverage html
+      - name: Badge
+        # shields.io endpoint: https://shields.io/badges/endpoint-badge
+        run: |
+          python - <<'PY'
+          import json, subprocess
+
+          total = int(subprocess.check_output(["coverage", "report", "--format=total"]))
+          colors = ((90, "brightgreen"), (80, "green"), (70, "yellowgreen"), (60, "yellow"))
+          color = next((color for limit, color in colors if total >= limit), "red")
+          badge = {"schemaVersion": 1, "label": "coverage", "message": f"{total}%", "color": color}
+
+          with open("htmlcov/badge.json", "w") as file:
+              json.dump(badge, file)
+          PY
       - uses: actions/upload-artifact@v7
         with:
           name: coverage-html
           path: htmlcov/
+
+  coverage-pages:
+    # the report and the badge of main: https://mixser.github.io/zenmqtt/coverage/
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [ coverage ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: coverage-pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-html
+          path: htmlcov
+      - name: Publish to gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git clone -q --depth 1 --branch gh-pages \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" pages
+          rm -rf pages/coverage
+          cp -r htmlcov pages/coverage
+          # coverage writes a .gitignore which ignores the whole report
+          rm -f pages/coverage/.gitignore
+
+          cd pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A coverage
+          git diff --cached --quiet && exit 0
+          git commit -q -m "Coverage of ${GITHUB_SHA}"
+
+          # the benchmark history is pushed to gh-pages too: retry after it
+          for attempt in 1 2 3 4 5; do
+            git push -q origin gh-pages && exit 0
+            sleep $((attempt * 2))
+            git pull -q --rebase origin gh-pages
+          done
+          exit 1
