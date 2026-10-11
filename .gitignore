@@ -60,3 +60,6 @@ Thumbs.db
 .mypy_cache
 
 main.py
+
+# local notes and reports, never committed
+docs/tmp/
