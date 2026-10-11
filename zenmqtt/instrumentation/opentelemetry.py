@@ -1,20 +1,34 @@
 """
-OpenTelemetry metrics for the client, requires `pip install zenmqtt[otel]`.
+OpenTelemetry metrics and tracing for the client, requires
+`pip install zenmqtt[otel]`.
 
-Messaging metrics follow the OpenTelemetry semantic conventions, MQTT
-specific metrics use the `zenmqtt.` prefix. Metrics can be exported with any
+Messaging metrics and spans follow the OpenTelemetry semantic conventions, MQTT
+specific metrics use the `zenmqtt.` prefix. They can be exported with any
 OpenTelemetry exporter: OTLP, Prometheus, console, etc.
 
-Topics are not used as attributes: the number of topics isn't limited, so it
-would make the number of time series unlimited too.
+Topics are not used as metric attributes: the number of topics isn't limited,
+so it would make the number of time series unlimited too. For the same reason
+span names don't contain the topic, it's the attribute
+`messaging.destination.name` of the span.
 """
-from typing import Mapping, Optional, Sequence
+import asyncio
+from contextlib import contextmanager
+from typing import Iterator, Mapping, Optional, Sequence, Tuple, cast
 
+from opentelemetry import context, propagate, trace
 from opentelemetry.metrics import Meter, get_meter
+from opentelemetry.propagators.textmap import Getter, TextMapPropagator
+from opentelemetry.trace import Span, SpanKind, Status, StatusCode, TracerProvider
 from opentelemetry.util.types import AttributeValue
 
 from zenmqtt.instrumentation.metrics import MetricsCollector
+from zenmqtt.instrumentation.tracing import PublishTrace, Tracing
 from zenmqtt.mqtt.packet import PacketType
+from zenmqtt.mqtt.publish import (
+    PublishAcknowledgement,
+    PublishProperties,
+    PublishResult,
+)
 from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE
 
 # recommended by the semantic conventions for durations in seconds
@@ -268,3 +282,156 @@ class OpenTelemetryMetrics(MetricsCollector):
 
 def _format_reason_code(reason_code: int) -> str:
     return f"0x{reason_code:02X}"
+
+
+UserProperties = Sequence[Tuple[str, str]]
+
+
+# mypy runs without site packages, so Getter is Any for it
+class _UserPropertiesGetter(Getter[UserProperties]):  # type: ignore[misc,unused-ignore]
+    """Reads the trace context from MQTT 5 user properties, (key, value) pairs."""
+
+    def get(self, carrier: UserProperties, key: str) -> Optional[list[str]]:
+        return [value for name, value in carrier if name == key] or None
+
+    def keys(self, carrier: UserProperties) -> list[str]:
+        return [name for name, _ in carrier]
+
+
+_USER_PROPERTIES_GETTER = _UserPropertiesGetter()
+
+
+class _PublishSpan(PublishTrace):
+    def __init__(self, properties: PublishProperties, span: Span) -> None:
+        super().__init__(properties)
+        self._span = span
+
+    def end(
+        self,
+        result: Optional[PublishAcknowledgement],
+        error: Optional[BaseException],
+    ) -> None:
+        span = self._span
+
+        # a cancelled QoS 1/2 call doesn't cancel the delivery, it's not an error
+        if error is not None and not isinstance(error, asyncio.CancelledError):
+            span.record_exception(error)
+            span.set_attribute("error.type", type(error).__qualname__)
+            span.set_status(Status(StatusCode.ERROR, str(error)))
+        elif result is not None:
+            span.set_attribute("mqtt.reason_code", result.reason_code)
+
+            if result.reason_code >= FAILURE_REASON_CODE:
+                span.set_attribute(
+                    "error.type", _format_reason_code(result.reason_code)
+                )
+                span.set_status(Status(StatusCode.ERROR))
+
+        span.end()
+
+
+class OpenTelemetryTracing(Tracing):
+    """
+    Spans of the messaging semantic conventions:
+
+    - "publish" (PRODUCER) for every publish call: until the packet is written
+      for QoS 0, until the final acknowledgement for QoS 1/2. Its context is
+      injected into the user properties of PUBLISH.
+    - "process" (CONSUMER) for MQTTClient.processing(): the context from the
+      user properties of the message is its parent, so the processing
+      continues the trace of the producer.
+    """
+
+    def __init__(
+        self,
+        tracer_provider: Optional[TracerProvider] = None,
+        propagator: Optional[TextMapPropagator] = None,
+        attributes: Optional[Mapping[str, AttributeValue]] = None,
+    ) -> None:
+        """
+        :param tracer_provider: the global one by default
+        :param propagator: format of the trace context in user properties, the
+            global one by default (W3C traceparent and baggage)
+        :param attributes: added to every span, e.g. a client name
+        """
+        self._tracer = trace.get_tracer("zenmqtt", tracer_provider=tracer_provider)
+        self._propagator = propagator
+
+        self._attributes: dict[str, AttributeValue] = {
+            "messaging.system": "mqtt",
+            **(attributes or {}),
+        }
+
+    def start_publish(
+        self,
+        client_id: str,
+        topic: str,
+        payload: bytes,
+        qos: int,
+        retain: bool,
+        properties: PublishProperties,
+    ) -> PublishTrace:
+        span = self._tracer.start_span(
+            "publish",
+            kind=SpanKind.PRODUCER,
+            attributes={
+                **self._attributes,
+                "messaging.operation.name": "publish",
+                "messaging.operation.type": "send",
+                "messaging.destination.name": topic,
+                "messaging.client.id": client_id,
+                "messaging.message.body.size": len(payload),
+                "mqtt.qos": qos,
+                "mqtt.retain": retain,
+            },
+        )
+
+        carrier: dict[str, str] = {}
+        self._get_propagator().inject(carrier, trace.set_span_in_context(span))
+
+        if carrier:
+            # the context replaces a context of the application, e.g. of a
+            # message which is forwarded
+            user_properties = [
+                (name, value)
+                for name, value in properties.get("user_property", ())
+                if name not in carrier
+            ]
+            user_properties.extend(carrier.items())
+
+            properties = cast(
+                PublishProperties, {**properties, "user_property": user_properties}
+            )
+
+        return _PublishSpan(properties, span)
+
+    @contextmanager
+    def processing(self, client_id: str, message: PublishResult) -> Iterator[None]:
+        # without a context in the message, the current span is the parent
+        parent = self._get_propagator().extract(
+            message.properties.get("user_property", ()),
+            context.get_current(),
+            getter=_USER_PROPERTIES_GETTER,
+        )
+
+        with self._tracer.start_as_current_span(
+            "process",
+            context=parent,
+            kind=SpanKind.CONSUMER,
+            attributes={
+                **self._attributes,
+                "messaging.operation.name": "process",
+                "messaging.operation.type": "process",
+                "messaging.destination.name": message.topic,
+                "messaging.client.id": client_id,
+                "messaging.message.body.size": len(message.payload),
+                "mqtt.qos": message.qos,
+                "mqtt.retain": message.retain,
+                "mqtt.dup": message.dup,
+            },
+        ):
+            yield
+
+    def _get_propagator(self) -> TextMapPropagator:
+        # the global propagator may be configured after the client is created
+        return self._propagator or propagate.get_global_textmap()

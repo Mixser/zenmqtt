@@ -228,6 +228,26 @@ client = MQTTClient("my-client", metrics=OpenTelemetryMetrics(meter))
 
 See [examples/opentelemetry_metrics.py](https://github.com/Mixser/zenmqtt/blob/main/examples/opentelemetry_metrics.py).
 
+### Tracing
+
+With tracing, every publish gets a span, and its trace context (W3C
+`traceparent`) is sent in the user properties of PUBLISH. The processing of a
+received message runs in a span which continues the trace of the publisher:
+
+```python
+from zenmqtt.instrumentation.opentelemetry import OpenTelemetryTracing
+
+client = MQTTClient("my-client", tracing=OpenTelemetryTracing(tracer_provider))
+
+async for message in client.messages:
+    with client.processing(message):
+        await process(message)
+        await client.ack(message)
+```
+
+Without `tracing`, `client.processing()` does nothing, and OpenTelemetry isn't
+imported. See [examples/opentelemetry_tracing.py](https://github.com/Mixser/zenmqtt/blob/main/examples/opentelemetry_tracing.py).
+
 ### Custom session storage
 
 QoS 1/2 messages wait in the session until they are acknowledged. The default
