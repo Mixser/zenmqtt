@@ -52,7 +52,7 @@ async def main():
             MQTT_URL,
             username=MQTT_USERNAME,
             password=MQTT_PASSWORD,
-            clean_session=False,
+            clean_start=False,
             properties={"session_expiry_interval": SESSION_EXPIRY_INTERVAL},
         )
 

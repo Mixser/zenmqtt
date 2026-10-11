@@ -198,7 +198,7 @@ async def test_reconnects_after_connection_lost(broker):
         client,
         broker,
         pack_connack(properties=struct.pack("!BH", 0x12, 7) + b"auto-42"),
-        clean_session=True,
+        clean_start=True,
     )
     assert client.is_connected
     assert client.client_id == "auto-42"

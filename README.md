@@ -98,12 +98,12 @@ await client.connect(
     password="password",
     ssl=ssl.create_default_context(cafile="ca.pem"),  # optional, system CAs by default
     keepalive=60,
-    clean_session=False,
+    clean_start=False,
     properties={"session_expiry_interval": 3600},
 )
 ```
 
-`connect()` returns the CONNACK (`ConnectionResult` with `result_code`,
+`connect()` returns the CONNACK (`ConnectionResult` with `reason_code`,
 `session_present` and server `properties`). If the first connect fails, the error is raised.
 `client.client_id` is the identifier which the server assigned, if the client
 id was empty.
@@ -118,7 +118,7 @@ exception or cancellation at once, without hiding the exception. Without
 
 After a successful connect the client reconnects by itself with exponential
 backoff. To keep QoS 1/2 messages and subscriptions across a reconnect, the
-broker must keep the session: use `clean_session=False` with
+broker must keep the session: use `clean_start=False` with
 `session_expiry_interval > 0`.
 
 ```python
@@ -128,7 +128,7 @@ client = MQTTClient(
     "my-client",
     reconnect=ReconnectPolicy(initial_delay=1, max_delay=60, max_attempts=None),
 )
-client.on_connect = lambda result: print("connected", result.result_code)
+client.on_connect = lambda result: print("connected", result.reason_code)
 client.on_disconnect = lambda exc: print("connection lost", exc)
 ```
 
@@ -206,7 +206,7 @@ will = WillMessage("devices/1/status", b"offline", qos=1, retain=True)
 await client.connect("tcp://localhost:1883", will=will)
 
 # 0x04 asks the broker to publish the will message
-await client.disconnect(reason=0x04)
+await client.disconnect(reason_code=0x04)
 ```
 
 If the broker closes the connection with DISCONNECT, its reason code is
