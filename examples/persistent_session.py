@@ -53,7 +53,7 @@ async def main():
 
     await client.connect(
         MQTT_URL,
-        clean_session=False,
+        clean_start=False,
         properties={"session_expiry_interval": SESSION_EXPIRY_INTERVAL},
     )
 
