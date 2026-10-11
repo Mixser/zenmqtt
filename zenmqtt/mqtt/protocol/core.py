@@ -105,7 +105,7 @@ class MQTTProtocol:
         return self._context.connected
 
     def set_connection(self, connection: MQTTConnection) -> None:
-        self._context.connection = connection
+        self._context.set_connection(connection)
         self._connection_future = asyncio.get_running_loop().create_future()
         self._disconnecting = False
         self.server_disconnect = None
@@ -173,13 +173,13 @@ class MQTTProtocol:
         if not connection_result.flags & SESSION_PRESENT_FLAG:
             await self._discard_session()
 
-        self._context.server_limits = ServerLimits.from_connack(
-            connection_result.properties
+        self._context.set_server_limits(
+            ServerLimits.from_connack(connection_result.properties)
         )
 
         await self._outgoing.on_connected(connection_result)
 
-        self._context.connected = True
+        self._context.mark_connected()
 
         self._keep_alive.start(
             connection_result.properties.get("server_keep_alive", keepalive)
@@ -367,7 +367,7 @@ class MQTTProtocol:
         if self._context.connected:
             self._context.metrics.on_connection_closed(lost=not self._disconnecting)
 
-        self._context.connected = False
+        self._context.mark_disconnected()
         exc = ConnectionLostError(self.server_disconnect)
 
         if self._connection_future and not self._connection_future.done():
