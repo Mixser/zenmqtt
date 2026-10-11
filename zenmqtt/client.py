@@ -7,7 +7,7 @@ from typing import Any, Awaitable, Callable, Final, Optional, Sequence, TypeVar
 
 from zenmqtt.connection import create_connection
 from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
-from zenmqtt.metrics import MetricsCollector
+from zenmqtt.instrumentation.metrics import MetricsCollector
 from zenmqtt.mqtt.connect import (
     SESSION_PRESENT_FLAG,
     ConnectionResult,
@@ -84,7 +84,7 @@ class MQTTClient:
         """
         :param session: storage of in-flight QoS 1/2 messages, in-memory by default
         :param metrics: receives events of the client to build metrics,
-            e.g. zenmqtt.contrib.opentelemetry.OpenTelemetryMetrics
+            e.g. zenmqtt.instrumentation.opentelemetry.OpenTelemetryMetrics
         :param reconnect: automatic reconnect after the connection is lost,
             None disables it; see connect() for details
         """

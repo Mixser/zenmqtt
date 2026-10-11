@@ -3,7 +3,7 @@ from logging import getLogger
 from typing import Awaitable, Callable, Optional
 
 from zenmqtt.exceptions import ConnectionLostError, MQTTConnectionError
-from zenmqtt.metrics import MetricsCollector
+from zenmqtt.instrumentation.metrics import MetricsCollector
 from zenmqtt.mqtt.connect import ConnectionResult
 from zenmqtt.mqtt.protocol import MQTTProtocol
 from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE

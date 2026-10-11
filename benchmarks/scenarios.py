@@ -6,11 +6,17 @@ from typing import Callable, Optional
 from benchmarks.clients import BenchClient
 from benchmarks.stats import Result, percentiles
 from zenmqtt.connection import MQTTConnection, MQTTConnectionTransport
-from zenmqtt.metrics import MetricsCollector
 from zenmqtt.mqtt.packet import PacketType
 from zenmqtt.mqtt.protocol import MQTTProtocol
 from zenmqtt.mqtt.publish import pack_publish_packet
 from zenmqtt.mqtt.session import InMemorySession
+
+try:
+    from zenmqtt.instrumentation.metrics import MetricsCollector
+except ImportError:
+    # older versions, compare.py runs these benchmarks against the base
+    # branch too; can be removed when main has zenmqtt.instrumentation
+    from zenmqtt.metrics import MetricsCollector  # type: ignore[no-redef]
 
 TOPIC = "zenmqtt/benchmarks"
 # timeout for the delivery of all messages in broker scenarios, seconds

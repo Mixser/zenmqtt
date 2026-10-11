@@ -3,7 +3,7 @@ from typing import Optional
 
 from zenmqtt.connection import MQTTConnection
 from zenmqtt.exceptions import NotConnectedError
-from zenmqtt.metrics import MetricsCollector
+from zenmqtt.instrumentation.metrics import MetricsCollector
 from zenmqtt.mqtt.limits import DEFAULT_SERVER_LIMITS, ServerLimits
 from zenmqtt.mqtt.packet import PacketType
 

@@ -16,7 +16,7 @@ from opentelemetry.sdk.metrics.export import (
 )
 
 from zenmqtt import MQTTClient
-from zenmqtt.contrib.opentelemetry import OpenTelemetryMetrics
+from zenmqtt.instrumentation.opentelemetry import OpenTelemetryMetrics
 
 MQTT_URL = os.environ.get("MQTT_URL", "tcp://localhost:1883")
 MQTT_USERNAME = os.environ.get("MQTT_USERNAME")

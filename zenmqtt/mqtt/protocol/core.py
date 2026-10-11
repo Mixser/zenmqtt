@@ -5,7 +5,7 @@ from typing import Awaitable, Callable, Optional, Sequence
 
 from zenmqtt.connection import MQTTConnection
 from zenmqtt.exceptions import ConnectionLostError, MalformedPacketError, ProtocolError
-from zenmqtt.metrics import MetricsCollector
+from zenmqtt.instrumentation.metrics import MetricsCollector
 from zenmqtt.mqtt.connect import (
     SESSION_PRESENT_FLAG,
     ConnectionResult,

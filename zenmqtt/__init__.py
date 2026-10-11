@@ -24,7 +24,7 @@ from zenmqtt.exceptions import (
     SessionLostError,
     TopicAliasInvalidError,
 )
-from zenmqtt.metrics import MetricsCollector
+from zenmqtt.instrumentation.metrics import MetricsCollector
 from zenmqtt.mqtt.connect import ConnectionResult, DisconnectResult, WillMessage
 from zenmqtt.mqtt.publish import PublishResult
 from zenmqtt.mqtt.session import BaseSession, InMemorySession, MQTTSession
