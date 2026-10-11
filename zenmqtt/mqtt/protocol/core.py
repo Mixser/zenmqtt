@@ -207,6 +207,13 @@ class MQTTProtocol:
             await read_loop_task
             self._read_loop_task = None
 
+    async def wait_outgoing_completed(self) -> None:
+        """
+        Waits until no outgoing QoS 1/2 message is in flight; see
+        MQTTClient.disconnect(timeout=...).
+        """
+        await self._outgoing.wait_completed()
+
     async def wait_closed(self) -> None:
         """Waits until the current connection is closed and handled."""
         if read_loop_task := self._read_loop_task:

@@ -79,6 +79,9 @@ service needs:
 - **Without reconnect** (`reconnect=None`), a small task waits until the
   connection is lost and calls `protocol.close()`. Pending publish calls fail
   with `ConnectionLostError` and the iteration over messages ends.
+- **Graceful shutdown.** `disconnect(timeout=...)` rejects new operations and
+  waits until the server acknowledged the outgoing QoS 1/2 messages in flight,
+  then sends DISCONNECT. See [Graceful shutdown](#graceful-shutdown).
 
 ```mermaid
 stateDiagram-v2
@@ -92,6 +95,10 @@ stateDiagram-v2
     Reconnecting --> Stopped: non-retryable reason or no attempts left
     Connected --> Stopped: disconnect()
     Reconnecting --> Stopped: disconnect()
+    Connected --> Draining: disconnect(timeout)
+    Reconnecting --> Draining: disconnect(timeout)
+    Draining --> Draining: connection lost, reconnect on
+    Draining --> Stopped: messages acknowledged or timeout
 ```
 
 When the client stops after it was connected, it calls `protocol.close(exc)`:
@@ -326,6 +333,46 @@ The session survives reconnects only if the server keeps its session too:
 `clean_session=False` and `session_expiry_interval > 0` in the connect
 properties. If CONNACK says that the session isn't present, the client
 discards its own session.
+
+## Graceful shutdown
+
+`disconnect()` without a timeout sends DISCONNECT at once. Outgoing QoS 1/2
+messages in flight stay in the session; with the in-memory session they are
+lost when the process exits. `disconnect(timeout=...)` closes the client
+without losing them, e.g. on SIGTERM:
+
+```mermaid
+sequenceDiagram
+    participant A as Application
+    participant C as MQTTClient
+    participant O as OutgoingFlow
+    participant B as Broker
+
+    A->>C: disconnect(timeout=10)
+    Note over C: new publish, subscribe, unsubscribe<br/>fail with NotConnectedError
+    C->>O: wait_completed()
+    B-->>O: PUBACK / PUBCOMP of messages in flight
+    O-->>C: nothing in flight
+    C->>B: DISCONNECT
+    C-->>A: 0 (messages left in the session)
+```
+
+- "In flight" means: QoS 1/2 publish calls which haven't returned, and
+  messages re-sent from the session after reconnect. `OutgoingFlow` counts the
+  calls and wakes up the waiter when a message completes; the hot path only
+  sets an event.
+- QoS 0 messages are written to the socket at once, so there is nothing to
+  wait for.
+- With automatic reconnect, a lost connection doesn't end the wait: the client
+  reconnects, the session re-sends the messages, and their acknowledgements
+  are waited for until the timeout. Without reconnect, nothing will re-send
+  them, so the wait ends when the connection is lost.
+- `disconnect()` returns the number of outgoing QoS 1/2 messages which the
+  server didn't acknowledge; they stay in the session. After a timeout a
+  warning is logged.
+- Incoming messages aren't waited for. Messages which the application didn't
+  acknowledge are sent again by the server on the next connect with this
+  session.
 
 ## Keep alive
 

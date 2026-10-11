@@ -91,7 +91,8 @@ class MQTTClient:
         self._metrics = metrics or MetricsCollector()
         self._reconnect_policy = reconnect
 
-        self._protocol = MQTTProtocol(session or build_default_session(), self._metrics)
+        self._session = session or build_default_session()
+        self._protocol = MQTTProtocol(self._session, self._metrics)
 
         self.client_id = client_id
 
@@ -110,6 +111,9 @@ class MQTTClient:
         self._connected = False
         # True until connect and after the client stops for good
         self._stopped = True
+        # disconnect(timeout=...) waits for messages in flight, new operations
+        # are rejected
+        self._draining = False
         self._state_changed = asyncio.Event()
 
         # called on every successful connect and on every lost connection,
@@ -196,16 +200,37 @@ class MQTTClient:
         return connack
 
     async def disconnect(
-        self, reason: int = 0, properties: Optional[DisconnectProperties] = None
-    ) -> None:
+        self,
+        reason: int = 0,
+        properties: Optional[DisconnectProperties] = None,
+        *,
+        timeout: Optional[float] = None,
+    ) -> int:
         """
         Stops automatic reconnect; pending publish calls fail with
         ConnectionLostError, the messages iterator ends.
 
+        With a timeout the shutdown is graceful: new publish, subscribe and
+        unsubscribe calls fail with NotConnectedError, and the client waits up
+        to `timeout` seconds until the server acknowledged every outgoing QoS
+        1/2 message in flight (PUBACK, PUBCOMP); then it sends DISCONNECT. If
+        the connection is lost meanwhile, the client keeps reconnecting (with
+        automatic reconnect) and the re-sent messages are waited for too. QoS 0
+        messages are sent at once, so they aren't waited for.
+
         :param reason: reason code of DISCONNECT, e.g. 0x04 "Disconnect with
             Will Message" asks the server to publish the will message
+        :param timeout: seconds to wait for messages in flight; None
+            disconnects at once
+        :returns: the number of outgoing QoS 1/2 messages which the server
+            didn't acknowledge; they stay in the session and are re-sent on the
+            next connect with this session
         """
         was_stopped = self._stopped
+
+        if timeout is not None and not was_stopped:
+            await self._drain(timeout)
+
         self._stopped = True
 
         if reconnector := self._reconnector:
@@ -218,6 +243,27 @@ class MQTTClient:
 
         if not was_stopped:
             await self._protocol.close(ConnectionLostError())
+
+        self._draining = False
+        left = len(await self._session.get_pending_outgoing_messages())
+
+        if left and timeout is not None:
+            logger.warning(
+                "mqtt_client.disconnect: %s outgoing QoS 1/2 messages aren't "
+                "acknowledged by the server within %s s, they stay in the session",
+                left,
+                timeout,
+            )
+
+        return left
+
+    async def _drain(self, timeout: float) -> None:
+        self._draining = True
+
+        try:
+            await asyncio.wait_for(self._protocol.wait_outgoing_completed(), timeout)
+        except asyncio.TimeoutError:
+            pass
 
     @property
     def is_connected(self) -> bool:
@@ -468,11 +514,18 @@ class MQTTClient:
         lost the connection before sending it, or with repeat=True (for
         idempotent operations) before the acknowledgement.
         """
+        if self._draining:
+            raise NotConnectedError("The client is disconnecting")
+
         if not self._reconnect_policy:
             return await operation()
 
         while True:
             await self.wait_connected()
+
+            # the client started to disconnect while this call waited
+            if self._draining:
+                raise NotConnectedError("The client is disconnecting")
 
             try:
                 return await operation()
