@@ -55,7 +55,15 @@ jobs:
           poetry env use python
           poetry install
       - name: Testing
+        env:
+          COVERAGE_FILE: .coverage.unit-${{ matrix.python-version }}
         run: make test
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-unit-${{ matrix.python-version }}
+          path: .coverage.unit-${{ matrix.python-version }}
+          include-hidden-files: true
+          if-no-files-found: error
 
   integration:
     # the client against a real broker, through the public API; runs only if
@@ -81,4 +89,39 @@ jobs:
       - name: Integration tests
         env:
           MQTT_INTEGRATION_URL: tcp://localhost:1883
+          COVERAGE_FILE: .coverage.integration
         run: make test/integration
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-integration
+          path: .coverage.integration
+          include-hidden-files: true
+          if-no-files-found: error
+
+  coverage:
+    # unit tests on all Python versions and integration tests together
+    needs: [ testing, integration ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install coverage
+        run: pip install "coverage>=7.10"
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+      - name: Combine
+        run: |
+          coverage combine .coverage.*
+          coverage report
+          echo "## Coverage" >> "$GITHUB_STEP_SUMMARY"
+          coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+          coverage html
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html
+          path: htmlcov/
