@@ -1,6 +1,7 @@
 SOURCE=zenmqtt
 TEST=tests
 TEST_UNIT=$(TEST)/unit
+TEST_INTEGRATION=$(TEST)/integration
 
 .PHONY: fmt/black
 fmt/black:
@@ -35,6 +36,11 @@ test:
 .PHONY: test/unit
 test/unit:
 	@poetry run pytest --disable-warnings --cov=$(SOURCE) $(TEST_UNIT)
+
+# needs a broker: MQTT_INTEGRATION_URL=tcp://localhost:1883 make test/integration
+.PHONY: test/integration
+test/integration:
+	@poetry run pytest -W error $(TEST_INTEGRATION)
 
 # needs a broker for publish and end-to-end: MQTT_URL=tcp://host:port make bench
 .PHONY: bench

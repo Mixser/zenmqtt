@@ -303,11 +303,13 @@ poetry install            # add --with bench for the aiomqtt comparison
 make fmt                  # black, isort
 make lint                 # black, flake8, mypy
 make test                 # pytest with coverage
+make test/integration     # against a broker, MQTT_INTEGRATION_URL=tcp://localhost:1883
 make bench                # benchmarks, a broker is needed for some scenarios
 make bench-codec          # micro-benchmarks of packing and parsing
 ```
 
-The examples and broker benchmarks need an MQTT 5 broker, e.g.:
+The examples, the integration tests and the broker benchmarks need an MQTT 5
+broker, e.g.:
 
 ```sh
 docker run --rm -p 1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf
