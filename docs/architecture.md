@@ -368,6 +368,9 @@ flowchart LR
   with the traceback, then at most once a minute with the number of errors),
   so a broken metrics adapter can't close the connection or stop reconnect.
   Hooks which the collector doesn't override aren't wrapped and cost nothing.
+  Tracing is wrapped the same way: a publish which the server acknowledged
+  doesn't fail because its span couldn't be ended, and the tracing context
+  around `processing()` never swallows an exception of the application.
 - The protocol only calls these hooks where the event happens. The timestamps
   for durations are part of the flow state; for example, the latency of a
   re-sent message isn't counted from its first send.

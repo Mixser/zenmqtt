@@ -1,13 +1,7 @@
-import time
-from logging import getLogger
 from typing import Any, Callable, Final, Optional, Sequence
 
+from zenmqtt.instrumentation.guard import HookErrors
 from zenmqtt.mqtt.packet import PacketType
-
-logger = getLogger(__name__)
-
-# seconds between logs of a hook which keeps failing
-_ERROR_LOG_INTERVAL: Final[float] = 60.0
 
 
 class MetricsCollector:
@@ -103,10 +97,7 @@ class _GuardedMetrics(MetricsCollector):
 
     def __init__(self, metrics: MetricsCollector) -> None:
         self.wrapped = metrics
-        # number of exceptions per hook
-        self.errors: dict[str, int] = {}
-        self._logged_at: dict[str, float] = {}
-        self._suppressed: dict[str, int] = {}
+        self._errors = HookErrors(type(metrics).__name__, "mqtt_metrics.hook_error")
 
         for name in _HOOKS:
             hook = getattr(metrics, name)
@@ -114,35 +105,21 @@ class _GuardedMetrics(MetricsCollector):
             if getattr(hook, "__func__", None) is not getattr(MetricsCollector, name):
                 setattr(self, name, self._guard(name, hook))
 
+    @property
+    def errors(self) -> dict[str, int]:
+        """Number of exceptions per hook."""
+        return self._errors.errors
+
     def _guard(self, name: str, hook: Callable[..., None]) -> Callable[..., None]:
+        report = self._errors.report
+
         def guarded(*args: Any, **kwargs: Any) -> None:
             try:
                 hook(*args, **kwargs)
             except Exception as exc:
-                self._on_error(name, exc)
+                report(name, exc)
 
         return guarded
-
-    def _on_error(self, name: str, exc: Exception) -> None:
-        self.errors[name] = self.errors.get(name, 0) + 1
-        now = time.monotonic()
-        logged_at = self._logged_at.get(name)
-
-        # the first error and then one log per interval: a hook which fails on
-        # every packet doesn't flood the logs, but stays visible
-        if logged_at is not None and now - logged_at < _ERROR_LOG_INTERVAL:
-            self._suppressed[name] = self._suppressed.get(name, 0) + 1
-            return
-
-        logger.error(
-            "mqtt_metrics.hook_error: %s.%s raised, %s errors since the last log; "
-            "metrics don't affect the client",
-            type(self.wrapped).__name__,
-            name,
-            self._suppressed.pop(name, 0) + 1,
-            exc_info=exc,
-        )
-        self._logged_at[name] = now
 
 
 _HOOKS: Final[tuple[str, ...]] = tuple(
