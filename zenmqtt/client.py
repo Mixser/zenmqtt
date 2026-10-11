@@ -23,7 +23,6 @@ from zenmqtt.mqtt.publish import (
     PublishResult,
 )
 from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE
-from zenmqtt.mqtt.session import MQTTSession, build_default_session
 from zenmqtt.mqtt.subscribe import (
     SubscribeResult,
     SubscriptionProperties,
@@ -33,6 +32,7 @@ from zenmqtt.mqtt.subscribe import (
 )
 from zenmqtt.reconnect import DEFAULT_RECONNECT_POLICY, ReconnectPolicy
 from zenmqtt.reconnector import Reconnector
+from zenmqtt.session import MQTTSession, build_default_session
 from zenmqtt.subscriptions import SubscriptionRegistry
 
 logger = getLogger(__name__)

@@ -26,7 +26,7 @@ from zenmqtt.mqtt.publish import (
     pack_pubrec_packet,
     parse_pubrel_packet,
 )
-from zenmqtt.mqtt.session import OutgoingMessageState
+from zenmqtt.session import OutgoingMessageState
 
 
 async def test_qos1_publish_flow():

@@ -25,7 +25,7 @@ from zenmqtt.mqtt.publish import (
     parse_pubrel_packet,
 )
 from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE, PACKET_IDENTIFIER_NOT_FOUND
-from zenmqtt.mqtt.session import MQTTSession, PacketIdentifier
+from zenmqtt.session import MQTTSession, PacketIdentifier
 
 logger = getLogger(__name__)
 

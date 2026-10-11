@@ -10,7 +10,7 @@ from zenmqtt.instrumentation.metrics import MetricsCollector
 from zenmqtt.mqtt.packet import PacketType
 from zenmqtt.mqtt.protocol import MQTTProtocol
 from zenmqtt.mqtt.publish import pack_publish_packet
-from zenmqtt.mqtt.session import InMemorySession
+from zenmqtt.session import InMemorySession
 
 TOPIC = "zenmqtt/benchmarks"
 # timeout for the delivery of all messages in broker scenarios, seconds

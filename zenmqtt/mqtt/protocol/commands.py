@@ -6,7 +6,6 @@ from typing import Any, Optional, Sequence, TypeVar, Union
 from zenmqtt.exceptions import NotConnectedError, ServerLimitError
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader
 from zenmqtt.mqtt.protocol.context import ProtocolContext
-from zenmqtt.mqtt.session import MQTTSession, PacketIdentifier
 from zenmqtt.mqtt.subscribe import (
     SubscribeResult,
     SubscriptionProperties,
@@ -18,6 +17,7 @@ from zenmqtt.mqtt.subscribe import (
     parse_suback_packet,
     parse_unsuback_packet,
 )
+from zenmqtt.session import MQTTSession, PacketIdentifier
 
 logger = getLogger(__name__)
 
