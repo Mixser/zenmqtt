@@ -532,6 +532,34 @@ async def test_reconnect_disabled(broker):
     await broker.assert_no_connections()
 
 
+async def test_reconnect_disabled_fails_pending_publish(broker):
+    client = build_client(reconnect=None)
+    lost = []
+    client.on_disconnect = lost.append
+    transport, _ = await connect(client, broker)
+
+    task = asyncio.create_task(client.publish("a/b", b"payload", qos=1))
+    await expect_publish(transport)
+
+    transport.drop()
+
+    with pytest.raises(ConnectionLostError):
+        await asyncio.wait_for(task, TIMEOUT)
+
+    assert [type(exc) for exc in lost] == [ConnectionLostError]
+    assert not client.is_connected
+
+    # the client can connect again, publish calls wait for acks again
+    transport, _ = await connect(client, broker)
+    task = asyncio.create_task(client.publish("a/b", b"second", qos=1))
+
+    publish = await expect_publish(transport)
+    assert publish.payload == b"second"
+
+    transport.feed(pack_puback_packet(publish.packet_identifier, 0, {}))
+    assert (await asyncio.wait_for(task, TIMEOUT)).reason_code == 0
+
+
 async def test_warning_without_session_expiry(broker, caplog):
     client = build_client()
 

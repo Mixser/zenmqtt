@@ -79,12 +79,10 @@ class IncomingFlow:
         context: ProtocolContext,
         session: MQTTSession,
         messages: asyncio.Queue[Optional[PublishResult]],
-        wait_across_reconnect: bool,
     ) -> None:
         self._context = context
         self._session = session
         self._messages_queue = messages
-        self._wait_across_reconnect = wait_across_reconnect
 
         # limits sent by the client in CONNECT
         self._receive_maximum = DEFAULT_RECEIVE_MAXIMUM
@@ -128,9 +126,6 @@ class IncomingFlow:
         self._buffer = deque(
             message for message in self._buffer if message is None or not message.qos
         )
-
-        if not self._wait_across_reconnect:
-            self._enqueue(None)
 
     def close(self) -> None:
         """The client stops for good: the end of messages."""

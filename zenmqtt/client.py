@@ -100,7 +100,6 @@ class MQTTClient:
             messages,
             session or build_default_session(),
             self._metrics,
-            wait_across_reconnect=reconnect is not None,
         )
         self._messages = messages
 
@@ -113,6 +112,8 @@ class MQTTClient:
 
         self._subscriptions = SubscriptionRegistry()
         self._reconnector: Optional[Reconnector] = None
+        # without reconnect: closes the protocol when the connection is lost
+        self._watcher: Optional[asyncio.Task[None]] = None
 
         self._connected = False
         # True until connect and after the client stops for good
@@ -197,6 +198,8 @@ class MQTTClient:
                 gave_up=self._on_gave_up,
             )
             self._reconnector.start()
+        else:
+            self._watcher = asyncio.create_task(self._watch_connection())
 
         return connack
 
@@ -221,7 +224,7 @@ class MQTTClient:
 
         self._set_connected(False)
 
-        if self._reconnect_policy and not was_stopped:
+        if not was_stopped:
             await self._protocol.close(ConnectionLostError())
 
     @property
@@ -410,6 +413,20 @@ class MQTTClient:
             self.client_id = assigned
 
         return connack
+
+    async def _watch_connection(self) -> None:
+        await self._protocol.wait_closed()
+
+        # disconnect() closes the protocol itself
+        if self._stopped:
+            return
+
+        lost = ConnectionLostError(self._protocol.server_disconnect)
+        logger.warning("mqtt_client.connection_lost: %s", lost)
+
+        self._stopped = True
+        await self._protocol.close(lost)
+        await self._on_connection_lost(lost)
 
     async def _on_connection_lost(self, lost: ConnectionLostError) -> None:
         self._set_connected(False)

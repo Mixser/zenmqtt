@@ -277,3 +277,75 @@ async def test_cancelled_store_releases_packet_identifier_and_send_quota():
 
     transport.feed(pack_puback_packet(publish.packet_identifier, 0, {}))
     await asyncio.wait_for(task, TIMEOUT)
+
+
+async def test_publish_waits_across_a_lost_connection():
+    protocol, _, messages = build_protocol()
+    transport = await connect(protocol, reconnect=True)
+
+    task = asyncio.create_task(protocol.publish("a/b", b"payload", qos=1))
+    await expect_publish(transport)
+
+    transport.drop()
+    await wait_for_connection_lost(protocol)
+    await asyncio.sleep(0.01)
+    assert not task.done()
+
+    transport = await connect(protocol, reconnect=True, session_present=True)
+
+    publish = await expect_publish(transport)
+    assert publish.dup and publish.payload == b"payload"
+
+    transport.feed(pack_puback_packet(publish.packet_identifier, 0, {}))
+    assert await asyncio.wait_for(task, TIMEOUT) == PubAckResult(
+        publish.packet_identifier, 0, {}
+    )
+
+    # the messages queue isn't ended by the lost connection
+    assert messages.empty()
+
+
+async def test_close_fails_publish_waiting_across_a_lost_connection():
+    protocol, _, messages = build_protocol()
+    transport = await connect(protocol, reconnect=True)
+
+    task = asyncio.create_task(protocol.publish("a/b", b"payload", qos=1))
+    await expect_publish(transport)
+
+    transport.drop()
+    await wait_for_connection_lost(protocol)
+
+    closed = ConnectionLostError()
+    await protocol.close(closed)
+
+    with pytest.raises(ConnectionLostError) as error:
+        await asyncio.wait_for(task, TIMEOUT)
+
+    assert error.value is closed
+    assert await asyncio.wait_for(messages.get(), TIMEOUT) is None
+
+
+async def test_publish_stored_after_close_fails():
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol, reconnect=True)
+
+    store = session.store_outgoing_message
+    storing, stored = asyncio.Event(), asyncio.Event()
+
+    async def slow_store(message):
+        storing.set()
+        await stored.wait()
+        await store(message)
+
+    session.store_outgoing_message = slow_store
+    task = asyncio.create_task(protocol.publish("a/b", b"payload", qos=1))
+    await asyncio.wait_for(storing.wait(), TIMEOUT)
+
+    # the connection is lost and closed for good while the message is stored
+    transport.drop()
+    await wait_for_connection_lost(protocol)
+    await protocol.close(ConnectionLostError())
+    stored.set()
+
+    with pytest.raises(ConnectionLostError):
+        await asyncio.wait_for(task, TIMEOUT)

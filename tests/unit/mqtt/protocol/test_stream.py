@@ -8,6 +8,7 @@ from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
     FakeTransport,
     build_protocol,
+    close_when_lost,
     connect,
     expect,
     expect_disconnect,
@@ -139,6 +140,7 @@ async def test_read_error_closes_the_connection(caplog):
     await expect(transport, PacketType.CONNECT)
     transport.feed(pack_connack())
     await asyncio.wait_for(task, TIMEOUT)
+    close_when_lost(protocol)
 
     with caplog.at_level(logging.ERROR, logger="zenmqtt.mqtt.protocol"):
         transport.fail(ConnectionResetError("reset by peer"))

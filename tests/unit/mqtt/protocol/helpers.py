@@ -4,6 +4,7 @@ import struct
 from typing import Optional
 
 from zenmqtt.connection import MQTTConnection, MQTTConnectionTransport
+from zenmqtt.exceptions import ConnectionLostError
 from zenmqtt.metrics import MetricsCollector
 from zenmqtt.mqtt.connect import (
     ConnectProperties,
@@ -109,11 +110,30 @@ def pack_qos0(topic: str, payload: bytes, topic_alias=None) -> bytes:
     return pack_publish_packet(0, topic, payload, 0, False, False, properties)
 
 
+def close_when_lost(protocol: MQTTProtocol) -> None:
+    """
+    Like the client without reconnect: when the connection is lost, publish
+    calls fail and the messages queue ends.
+    """
+
+    async def watch() -> None:
+        await protocol.wait_closed()
+        await protocol.close(ConnectionLostError(protocol.server_disconnect))
+
+    _watchers.append(asyncio.create_task(watch()))
+
+
 async def connect(
     protocol: MQTTProtocol,
     connect_properties: Optional[ConnectProperties] = None,
+    *,
+    reconnect: bool = False,
     **connack_kwargs,
 ) -> FakeTransport:
+    """
+    :param reconnect: the state survives a lost connection, like with the
+        client's automatic reconnect
+    """
     transport = FakeTransport()
     protocol.set_connection(MQTTConnection(transport))
 
@@ -126,6 +146,9 @@ async def connect(
 
     transport.feed(pack_connack(**connack_kwargs))
     await asyncio.wait_for(task, TIMEOUT)
+
+    if not reconnect:
+        close_when_lost(protocol)
 
     return transport
 
@@ -144,6 +167,7 @@ async def connect_with_keep_alive(
 
     transport.feed(pack_connack(**connack_kwargs))
     await asyncio.wait_for(task, TIMEOUT)
+    close_when_lost(protocol)
 
     return transport
 
@@ -199,6 +223,7 @@ class RecordingMetrics(MetricsCollector):
 
 
 _protocols: list[MQTTProtocol] = []
+_watchers: list[asyncio.Task[None]] = []
 
 
 def build_protocol(
