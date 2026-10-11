@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO)
 async def main():
     async with MQTTClient("zenmqtt-example-publish-subscribe") as client:
         connection_result = await client.connect(
-            MQTT_URL, username=MQTT_USERNAME, password=MQTT_PASSWORD, clean_session=True
+            MQTT_URL, username=MQTT_USERNAME, password=MQTT_PASSWORD, clean_start=True
         )
         print("connected:", connection_result)
 

@@ -33,9 +33,9 @@ SESSION_PRESENT_FLAG: Final[int] = 0x01
 
 @dataclass(frozen=True)
 class ConnectionResult:
-    __slots__ = ("flags", "result_code", "properties")
+    __slots__ = ("flags", "reason_code", "properties")
     flags: int
-    result_code: int
+    reason_code: int
     properties: ConnackProperties
 
     @property
@@ -48,12 +48,12 @@ def parse_connack_packet(
     fixed_header: FixedHeader, reader: BytesReader
 ) -> ConnectionResult:
     flags = reader.read_byte()
-    result_code = reader.read_byte()
+    reason_code = reader.read_byte()
     properties = parse_properties(reader)
 
     reader.ensure_end()
 
-    return ConnectionResult(flags=flags, result_code=result_code, properties=properties)
+    return ConnectionResult(flags=flags, reason_code=reason_code, properties=properties)
 
 
 class ConnectProperties(TypedDict, total=False):
@@ -112,7 +112,7 @@ def pack_connect_packet(
     username: Optional[str],
     password: Optional[str],
     *,
-    clean_session: bool,
+    clean_start: bool,
     keepalive: int,
     properties: ConnectProperties,
     will: Optional[WillMessage] = None,
@@ -122,7 +122,7 @@ def pack_connect_packet(
 
     connect_flags = 0
 
-    if clean_session:
+    if clean_start:
         connect_flags |= _CLEAN_START_FLAG
 
     will_bytes = b""
@@ -178,10 +178,10 @@ class DisconnectProperties(TypedDict, total=False):
     user_property: Sequence[Tuple[str, str]]
 
 
-def pack_disconnect_packet(reason: int, properties: DisconnectProperties) -> bytes:
+def pack_disconnect_packet(reason_code: int, properties: DisconnectProperties) -> bytes:
     properties_bytes = pack_properties(cast(Properties, properties))
     payload_length = 1 + len(properties_bytes)
-    payload = struct.pack("!B", reason) + properties_bytes
+    payload = struct.pack("!B", reason_code) + properties_bytes
 
     return pack_fixed_header(PacketType.DISCONNECT, 0x00, payload_length) + payload
 

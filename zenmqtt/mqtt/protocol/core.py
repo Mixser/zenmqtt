@@ -121,7 +121,7 @@ class MQTTProtocol:
         client_id: str,
         username: Optional[str],
         password: Optional[str],
-        clean_session: bool = False,
+        clean_start: bool = False,
         keepalive: int = 0,
         properties: Optional[ConnectProperties] = None,
         will: Optional[WillMessage] = None,
@@ -144,14 +144,14 @@ class MQTTProtocol:
                 "maximum_packet_size"
             )
 
-        if clean_session:
+        if clean_start:
             await self._session.reset()
 
         login_packet = pack_connect_packet(
             client_id,
             username,
             password,
-            clean_session=clean_session,
+            clean_start=clean_start,
             keepalive=keepalive,
             properties=properties,
             will=will,
@@ -164,10 +164,10 @@ class MQTTProtocol:
         connection_result = await self._connection_future
 
         self._context.metrics.on_connect(
-            connection_result.result_code, self._context.now() - sent_at
+            connection_result.reason_code, self._context.now() - sent_at
         )
 
-        if connection_result.result_code >= FAILURE_REASON_CODE:
+        if connection_result.reason_code >= FAILURE_REASON_CODE:
             return connection_result
 
         if not connection_result.flags & SESSION_PRESENT_FLAG:
@@ -188,7 +188,7 @@ class MQTTProtocol:
         return connection_result
 
     async def disconnect(
-        self, reason: int, properties: Optional[DisconnectProperties] = None
+        self, reason_code: int, properties: Optional[DisconnectProperties] = None
     ) -> None:
         connection = self._context.connection
         assert connection
@@ -198,7 +198,7 @@ class MQTTProtocol:
         if not connection.is_closing():
             logger.debug("mqtt_protocol.send_disconnect_packet")
             await self._context.write(
-                connection, pack_disconnect_packet(reason, properties or {})
+                connection, pack_disconnect_packet(reason_code, properties or {})
             )
 
             await connection.disconnect()

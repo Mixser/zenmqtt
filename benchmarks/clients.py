@@ -36,7 +36,7 @@ class ZenmqttClient:
     async def connect(self, url: str) -> None:
         await self._client.connect(
             url,
-            clean_session=True,
+            clean_start=True,
             properties={"receive_maximum": 65535},
         )
 

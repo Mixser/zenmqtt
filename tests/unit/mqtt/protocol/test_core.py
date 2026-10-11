@@ -35,7 +35,7 @@ async def test_failed_connack_is_returned():
     transport.feed(pack_connack(reason_code=0x87))
 
     result = await asyncio.wait_for(task, TIMEOUT)
-    assert result.result_code == 0x87
+    assert result.reason_code == 0x87
 
     with pytest.raises(NotConnectedError):
         await protocol.publish("a/b", b"payload")
@@ -137,7 +137,7 @@ async def test_disconnect_with_reason():
     transport = await connect(protocol)
 
     await asyncio.wait_for(
-        protocol.disconnect(reason=0x04, properties={"reason_string": "bye"}),
+        protocol.disconnect(reason_code=0x04, properties={"reason_string": "bye"}),
         TIMEOUT,
     )
 

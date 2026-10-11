@@ -32,7 +32,7 @@ async def main():
         tracing=OpenTelemetryTracing(provider),
     ) as client:
         await client.connect(
-            MQTT_URL, username=MQTT_USERNAME, password=MQTT_PASSWORD, clean_session=True
+            MQTT_URL, username=MQTT_USERNAME, password=MQTT_PASSWORD, clean_start=True
         )
         await client.subscribe([(TOPIC, 1)])
 
