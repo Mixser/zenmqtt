@@ -58,23 +58,21 @@ class MQTTProtocol:
         messages: asyncio.Queue[Optional[PublishResult]],
         session: MQTTSession,
         metrics: Optional[MetricsCollector] = None,
-        wait_across_reconnect: bool = False,
     ) -> None:
         """
+        A lost connection doesn't end anything: QoS 1/2 publish calls keep
+        waiting for the acknowledgement of the message re-sent on the next
+        connect, and the messages queue stays open. The owner calls close()
+        when nothing will connect anymore.
+
         :param messages: incoming messages; QoS 1/2 messages must be
             acknowledged by ack()
-        :param wait_across_reconnect: used with automatic reconnect: QoS 1/2
-            publish calls keep waiting for the acknowledgement when the
-            connection is lost, and the messages queue isn't closed; call
-            close() when the client stops for good
         """
         self._session = session
         self._context = ProtocolContext(metrics or MetricsCollector())
 
-        self._incoming = IncomingFlow(
-            self._context, session, messages, wait_across_reconnect
-        )
-        self._outgoing = OutgoingFlow(self._context, session, wait_across_reconnect)
+        self._incoming = IncomingFlow(self._context, session, messages)
+        self._outgoing = OutgoingFlow(self._context, session)
         self._commands = Commands(self._context, session)
         self._keep_alive = KeepAlive(self._context)
 
@@ -216,9 +214,8 @@ class MQTTProtocol:
 
     async def close(self, exc: Exception) -> None:
         """
-        Used with wait_across_reconnect when the client stops for good: fails
-        publish calls which wait for acknowledgements and closes the messages
-        queue.
+        Nothing will connect anymore: fails publish calls which wait for
+        acknowledgements and closes the messages queue.
         """
         self._outgoing.close(exc)
         self._incoming.close()

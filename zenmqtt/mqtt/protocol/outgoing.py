@@ -117,11 +117,11 @@ class OutgoingFlow:
         self,
         context: ProtocolContext,
         session: MQTTSession,
-        wait_across_reconnect: bool,
     ) -> None:
         self._context = context
         self._session = session
-        self._wait_across_reconnect = wait_across_reconnect
+        # set by close(): publish calls fail instead of waiting for a connect
+        self._closed_with: Optional[Exception] = None
 
         self._pending: dict[PacketIdentifier, _PendingPublish] = {}
         self._send_quota: Optional[_SendQuota] = None
@@ -190,6 +190,8 @@ class OutgoingFlow:
 
     async def on_connected(self, connection_result: ConnectionResult) -> None:
         """Called after successful CONNACK, before the client is connected."""
+        self._closed_with = None
+
         # publish calls wait while the server's "Receive Maximum" is reached
         self._send_quota = _SendQuota(
             connection_result.properties.get("receive_maximum", DEFAULT_RECEIVE_MAXIMUM)
@@ -207,16 +209,14 @@ class OutgoingFlow:
             self._send_quota.abort(NotConnectedError())
             self._send_quota = None
 
-        if self._wait_across_reconnect:
-            # QoS 1/2 messages are re-sent from the session and publish calls
-            # get the acknowledgement of the re-sent message
-            for pending in self._pending.values():
-                pending.sent_at = None
-        else:
-            self._fail_all(exc)
+        # QoS 1/2 messages are re-sent from the session and publish calls get
+        # the acknowledgement of the re-sent message
+        for pending in self._pending.values():
+            pending.sent_at = None
 
     def close(self, exc: Exception) -> None:
-        """The client stops for good, publish calls don't wait anymore."""
+        """Nothing will connect anymore, publish calls don't wait."""
+        self._closed_with = exc
         self._fail_all(exc)
 
     async def handle_puback(
@@ -288,8 +288,9 @@ class OutgoingFlow:
     ) -> PublishAcknowledgement:
         connected = self._context.connected
 
-        if not connected and not self._wait_across_reconnect:
-            raise ConnectionLostError()
+        # e.g. the connection was lost and closed while the message was stored
+        if not connected and self._closed_with:
+            raise self._closed_with
 
         future: asyncio.Future[
             PublishAcknowledgement
@@ -304,9 +305,6 @@ class OutgoingFlow:
             try:
                 await self._context.write(connection, packet)
             except Exception:
-                if not self._wait_across_reconnect:
-                    raise
-
                 logger.debug(
                     "mqtt_protocol.send_publish_packet.failed pid:%s, "
                     "it'll be re-sent after reconnect",
