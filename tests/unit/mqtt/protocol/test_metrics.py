@@ -1,11 +1,13 @@
 """Metrics events of the protocol."""
 import asyncio
+import logging
 import struct
 
 import pytest
 
 from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
+    FailingMetrics,
     RecordingMetrics,
     build_protocol,
     connect,
@@ -13,18 +15,23 @@ from tests.unit.mqtt.protocol.helpers import (
     expect,
     expect_publish,
     pack_connack,
+    pack_publish,
+    pack_qos0,
     pack_suback,
+    receive,
     receive_and_ack,
     receive_maximum,
     wait_for_connection_lost,
 )
 from zenmqtt.exceptions import ConnectionLostError
+from zenmqtt.instrumentation.metrics import MetricsCollector
 from zenmqtt.mqtt.packet import PacketType
 from zenmqtt.mqtt.publish import (
     pack_puback_packet,
     pack_pubcomp_packet,
     pack_publish_packet,
     pack_pubrec_packet,
+    pack_pubrel_packet,
 )
 
 
@@ -224,3 +231,85 @@ async def test_metrics_messages_resent():
     await asyncio.wait_for(ping, TIMEOUT)
 
     assert [qos for qos, _, _ in metrics.get("on_publish_completed")] == [1]
+
+
+async def test_failing_metrics_dont_affect_the_protocol(caplog):
+    protocol, _, messages = build_protocol(FailingMetrics())
+
+    with caplog.at_level(logging.ERROR, logger="zenmqtt.instrumentation"):
+        transport = await connect(protocol)
+
+        # outgoing QoS 0, 1 and 2
+        await protocol.publish("a/b", b"0", qos=0)
+        await expect_publish(transport)
+
+        task = asyncio.create_task(protocol.publish("a/b", b"1", qos=1))
+        publish = await expect_publish(transport)
+        transport.feed(pack_puback_packet(publish.packet_identifier, 0, {}))
+        await asyncio.wait_for(task, TIMEOUT)
+
+        task = asyncio.create_task(protocol.publish("a/b", b"2", qos=2))
+        publish = await expect_publish(transport)
+        transport.feed(pack_pubrec_packet(publish.packet_identifier, 0, {}))
+        await expect(transport, PacketType.PUBREL)
+        transport.feed(pack_pubcomp_packet(publish.packet_identifier, 0, {}))
+        await asyncio.wait_for(task, TIMEOUT)
+
+        # incoming QoS 0, 1 and 2 with acks
+        transport.feed(pack_qos0("a/b", b"0"))
+        assert (await receive(messages)).payload == b"0"
+
+        transport.feed(pack_publish(1, qos=1))
+        await receive_and_ack(protocol, messages)
+        await expect(transport, PacketType.PUBACK)
+
+        transport.feed(pack_publish(2, qos=2))
+        await receive_and_ack(protocol, messages)
+        await expect(transport, PacketType.PUBREC)
+        transport.feed(pack_pubrel_packet(2, 0, {}))
+        await expect(transport, PacketType.PUBCOMP)
+
+        # subscribe and ping
+        task = asyncio.create_task(protocol.subscribe([("a/#", 1)], {}))
+        _, reader = await expect(transport, PacketType.SUBSCRIBE)
+        packet_identifier = int.from_bytes(reader.read(2), "big")
+        transport.feed(pack_suback(packet_identifier, 1))
+        await asyncio.wait_for(task, TIMEOUT)
+
+        ping = asyncio.create_task(protocol.ping())
+        await expect(transport, PacketType.PINGREQ)
+        transport.feed(bytes([PacketType.PINGRESP << 4, 0]))
+        await asyncio.wait_for(ping, TIMEOUT)
+
+    assert protocol.is_connected
+
+    # each failing hook is logged once
+    hooks = [
+        record.message.split()[1]
+        for record in caplog.records
+        if "hook_error" in record.message
+    ]
+    assert len(hooks) == len(set(hooks))
+    assert "FailingMetrics.on_packet_received" in hooks
+    assert "FailingMetrics.on_publish_completed" in hooks
+
+
+@pytest.mark.parametrize(
+    "hook", ("on_packet_received", "on_message_received", "on_packet_sent")
+)
+async def test_failing_hook_doesnt_close_the_connection(hook):
+    class Broken(MetricsCollector):
+        pass
+
+    def fail(self, *args):
+        raise RuntimeError("broken")
+
+    setattr(Broken, hook, fail)
+    protocol, _, messages = build_protocol(Broken())
+    transport = await connect(protocol)
+
+    transport.feed(pack_publish(1, qos=1))
+    await receive_and_ack(protocol, messages)
+    await expect(transport, PacketType.PUBACK)
+
+    assert protocol.is_connected

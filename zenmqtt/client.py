@@ -8,7 +8,7 @@ from typing import Any, Awaitable, Callable, Final, Optional, Sequence, TypeVar
 
 from zenmqtt.connection import create_connection
 from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
-from zenmqtt.instrumentation.metrics import MetricsCollector
+from zenmqtt.instrumentation.metrics import MetricsCollector, guard_metrics
 from zenmqtt.instrumentation.tracing import Tracing
 from zenmqtt.mqtt.connect import (
     SESSION_PRESENT_FLAG,
@@ -94,7 +94,8 @@ class MQTTClient:
             messages, e.g. zenmqtt.instrumentation.opentelemetry.OpenTelemetryTracing;
             the trace context is sent in user properties
         """
-        self._metrics = metrics or MetricsCollector()
+        # hooks are guarded once here, the protocol keeps the guarded collector
+        self._metrics = guard_metrics(metrics)
         self._tracing = tracing
         self._reconnect_policy = reconnect
 

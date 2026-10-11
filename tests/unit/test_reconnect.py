@@ -7,6 +7,7 @@ import pytest_asyncio
 
 from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
+    FailingMetrics,
     FakeTransport,
     RecordingMetrics,
     expect,
@@ -215,6 +216,23 @@ async def test_reconnects_after_connection_lost(broker):
     assert len(connected) == 2
     assert len(disconnected) == 1
     assert isinstance(disconnected[0], ConnectionLostError)
+
+
+async def test_failing_metrics_dont_stop_reconnect(broker):
+    client = build_client(metrics=FailingMetrics())
+    transport, _ = await connect(client, broker)
+
+    broker.refuse = 1
+    transport.drop()
+
+    # on_reconnect_attempt, on_connect, ... raise, the client reconnects anyway
+    transport, _ = await broker.accept()
+    await asyncio.wait_for(client.wait_connected(), TIMEOUT)
+
+    task = asyncio.create_task(client.publish("a/b", b"payload", qos=1))
+    publish = await expect_publish(transport)
+    transport.feed(pack_puback_packet(publish.packet_identifier, 0, {}))
+    assert (await asyncio.wait_for(task, TIMEOUT)).reason_code == 0
 
 
 async def test_retries_while_the_broker_is_down(broker):

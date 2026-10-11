@@ -5,7 +5,7 @@ from typing import Awaitable, Callable, Optional, Sequence
 
 from zenmqtt.connection import MQTTConnection
 from zenmqtt.exceptions import ConnectionLostError, MalformedPacketError, ProtocolError
-from zenmqtt.instrumentation.metrics import MetricsCollector
+from zenmqtt.instrumentation.metrics import MetricsCollector, guard_metrics
 from zenmqtt.mqtt.connect import (
     SESSION_PRESENT_FLAG,
     ConnectionResult,
@@ -65,7 +65,7 @@ class MQTTProtocol:
         when nothing will connect anymore.
         """
         self._session = session
-        self._context = ProtocolContext(metrics or MetricsCollector())
+        self._context = ProtocolContext(guard_metrics(metrics))
 
         self._incoming = IncomingFlow(self._context, session)
         self._outgoing = OutgoingFlow(self._context, session)
