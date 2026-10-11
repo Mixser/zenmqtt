@@ -56,3 +56,28 @@ jobs:
           poetry install
       - name: Testing
         run: make test
+
+  integration:
+    # the client against a real broker, through the public API
+    needs: [ linting ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install poetry
+        run: pipx install poetry
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: "poetry"
+      - name: Install dependencies
+        run: poetry install
+      - name: Start Mosquitto
+        run: |
+          docker run -d --name mosquitto -p 1883:1883 eclipse-mosquitto:2 \
+            mosquitto -c /mosquitto-no-auth.conf
+          timeout 30 sh -c 'until nc -z localhost 1883; do sleep 0.5; done'
+      - name: Integration tests
+        env:
+          MQTT_INTEGRATION_URL: tcp://localhost:1883
+        run: make test/integration
