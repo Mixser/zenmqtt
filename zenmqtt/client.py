@@ -340,10 +340,13 @@ class MQTTClient:
         client.messages must be acknowledged.
 
         Acks are sent in the order the messages were received (MQTT 5, 4.6),
-        so an ack waits for acks of earlier messages. Not acknowledged messages
-        count to "Receive Maximum": when it's reached, the server stops sending
-        QoS 1/2 messages. If the connection is lost before the ack, the ack is
-        ignored and the server sends the message again after reconnect.
+        so an ack waits for acks of earlier messages: one message which isn't
+        acknowledged holds back the acks of all later ones. Not acknowledged
+        messages count to "Receive Maximum": when it's reached, the server
+        stops sending QoS 1/2 messages. A warning is logged when a message
+        holds back later acks for 30 seconds. If the connection is lost before
+        the ack, the ack is ignored and the server sends the message again
+        after reconnect.
 
         :param reason_code: 0, or >= 0x80 to reject the message, e.g. 0x80
             (Unspecified error) or 0x99 (Payload format invalid); the server

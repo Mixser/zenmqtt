@@ -60,23 +60,31 @@ async def test_connect_with_will():
     await asyncio.wait_for(task, TIMEOUT)
 
 
-async def test_auth_packet_is_skipped():
+# AUTH with reason code 0x18 (Continue authentication) and authentication
+# method "SC"
+AUTH_PACKET = bytes([PacketType.AUTH << 4, 7]) + b"\x18\x05\x15\x00\x02SC"
+
+
+async def test_auth_without_authentication_method_closes_the_connection():
     protocol, _, _ = build_protocol()
     transport = await connect(protocol)
 
-    # AUTH with reason code 0x18 (Continue authentication) and
-    # authentication method property, then PINGRESP right after it
-    auth_body = b"\x18\x07\x15\x00\x04SCRA"
-    transport.feed(bytes([PacketType.AUTH << 4, len(auth_body)]) + auth_body)
+    transport.feed(AUTH_PACKET)
 
-    task = asyncio.create_task(protocol.ping())
-    await expect(transport, PacketType.PINGREQ)
+    # Protocol Error: the server must not send AUTH (MQTT 5, 4.12)
+    await expect_disconnect(transport, 0x82)
+    await wait_for_connection_lost(protocol)
 
-    transport.feed(b"\xd0\x00")
 
-    # PINGRESP is parsed correctly only if the AUTH body was skipped
-    await asyncio.wait_for(task, TIMEOUT)
-    assert protocol.is_connected
+async def test_auth_with_authentication_method_closes_the_connection():
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol, {"authentication_method": "SC"})
+
+    transport.feed(AUTH_PACKET)
+
+    # enhanced authentication isn't supported: Implementation specific error
+    await expect_disconnect(transport, 0x83)
+    await wait_for_connection_lost(protocol)
 
 
 async def test_incoming_publish_with_qos_3_closes_connection():

@@ -82,6 +82,9 @@ class MQTTProtocol:
         # DISCONNECT of the server for the current/last connection
         self.server_disconnect: Optional[DisconnectResult] = None
 
+        # "Authentication Method" of the last CONNECT
+        self._authentication_method: Optional[str] = None
+
         self._handlers: dict[PacketType, PacketHandler] = {
             PacketType.CONNACK: self._handle_connack,
             PacketType.PUBLISH: self._incoming.handle_publish,
@@ -93,7 +96,7 @@ class MQTTProtocol:
             PacketType.UNSUBACK: self._commands.handle_unsuback,
             PacketType.PINGRESP: self._keep_alive.handle_pingresp,
             PacketType.DISCONNECT: self._handle_disconnect,
-            PacketType.AUTH: self._handle_unsupported,
+            PacketType.AUTH: self._handle_auth,
         }
 
     @property
@@ -133,6 +136,7 @@ class MQTTProtocol:
 
         properties = properties or {}
 
+        self._authentication_method = properties.get("authentication_method")
         self._incoming.on_new_connection(properties)
 
         if self._packet_reader:
@@ -298,13 +302,16 @@ class MQTTProtocol:
         # pending futures are failed by the read loop once the stream ends
         await connection.disconnect()
 
-    async def _handle_unsupported(
+    async def _handle_auth(
         self, fixed_header: FixedHeader, reader: BytesReader
     ) -> None:
-        logger.warning(
-            "mqtt_protocol.handle_unsupported_packet type:%s",
-            PacketType(fixed_header.packet_type).name,
-        )
+        # the server sends AUTH only if CONNECT had an "Authentication Method"
+        # (MQTT 5, 4.12)
+        if self._authentication_method is None:
+            raise ProtocolError("AUTH without authentication method in CONNECT")
+
+        # closes the connection with "Implementation specific error"
+        raise NotImplementedError("Enhanced authentication isn't supported")
 
     async def _read_loop(
         self, connection: MQTTConnection, packet_reader: PacketReader
