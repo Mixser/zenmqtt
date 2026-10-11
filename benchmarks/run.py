@@ -88,10 +88,15 @@ async def measure(results: list[Result], run: Callable[[], Awaitable[Result]]):
 def opentelemetry_metrics():
     try:
         from opentelemetry.sdk.metrics import MeterProvider
-
-        from zenmqtt.contrib.opentelemetry import OpenTelemetryMetrics
     except ImportError:
         return None
+
+    try:
+        from zenmqtt.instrumentation.opentelemetry import OpenTelemetryMetrics
+    except ImportError:
+        # older versions, compare.py runs these benchmarks against the base
+        # branch too; can be removed when main has zenmqtt.instrumentation
+        from zenmqtt.contrib.opentelemetry import OpenTelemetryMetrics
 
     return OpenTelemetryMetrics(MeterProvider().get_meter("bench"))
 

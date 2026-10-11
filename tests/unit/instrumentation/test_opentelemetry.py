@@ -7,7 +7,7 @@ pytest.importorskip("opentelemetry.sdk")
 from opentelemetry.sdk.metrics import MeterProvider  # noqa: E402
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader  # noqa: E402
 
-from zenmqtt.contrib.opentelemetry import OpenTelemetryMetrics  # noqa: E402
+from zenmqtt.instrumentation.opentelemetry import OpenTelemetryMetrics  # noqa: E402
 
 
 @pytest.fixture

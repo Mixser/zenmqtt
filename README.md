@@ -217,7 +217,7 @@ The OpenTelemetry adapter exports them with any OpenTelemetry exporter (OTLP,
 Prometheus, console):
 
 ```python
-from zenmqtt.contrib.opentelemetry import OpenTelemetryMetrics
+from zenmqtt.instrumentation.opentelemetry import OpenTelemetryMetrics
 
 client = MQTTClient("my-client", metrics=OpenTelemetryMetrics(meter))
 ```

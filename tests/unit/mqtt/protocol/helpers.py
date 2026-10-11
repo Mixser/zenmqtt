@@ -5,7 +5,7 @@ from typing import Optional
 
 from zenmqtt.connection import MQTTConnection, MQTTConnectionTransport
 from zenmqtt.exceptions import ConnectionLostError
-from zenmqtt.metrics import MetricsCollector
+from zenmqtt.instrumentation.metrics import MetricsCollector
 from zenmqtt.mqtt.connect import (
     ConnectProperties,
     DisconnectResult,

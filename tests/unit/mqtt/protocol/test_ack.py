@@ -17,8 +17,8 @@ from tests.unit.mqtt.protocol.helpers import (
     receive,
     wait_for_connection_lost,
 )
+from zenmqtt.instrumentation import monitors
 from zenmqtt.mqtt.packet import PacketType
-from zenmqtt.mqtt.protocol import incoming
 from zenmqtt.mqtt.publish import (
     pack_publish_packet,
     pack_pubrel_packet,
@@ -156,7 +156,7 @@ async def test_qos1_sent_again_after_puback_is_delivered_again():
 
 
 async def test_blocked_ack_is_logged_once(monkeypatch, caplog):
-    monkeypatch.setattr(incoming, "ACK_BLOCKED_WARNING", 0.05)
+    monkeypatch.setattr(monitors, "ACK_BLOCKED_WARNING", 0.05)
     protocol, _, messages = build_protocol()
     transport = await connect(protocol)
 
@@ -165,7 +165,7 @@ async def test_blocked_ack_is_logged_once(monkeypatch, caplog):
 
     first, second, third = [await receive(messages) for _ in range(3)]
 
-    with caplog.at_level(logging.WARNING, logger="zenmqtt.mqtt.protocol"):
+    with caplog.at_level(logging.WARNING, logger="zenmqtt.instrumentation"):
         await protocol.ack(second)
         await protocol.ack(third)
         await asyncio.sleep(0.15)
@@ -188,7 +188,7 @@ async def test_blocked_ack_is_logged_once(monkeypatch, caplog):
 
 
 async def test_ack_in_time_isnt_logged(monkeypatch, caplog):
-    monkeypatch.setattr(incoming, "ACK_BLOCKED_WARNING", 0.05)
+    monkeypatch.setattr(monitors, "ACK_BLOCKED_WARNING", 0.05)
     protocol, _, messages = build_protocol()
     transport = await connect(protocol)
 
@@ -196,7 +196,7 @@ async def test_ack_in_time_isnt_logged(monkeypatch, caplog):
     transport.feed(pack_publish(2, qos=1))
     first, second = await receive(messages), await receive(messages)
 
-    with caplog.at_level(logging.WARNING, logger="zenmqtt.mqtt.protocol"):
+    with caplog.at_level(logging.WARNING, logger="zenmqtt.instrumentation"):
         await protocol.ack(second)
         await protocol.ack(first)
         await asyncio.sleep(0.1)

@@ -58,7 +58,7 @@ async def test_slow_consumer_is_reported(caplog):
     set_buffered_messages_warning(protocol, 2)
     transport = await connect(protocol)
 
-    with caplog.at_level(logging.WARNING, logger="zenmqtt.mqtt.protocol"):
+    with caplog.at_level(logging.WARNING, logger="zenmqtt.instrumentation"):
         await feed(transport, *(pack_publish(0, 0, b"%d" % i) for i in range(6)))
 
     # nothing is dropped; the size is reported when the buffer reaches the

@@ -13,7 +13,7 @@ from typing import Mapping, Optional, Sequence
 from opentelemetry.metrics import Meter, get_meter
 from opentelemetry.util.types import AttributeValue
 
-from zenmqtt.metrics import MetricsCollector
+from zenmqtt.instrumentation.metrics import MetricsCollector
 from zenmqtt.mqtt.packet import PacketType
 from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE
 
