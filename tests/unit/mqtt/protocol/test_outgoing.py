@@ -1,5 +1,6 @@
 """Outgoing PUBLISH: QoS 1/2 flows, session, flow control."""
 import asyncio
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -221,3 +222,58 @@ async def test_pubrec_with_unknown_packet_identifier():
     pubrel = parse_pubrel_packet(*await expect(transport, PacketType.PUBREL))
     assert pubrel.packet_identifier == 42
     assert pubrel.reason_code == 0x92
+
+
+async def test_failed_store_releases_packet_identifier_and_send_quota():
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol, properties=receive_maximum(1))
+
+    store = session.store_outgoing_message
+    session.store_outgoing_message = AsyncMock(side_effect=OSError("disk is full"))
+
+    with pytest.raises(OSError):
+        await protocol.publish("a/b", b"lost", qos=1)
+
+    assert acquired_packet_identifiers(session) == set()
+
+    # the only slot of the send quota is free again
+    session.store_outgoing_message = store
+    task = asyncio.create_task(protocol.publish("a/b", b"sent", qos=1))
+
+    publish = await expect_publish(transport)
+    assert publish.payload == b"sent"
+
+    transport.feed(pack_puback_packet(publish.packet_identifier, 0, {}))
+    await asyncio.wait_for(task, TIMEOUT)
+
+
+async def test_cancelled_store_releases_packet_identifier_and_send_quota():
+    protocol, session, _ = build_protocol()
+    transport = await connect(protocol, properties=receive_maximum(1))
+
+    store = session.store_outgoing_message
+    storing = asyncio.Event()
+
+    async def slow_store(message):
+        storing.set()
+        await asyncio.sleep(TIMEOUT * 10)
+
+    session.store_outgoing_message = slow_store
+
+    task = asyncio.create_task(protocol.publish("a/b", b"lost", qos=1))
+    await asyncio.wait_for(storing.wait(), TIMEOUT)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert acquired_packet_identifiers(session) == set()
+
+    session.store_outgoing_message = store
+    task = asyncio.create_task(protocol.publish("a/b", b"sent", qos=1))
+
+    publish = await expect_publish(transport)
+    assert publish.payload == b"sent"
+
+    transport.feed(pack_puback_packet(publish.packet_identifier, 0, {}))
+    await asyncio.wait_for(task, TIMEOUT)
