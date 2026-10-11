@@ -126,6 +126,12 @@ class OutgoingFlow:
         self._pending: dict[PacketIdentifier, _PendingPublish] = {}
         self._send_quota: Optional[_SendQuota] = None
 
+        # QoS 1/2 publish calls which haven't returned yet
+        self._publishing = 0
+        # set when a message completes or a publish call returns, wakes up
+        # wait_completed()
+        self._progress = asyncio.Event()
+
     async def publish(
         self,
         topic: str,
@@ -157,6 +163,32 @@ class OutgoingFlow:
             )
             return None
 
+        self._publishing += 1
+
+        try:
+            return await self._publish_stored(topic, payload, qos, retain, properties)
+        finally:
+            self._publishing -= 1
+            self._progress.set()
+
+    async def wait_completed(self) -> None:
+        """
+        Waits until no QoS 1/2 message is in flight: every publish call
+        returned, and every message re-sent from the session is completed or
+        failed.
+        """
+        while self._pending or self._publishing:
+            self._progress.clear()
+            await self._progress.wait()
+
+    async def _publish_stored(
+        self,
+        topic: str,
+        payload: bytes,
+        qos: int,
+        retain: bool,
+        properties: PublishProperties,
+    ) -> PublishAcknowledgement:
         packet_identifier = await self._session.acquire_packet_identifier()
 
         try:
@@ -354,6 +386,7 @@ class OutgoingFlow:
 
                     if discarded := self._pending.pop(packet_identifier, None):
                         self._fail(discarded, exc)
+                        self._progress.set()
 
                     continue
 
@@ -381,6 +414,7 @@ class OutgoingFlow:
         await self._session.complete_outgoing_message(packet_identifier)
 
         pending = self._pending.pop(packet_identifier, None)
+        self._progress.set()
 
         if pending and pending.sent_at is not None:
             self._context.metrics.on_publish_completed(
@@ -403,6 +437,7 @@ class OutgoingFlow:
 
     def _fail_all(self, exc: Exception) -> None:
         pending, self._pending = self._pending, {}
+        self._progress.set()
 
         for publish in pending.values():
             self._fail(publish, exc)

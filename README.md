@@ -199,6 +199,27 @@ await client.disconnect(reason=0x04)
 If the broker closes the connection with DISCONNECT, its reason code is
 available as `client.server_disconnect` and in `ConnectionLostError`.
 
+### Graceful shutdown
+
+`disconnect()` sends DISCONNECT at once: outgoing QoS 1/2 messages which the
+broker didn't acknowledge yet stay in the session, and with the default
+in-memory session they are lost when the process exits. On shutdown (e.g.
+SIGTERM during a deploy) give them time:
+
+```python
+# 1. stop reading client.messages, finish processing and ack what was read
+# 2. wait up to 10 s for acknowledgements of messages in flight
+left = await client.disconnect(timeout=10)
+
+if left:
+    logger.warning("%s messages weren't acknowledged by the broker", left)
+```
+
+While the client waits, new `publish()`, `subscribe()` and `unsubscribe()`
+calls fail with `NotConnectedError`. With automatic reconnect a lost
+connection doesn't end the wait: the client reconnects and the messages are
+re-sent. QoS 0 messages aren't waited for.
+
 ### Errors
 
 | Exception | When |
