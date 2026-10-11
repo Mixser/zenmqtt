@@ -294,8 +294,9 @@ metrics.
 
 [benchmarks/](https://github.com/Mixser/zenmqtt/blob/main/benchmarks/README.md) measures the receive path in memory,
 publish and end-to-end delivery through a broker, compared with aiomqtt, and
-packing and parsing of packets with pytest-benchmark. Every pull request gets a performance report against `main`, and the
-history of `main` is at https://mixser.github.io/zenmqtt/perf/.
+packing and parsing of packets with pytest-benchmark. CI of a pull request has a
+manual step which compares its performance with `main`, and the history of
+`main` is at https://mixser.github.io/zenmqtt/perf/.
 
 ## Development
 
