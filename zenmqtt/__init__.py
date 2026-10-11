@@ -26,7 +26,8 @@ from zenmqtt.exceptions import (
 )
 from zenmqtt.instrumentation.metrics import MetricsCollector
 from zenmqtt.mqtt.connect import ConnectionResult, DisconnectResult, WillMessage
-from zenmqtt.mqtt.publish import PublishResult
+from zenmqtt.mqtt.publish import PublishResult, QoS
+from zenmqtt.mqtt.reason_codes import ReasonCode
 from zenmqtt.mqtt.subscribe import Subscription
 from zenmqtt.reconnect import ReconnectPolicy
 from zenmqtt.session import (
@@ -64,7 +65,9 @@ __all__ = [
     "PacketTooLargeError",
     "ProtocolError",
     "PublishResult",
+    "QoS",
     "QoSNotSupportedError",
+    "ReasonCode",
     "ReceiveMaximumExceededError",
     "ReconnectPolicy",
     "ServerLimitError",

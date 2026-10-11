@@ -54,6 +54,7 @@ zenmqtt/
   exceptions.py         all public exceptions
   connection/           transports: registry of URL schemes, TCP and TLS
   mqtt/                 packets: CONNECT, PUBLISH, SUBSCRIBE, properties, limits
+  mqtt/reason_codes.py  ReasonCode; QoS is in mqtt/publish.py (both public)
   mqtt/protocol/        the protocol: core and its parts
   instrumentation/      MetricsCollector, Tracing, monitors, OpenTelemetry adapters
 ```
@@ -486,6 +487,10 @@ with its reason code.
 
 ## Design decisions
 
+- **Reason codes and QoS are `IntEnum`s.** They are ints, so plain numbers
+  still work. Parsers turn the byte into the enum with a dict lookup (about
+  35 ns), and a value which isn't in the specification becomes a member like
+  `UNKNOWN_0x42`, so a broker which breaks the spec can't make parsing fail.
 - **The read loop never waits for the application.** Otherwise one slow
   message handler would stop PINGRESP and PUBACK handling, and the server
   would close the connection.

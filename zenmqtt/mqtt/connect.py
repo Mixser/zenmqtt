@@ -4,6 +4,7 @@ from typing import Final, Optional, Sequence, Tuple, TypedDict, cast
 
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader, PacketType
 from zenmqtt.mqtt.properties import Properties, pack_properties, parse_properties
+from zenmqtt.mqtt.reason_codes import ReasonCode, to_reason_code
 from zenmqtt.mqtt.utils import pack_binary, pack_fixed_header, pack_str16
 
 
@@ -35,7 +36,7 @@ SESSION_PRESENT_FLAG: Final[int] = 0x01
 class ConnectionResult:
     __slots__ = ("flags", "reason_code", "properties")
     flags: int
-    reason_code: int
+    reason_code: ReasonCode
     properties: ConnackProperties
 
     @property
@@ -48,7 +49,7 @@ def parse_connack_packet(
     fixed_header: FixedHeader, reader: BytesReader
 ) -> ConnectionResult:
     flags = reader.read_byte()
-    reason_code = reader.read_byte()
+    reason_code = to_reason_code(reader.read_byte())
     properties = parse_properties(reader)
 
     reader.ensure_end()
@@ -190,7 +191,7 @@ def pack_disconnect_packet(reason_code: int, properties: DisconnectProperties) -
 class DisconnectResult:
     __slots__ = ("reason_code", "properties")
 
-    reason_code: int
+    reason_code: ReasonCode
     properties: DisconnectProperties
 
 
@@ -198,7 +199,7 @@ def parse_disconnect_packet(
     fixed_header: FixedHeader, reader: BytesReader
 ) -> DisconnectResult:
     # both the reason code and properties may be omitted
-    reason_code = reader.read_byte() if reader.remaining() else 0x0
+    reason_code = to_reason_code(reader.read_byte() if reader.remaining() else 0x0)
     properties = parse_properties(reader) if reader.remaining() else {}
 
     reader.ensure_end()
