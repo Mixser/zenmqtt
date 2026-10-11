@@ -236,6 +236,12 @@ subclass `zenmqtt.BaseSession` and implement its storage methods.
 [examples/sqlite_session.py](https://github.com/Mixser/zenmqtt/blob/main/examples/sqlite_session.py) stores the session in
 SQLite.
 
+## Architecture
+
+[docs/architecture.md](https://github.com/Mixser/zenmqtt/blob/main/docs/architecture.md)
+describes the layers of the client, the flows of messages in both directions,
+reconnect, the session and the design decisions.
+
 ## Examples
 
 [examples/](https://github.com/Mixser/zenmqtt/blob/main/examples/README.md): publish and subscribe, persistent session with
