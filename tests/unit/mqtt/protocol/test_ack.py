@@ -1,5 +1,6 @@
 """Acknowledgement of incoming messages by ack()."""
 import asyncio
+import logging
 
 import pytest
 
@@ -17,6 +18,7 @@ from tests.unit.mqtt.protocol.helpers import (
     wait_for_connection_lost,
 )
 from zenmqtt.mqtt.packet import PacketType
+from zenmqtt.mqtt.protocol import incoming
 from zenmqtt.mqtt.publish import (
     pack_publish_packet,
     pack_pubrel_packet,
@@ -106,6 +108,102 @@ async def test_duplicate_qos2_is_acknowledged_without_delivery():
 
     assert (await expect_pubrec(transport)).packet_identifier == 1
     assert messages.empty()
+
+
+@pytest.mark.parametrize("qos", (1, 2))
+async def test_duplicate_before_ack_isnt_delivered_again(qos):
+    protocol, _, messages = build_protocol()
+    transport = await connect(protocol)
+
+    transport.feed(pack_publish(1, qos=qos))
+    first = await receive(messages)
+
+    # the server sends the message again before the ack
+    transport.feed(pack_publish(1, qos=qos, dup=True))
+    await expect_nothing_sent(transport)
+    assert messages.empty()
+
+    # the ack of the first copy answers both
+    await protocol.ack(first)
+
+    if qos == 1:
+        assert (await expect_puback(transport)).packet_identifier == 1
+    else:
+        assert (await expect_pubrec(transport)).packet_identifier == 1
+
+        transport.feed(pack_pubrel_packet(1, 0, {}))
+        await expect(transport, PacketType.PUBCOMP)
+
+    await expect_nothing_sent(transport)
+    assert incoming_inflight(protocol) == set()
+
+
+async def test_qos1_sent_again_after_puback_is_delivered_again():
+    protocol, _, messages = build_protocol()
+    transport = await connect(protocol)
+
+    transport.feed(pack_publish(1, qos=1))
+    await protocol.ack(await receive(messages))
+    await expect_puback(transport)
+
+    # QoS 1 is "at least once": the server may send the message again
+    transport.feed(pack_publish(1, qos=1, dup=True))
+    again = await receive(messages)
+    assert again.dup
+
+    await protocol.ack(again)
+    assert (await expect_puback(transport)).packet_identifier == 1
+
+
+async def test_blocked_ack_is_logged_once(monkeypatch, caplog):
+    monkeypatch.setattr(incoming, "ACK_BLOCKED_WARNING", 0.05)
+    protocol, _, messages = build_protocol()
+    transport = await connect(protocol)
+
+    for packet_identifier in (1, 2, 3):
+        transport.feed(pack_publish(packet_identifier, qos=1))
+
+    first, second, third = [await receive(messages) for _ in range(3)]
+
+    with caplog.at_level(logging.WARNING, logger="zenmqtt.mqtt.protocol"):
+        await protocol.ack(second)
+        await protocol.ack(third)
+        await asyncio.sleep(0.15)
+
+    warnings = [
+        record.getMessage()
+        for record in caplog.records
+        if "ack_blocked" in record.getMessage()
+    ]
+    assert len(warnings) == 1
+    assert "pid:1 topic:a/b" in warnings[0]
+    assert "so 2 later messages wait for it" in warnings[0]
+
+    # nothing is sent until the first message is acknowledged
+    await expect_nothing_sent(transport)
+    await protocol.ack(first)
+
+    for packet_identifier in (1, 2, 3):
+        assert (await expect_puback(transport)).packet_identifier == packet_identifier
+
+
+async def test_ack_in_time_isnt_logged(monkeypatch, caplog):
+    monkeypatch.setattr(incoming, "ACK_BLOCKED_WARNING", 0.05)
+    protocol, _, messages = build_protocol()
+    transport = await connect(protocol)
+
+    transport.feed(pack_publish(1, qos=1))
+    transport.feed(pack_publish(2, qos=1))
+    first, second = await receive(messages), await receive(messages)
+
+    with caplog.at_level(logging.WARNING, logger="zenmqtt.mqtt.protocol"):
+        await protocol.ack(second)
+        await protocol.ack(first)
+        await asyncio.sleep(0.1)
+
+    assert "ack_blocked" not in caplog.text
+    assert (await expect_puback(transport)).packet_identifier == 1
+    assert (await expect_puback(transport)).packet_identifier == 2
 
 
 @pytest.mark.parametrize("qos", (1, 2))

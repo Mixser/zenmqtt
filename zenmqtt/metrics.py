@@ -39,7 +39,8 @@ class MetricsCollector:
     def on_message_received(self, qos: int, duplicate: bool) -> None:
         """
         An incoming PUBLISH is handled; duplicate is True for a QoS 2 message
-        which was already delivered, it isn't delivered again
+        which was already delivered, and for a QoS 1/2 message which the
+        server sent again before the ack; duplicates aren't delivered again
         """
 
     def on_messages_buffered(self, count: int) -> None:
