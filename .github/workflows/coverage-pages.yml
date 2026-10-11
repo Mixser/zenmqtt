@@ -1,0 +1,62 @@
+# Publishes the coverage report and the badge of main to GitHub Pages:
+# https://mixser.github.io/zenmqtt/coverage/
+#
+# It's a separate workflow, so zenmqtt.yml needs only read access: the publish
+# workflow calls zenmqtt.yml, and a called workflow can't get more
+# permissions than its caller.
+name: coverage-pages
+
+on:
+  workflow_run:
+    workflows: [ "zenmqtt" ]
+    types: [ completed ]
+    branches: [ "main" ]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: coverage-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # only CI of pushes to main, not of pull requests
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-html
+          path: htmlcov
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish to gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          git clone -q --depth 1 --branch gh-pages \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" pages
+          rm -rf pages/coverage
+          cp -r htmlcov pages/coverage
+          # coverage writes a .gitignore which ignores the whole report
+          rm -f pages/coverage/.gitignore
+
+          cd pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A coverage
+          git diff --cached --quiet && exit 0
+          git commit -q -m "Coverage of ${HEAD_SHA}"
+
+          # the benchmark history is pushed to gh-pages too: retry after it
+          for attempt in 1 2 3 4 5; do
+            git push -q origin gh-pages && exit 0
+            sleep $((attempt * 2))
+            git pull -q --rebase origin gh-pages
+          done
+          exit 1
