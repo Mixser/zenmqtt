@@ -410,6 +410,11 @@ flowchart LR
 - `MetricsCollector` has one method per event: connect, packets sent and
   received, publish completed, message received, ping, reconnect attempts,
   buffered messages and more. All methods do nothing by default.
+- **Instrumentation never changes the data path.** The client wraps the
+  collector once: an exception in a hook is caught and logged (the first one
+  with the traceback, then at most once a minute with the number of errors),
+  so a broken metrics adapter can't close the connection or stop reconnect.
+  Hooks which the collector doesn't override aren't wrapped and cost nothing.
 - The protocol only calls these hooks where the event happens. The timestamps
   for durations are part of the flow state; for example, the latency of a
   re-sent message isn't counted from its first send.

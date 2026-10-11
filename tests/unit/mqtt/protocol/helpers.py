@@ -226,6 +226,19 @@ class RecordingMetrics(MetricsCollector):
         return [args for event, args, _ in self.events if event == name]
 
 
+class FailingMetrics(MetricsCollector):
+    """Every hook raises, like a broken metrics adapter."""
+
+
+def _fail(self, *args, **kwargs):
+    raise RuntimeError("broken metrics")
+
+
+for _name in vars(MetricsCollector):
+    if _name.startswith("on_"):
+        setattr(FailingMetrics, _name, _fail)
+
+
 _protocols: list[MQTTProtocol] = []
 _watchers: list[asyncio.Task[None]] = []
 
