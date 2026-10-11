@@ -337,7 +337,7 @@ class OpenTelemetryTracing(Tracing):
     - "publish" (PRODUCER) for every publish call: until the packet is written
       for QoS 0, until the final acknowledgement for QoS 1/2. Its context is
       injected into the user properties of PUBLISH.
-    - "process" (CONSUMER) for MQTTClient.processing(): the context from the
+    - "process" (CONSUMER) for MQTTClient.trace(): the context from the
       user properties of the message is its parent, so the processing
       continues the trace of the producer.
     """
@@ -406,7 +406,7 @@ class OpenTelemetryTracing(Tracing):
         return _PublishSpan(properties, span)
 
     @contextmanager
-    def processing(self, client_id: str, message: PublishResult) -> Iterator[None]:
+    def trace(self, client_id: str, message: PublishResult) -> Iterator[None]:
         # without a context in the message, the current span is the parent
         parent = self._get_propagator().extract(
             message.properties.get("user_property", ()),

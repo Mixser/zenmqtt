@@ -149,7 +149,7 @@ async def test_processing_continues_the_trace_of_the_publisher(tracing, exporter
     )
     message = await asyncio.wait_for(anext(consumer.messages), TIMEOUT)
 
-    with consumer.processing(message):
+    with consumer.trace(message):
         current = trace.get_current_span()
 
     publish_span, process_span = exporter.get_finished_spans()
@@ -174,7 +174,7 @@ async def test_processing_error_is_recorded(tracing, exporter):
     message = await asyncio.wait_for(anext(client.messages), TIMEOUT)
 
     with pytest.raises(RuntimeError):
-        with client.processing(message):
+        with client.trace(message):
             raise RuntimeError("failed")
 
     [span] = exporter.get_finished_spans()
@@ -192,7 +192,7 @@ async def test_message_without_context_is_processed_in_the_current_trace(
     message = await asyncio.wait_for(anext(client.messages), TIMEOUT)
 
     with provider.get_tracer("app").start_as_current_span("loop"):
-        with client.processing(message):
+        with client.trace(message):
             pass
 
     process_span, loop_span = exporter.get_finished_spans()
@@ -213,7 +213,7 @@ async def test_without_tracing_nothing_changes():
     transport.feed(pack_publish_packet(0, "a/b", b"payload", 0, False, False, {}))
     message = await asyncio.wait_for(anext(client.messages), TIMEOUT)
 
-    with client.processing(message):
+    with client.trace(message):
         pass
 
     await client.disconnect()

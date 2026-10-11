@@ -42,7 +42,7 @@ async def main():
 
         async for message in client.messages:
             # a child of "publish", in the same trace as "request"
-            with client.processing(message):
+            with client.trace(message):
                 with tracer.start_as_current_span("handle"):
                     print("received:", message.payload)
 

@@ -66,11 +66,11 @@ class FailingTracing(Tracing):
 
         return FailingTrace(properties)
 
-    def processing(
+    def trace(
         self, client_id: str, message: PublishResult
     ) -> AbstractContextManager[None]:
-        if self.fail_on == "processing":
-            raise RuntimeError("processing failed")
+        if self.fail_on == "trace":
+            raise RuntimeError("trace failed")
 
         return FailingContext(self.fail_on)
 
@@ -115,14 +115,14 @@ async def test_error_of_publish_isnt_hidden_by_tracing():
     await client.disconnect()
 
 
-@pytest.mark.parametrize("fail_on", ("processing", "enter", "exit"))
+@pytest.mark.parametrize("fail_on", ("trace", "enter", "exit"))
 async def test_processing_isnt_affected_by_tracing(fail_on, caplog):
     client, transport = await connected_client(FailingTracing(fail_on))
     transport.feed(pack_publish(1, qos=1))
     message = await asyncio.wait_for(anext(client.messages), TIMEOUT)
 
     with caplog.at_level(logging.ERROR, logger="zenmqtt.instrumentation"):
-        with client.processing(message):
+        with client.trace(message):
             processed = True
 
     assert processed
@@ -130,7 +130,7 @@ async def test_processing_isnt_affected_by_tracing(fail_on, caplog):
 
     # an error of the processing is never swallowed by the tracing context
     with pytest.raises(KeyError):
-        with client.processing(message):
+        with client.trace(message):
             raise KeyError("processing failed")
 
     await client.ack(message)

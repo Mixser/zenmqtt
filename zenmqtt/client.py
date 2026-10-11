@@ -473,21 +473,21 @@ class MQTTClient:
         """
         await self._protocol.ack(message, reason_code)
 
-    def processing(self, message: PublishResult) -> AbstractContextManager[None]:
+    def trace(self, message: PublishResult) -> AbstractContextManager[None]:
         """
         Wraps the processing of a received message for tracing: with tracing,
         the block runs in a span which continues the trace of the publisher;
         without tracing it does nothing.
 
             async for message in client.messages:
-                with client.processing(message):
+                with client.trace(message):
                     await handle(message)
                     await client.ack(message)
         """
         if self._tracing is None:
             return nullcontext()
 
-        return self._tracing.processing(self.client_id, message)
+        return self._tracing.trace(self.client_id, message)
 
     @property
     def messages(self) -> AsyncMessageIterator:
