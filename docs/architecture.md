@@ -82,6 +82,12 @@ service needs:
 - **Graceful shutdown.** `disconnect(timeout=...)` rejects new operations and
   waits until the server acknowledged the outgoing QoS 1/2 messages in flight,
   then sends DISCONNECT. See [Graceful shutdown](#graceful-shutdown).
+- **Lifecycle.** `async with MQTTClient(...) as client:` disconnects the client
+  when the block ends, so no reconnect task is left running: gracefully on a
+  normal exit (up to 10 s for messages in flight), at once after an exception
+  or cancellation. All connect options, also the credentials, are arguments of
+  `connect()` and are reused by reconnects; `client_id` is read-only and
+  becomes the identifier assigned by the server, if it assigned one.
 
 ```mermaid
 stateDiagram-v2

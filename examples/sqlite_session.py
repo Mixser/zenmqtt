@@ -163,22 +163,21 @@ async def main():
     pending = await session.get_pending_outgoing_messages()
     print("restored pending messages:", len(pending))
 
-    client = MQTTClient("zenmqtt-example-sqlite-session", session=session)
+    async with MQTTClient("zenmqtt-example-sqlite-session", session=session) as client:
+        # pending messages are re-sent here, if the server still has the session
+        await client.connect(
+            MQTT_URL,
+            username=MQTT_USERNAME,
+            password=MQTT_PASSWORD,
+            clean_session=False,
+            properties={"session_expiry_interval": 3600},
+        )
 
-    if MQTT_USERNAME:
-        client.authorize(MQTT_USERNAME, MQTT_PASSWORD)
+        result = await client.publish(
+            TOPIC, b"stored in sqlite until acknowledged", qos=2
+        )
+        print("published:", result)
 
-    # pending messages are re-sent here, if the server still has the session
-    await client.connect(
-        MQTT_URL,
-        clean_session=False,
-        properties={"session_expiry_interval": 3600},
-    )
-
-    result = await client.publish(TOPIC, b"stored in sqlite until acknowledged", qos=2)
-    print("published:", result)
-
-    await client.disconnect()
     session.close()
 
 

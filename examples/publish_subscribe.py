@@ -17,40 +17,37 @@ logging.basicConfig(level=logging.INFO)
 
 
 async def main():
-    client = MQTTClient("zenmqtt-example-publish-subscribe")
-
-    if MQTT_USERNAME:
-        client.authorize(MQTT_USERNAME, MQTT_PASSWORD)
-
-    connection_result = await client.connect(MQTT_URL, clean_session=True)
-    print("connected:", connection_result)
-
-    subscribe_result = await client.subscribe([(TOPIC, 2)])
-    print("subscribed:", subscribe_result)
-
-    # QoS 0 returns None, QoS 1 returns PUBACK, QoS 2 returns PUBCOMP
-    for qos in (0, 1, 2):
-        result = await client.publish(
-            TOPIC,
-            f"hello with qos {qos}".encode(),
-            qos=qos,
-            properties={"user_property": [("example", "publish-subscribe")]},
+    async with MQTTClient("zenmqtt-example-publish-subscribe") as client:
+        connection_result = await client.connect(
+            MQTT_URL, username=MQTT_USERNAME, password=MQTT_PASSWORD, clean_session=True
         )
-        print(f"published qos {qos}:", result)
+        print("connected:", connection_result)
 
-    received = 0
+        subscribe_result = await client.subscribe([(TOPIC, 2)])
+        print("subscribed:", subscribe_result)
 
-    async for message in client.messages:
-        print("received:", message.topic, message.qos, message.payload)
-        # QoS 1/2 messages must be acknowledged after they are processed
-        await client.ack(message)
-        received += 1
+        # QoS 0 returns None, QoS 1 returns PUBACK, QoS 2 returns PUBCOMP
+        for qos in (0, 1, 2):
+            result = await client.publish(
+                TOPIC,
+                f"hello with qos {qos}".encode(),
+                qos=qos,
+                properties={"user_property": [("example", "publish-subscribe")]},
+            )
+            print(f"published qos {qos}:", result)
 
-        if received == 3:
-            break
+        received = 0
 
-    await client.unsubscribe([TOPIC])
-    await client.disconnect()
+        async for message in client.messages:
+            print("received:", message.topic, message.qos, message.payload)
+            # QoS 1/2 messages must be acknowledged after they are processed
+            await client.ack(message)
+            received += 1
+
+            if received == 3:
+                break
+
+        await client.unsubscribe([TOPIC])
 
 
 if __name__ == "__main__":
