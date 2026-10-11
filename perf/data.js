@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791748681832,
+  "lastUpdate": 1791748741545,
   "repoUrl": "https://github.com/Mixser/zenmqtt",
   "entries": {
     "zenmqtt (Python 3.12)": [
@@ -9423,6 +9423,90 @@ window.BENCHMARK_DATA = {
           {
             "name": "end-to-end, zenmqtt, QoS 2, 64 B, 100 in flight",
             "value": 9577.7,
+            "unit": "msg/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "Mixser.by@gmail.com",
+            "name": "Mike Turchunovich",
+            "username": "Mixser"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "aa7686c9c15577b5967019791e855fb209b6e4a1",
+          "message": "Merge pull request #60 from Mixser/MGG-XXX-qos-reason-code-enums\n\nMGG-XXX Add QoS and ReasonCode enums",
+          "timestamp": "2026-10-11T22:56:10+03:00",
+          "tree_id": "c859e5fcc9faee5e7a20cb438ed310ad24e21315",
+          "url": "https://github.com/Mixser/zenmqtt/commit/aa7686c9c15577b5967019791e855fb209b6e4a1"
+        },
+        "date": 1791748740286,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "in-memory receive, zenmqtt, QoS 0, 64 B, no metrics",
+            "value": 104458.1,
+            "unit": "msg/s"
+          },
+          {
+            "name": "in-memory receive, zenmqtt, QoS 0, 64 B, opentelemetry",
+            "value": 42871.3,
+            "unit": "msg/s"
+          },
+          {
+            "name": "in-memory receive, zenmqtt, QoS 1, 64 B, no metrics",
+            "value": 55366.9,
+            "unit": "msg/s"
+          },
+          {
+            "name": "in-memory receive, zenmqtt, QoS 1, 64 B, opentelemetry",
+            "value": 26348.6,
+            "unit": "msg/s"
+          },
+          {
+            "name": "in-memory receive, zenmqtt, QoS 2, 64 B, no metrics",
+            "value": 54160.9,
+            "unit": "msg/s"
+          },
+          {
+            "name": "in-memory receive, zenmqtt, QoS 2, 64 B, opentelemetry",
+            "value": 28112.3,
+            "unit": "msg/s"
+          },
+          {
+            "name": "publish, zenmqtt, QoS 0, 64 B, 100 in flight",
+            "value": 20789.9,
+            "unit": "msg/s"
+          },
+          {
+            "name": "publish, zenmqtt, QoS 1, 64 B, 100 in flight",
+            "value": 11714.2,
+            "unit": "msg/s"
+          },
+          {
+            "name": "publish, zenmqtt, QoS 2, 64 B, 100 in flight",
+            "value": 6703.8,
+            "unit": "msg/s"
+          },
+          {
+            "name": "end-to-end, zenmqtt, QoS 0, 64 B, 100 in flight",
+            "value": 17560.4,
+            "unit": "msg/s"
+          },
+          {
+            "name": "end-to-end, zenmqtt, QoS 1, 64 B, 100 in flight",
+            "value": 6648,
+            "unit": "msg/s"
+          },
+          {
+            "name": "end-to-end, zenmqtt, QoS 2, 64 B, 100 in flight",
+            "value": 3846.5,
             "unit": "msg/s"
           }
         ]
