@@ -36,41 +36,37 @@ async def process(message: PublishResult) -> None:
 
 
 async def main():
-    client = MQTTClient("zenmqtt-example-ack")
+    async with MQTTClient("zenmqtt-example-ack") as client:
+        await client.connect(
+            MQTT_URL,
+            username=MQTT_USERNAME,
+            password=MQTT_PASSWORD,
+            properties={
+                "session_expiry_interval": 3600,
+                # at most 5 messages are delivered and not acknowledged at once
+                "receive_maximum": 5,
+            },
+        )
+        await client.subscribe([(TOPIC, 1)])
 
-    if MQTT_USERNAME:
-        client.authorize(MQTT_USERNAME, MQTT_PASSWORD)
+        for payload in (b"1", b"2", b"oops", b"3"):
+            await client.publish(TOPIC, payload, qos=1)
 
-    await client.connect(
-        MQTT_URL,
-        properties={
-            "session_expiry_interval": 3600,
-            # at most 5 messages are delivered and not acknowledged at once
-            "receive_maximum": 5,
-        },
-    )
-    await client.subscribe([(TOPIC, 1)])
+        received = 0
 
-    for payload in (b"1", b"2", b"oops", b"3"):
-        await client.publish(TOPIC, payload, qos=1)
+        async for message in client.messages:
+            try:
+                await process(message)
+            except ValueError as exc:
+                print("rejected:", exc)
+                await client.ack(message, reason_code=PAYLOAD_FORMAT_INVALID)
+            else:
+                await client.ack(message)
 
-    received = 0
+            received += 1
 
-    async for message in client.messages:
-        try:
-            await process(message)
-        except ValueError as exc:
-            print("rejected:", exc)
-            await client.ack(message, reason_code=PAYLOAD_FORMAT_INVALID)
-        else:
-            await client.ack(message)
-
-        received += 1
-
-        if received == 4:
-            break
-
-    await client.disconnect()
+            if received == 4:
+                break
 
 
 if __name__ == "__main__":

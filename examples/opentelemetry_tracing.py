@@ -27,32 +27,29 @@ async def main():
     provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
     tracer = provider.get_tracer("example")
 
-    client = MQTTClient(
+    async with MQTTClient(
         "zenmqtt-example-opentelemetry-tracing",
         tracing=OpenTelemetryTracing(provider),
-    )
+    ) as client:
+        await client.connect(
+            MQTT_URL, username=MQTT_USERNAME, password=MQTT_PASSWORD, clean_start=True
+        )
+        await client.subscribe([(TOPIC, 1)])
 
-    if MQTT_USERNAME:
-        client.authorize(MQTT_USERNAME, MQTT_PASSWORD)
+        # the trace context of "request" travels in the user properties of PUBLISH
+        with tracer.start_as_current_span("request"):
+            await client.publish(TOPIC, b"hello", qos=1)
 
-    await client.connect(MQTT_URL, clean_start=True)
-    await client.subscribe([(TOPIC, 1)])
+        async for message in client.messages:
+            # a child of "publish", in the same trace as "request"
+            with client.processing(message):
+                with tracer.start_as_current_span("handle"):
+                    print("received:", message.payload)
 
-    # the trace context of "request" travels in the user properties of PUBLISH
-    with tracer.start_as_current_span("request"):
-        await client.publish(TOPIC, b"hello", qos=1)
+                await client.ack(message)
 
-    async for message in client.messages:
-        # a child of "publish", in the same trace as "request"
-        with client.processing(message):
-            with tracer.start_as_current_span("handle"):
-                print("received:", message.payload)
+            break
 
-            await client.ack(message)
-
-        break
-
-    await client.disconnect()
     provider.shutdown()
 
 

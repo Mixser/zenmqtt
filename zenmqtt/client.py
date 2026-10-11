@@ -4,6 +4,7 @@ from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from logging import getLogger
 from ssl import SSLContext
+from types import TracebackType
 from typing import Any, Awaitable, Callable, Final, Optional, Sequence, TypeVar
 
 from zenmqtt.connection import create_connection
@@ -40,6 +41,9 @@ from zenmqtt.subscriptions import SubscriptionRegistry
 logger = getLogger(__name__)
 
 DEFAULT_KEEP_ALIVE: Final[int] = 60
+# seconds which `async with MQTTClient(...)` waits on exit for outgoing QoS 1/2
+# messages in flight, see MQTTClient.__aexit__
+DEFAULT_DISCONNECT_TIMEOUT: Final[float] = 10.0
 
 
 T = TypeVar("T")
@@ -69,6 +73,8 @@ class AsyncMessageIterator:
 @dataclass(frozen=True, slots=True)
 class _ConnectOptions:
     url: str
+    username: Optional[str]
+    password: Optional[str]
     keepalive: int
     properties: Optional[ConnectProperties]
     will: Optional[WillMessage]
@@ -103,10 +109,7 @@ class MQTTClient:
         self._session = session or build_default_session()
         self._protocol = MQTTProtocol(self._session, self._metrics)
 
-        self.client_id = client_id
-
-        self._username: Optional[str] = None
-        self._password: Optional[str] = None
+        self._client_id = client_id
 
         self._connect_options: Optional[_ConnectOptions] = None
         # a task waits for the next message, see messages
@@ -126,21 +129,58 @@ class MQTTClient:
         self._state_changed = asyncio.Event()
 
         # called on every successful connect and on every lost connection,
-        # may be sync or async functions
+        # may be sync or async functions; one callback each: assigning a new
+        # one replaces the previous one
         self.on_connect: Optional[OnConnect] = None
         self.on_disconnect: Optional[OnDisconnect] = None
 
-    def authorize(self, username: Optional[str], password: Optional[str]) -> None:
+    async def __aenter__(self) -> "MQTTClient":
         """
-        MQTT 5 allows a password without a username, both may be empty strings.
+        `async with MQTTClient(...) as client:` makes sure the client is
+        disconnected when the block ends; connect() is called inside the block.
         """
-        self._username = username
-        self._password = password
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc: Optional[BaseException],
+        traceback: Optional[TracebackType],
+    ) -> None:
+        """
+        Disconnects the client if it was connected (also while it reconnects).
+        On a normal exit the shutdown is graceful: the client waits up to
+        DEFAULT_DISCONNECT_TIMEOUT seconds for outgoing QoS 1/2 messages in
+        flight. If the block raised (or was cancelled), the client disconnects
+        at once and doesn't hide the exception; messages in flight stay in the
+        session. For another timeout call disconnect(timeout=...) in the block.
+        """
+        if self._stopped:
+            return
+
+        if exc_type is None:
+            await self.disconnect(timeout=DEFAULT_DISCONNECT_TIMEOUT)
+            return
+
+        try:
+            await self.disconnect()
+        except Exception as error:
+            logger.error("mqtt_client.disconnect.error", exc_info=error)
+
+    @property
+    def client_id(self) -> str:
+        """
+        The client identifier; if the server assigned one (the client id was
+        empty), the assigned identifier, which is used for the next connects.
+        """
+        return self._client_id
 
     async def connect(
         self,
         url: str,
         *,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
         clean_start: bool = False,
         keepalive: int = DEFAULT_KEEP_ALIVE,
         properties: Optional[ConnectProperties] = None,
@@ -156,6 +196,8 @@ class MQTTClient:
 
         :param url: tcp://host[:port] or mqtts://host[:port] for TLS, the default
             port is 1883 for tcp:// and 8883 for mqtts://
+        :param username: MQTT 5 allows a password without a username, both may
+            be empty strings; reconnects use the same credentials
         :param clean_start: discard the session on the server and the client;
             to re-send QoS 1/2 messages after a reconnect use False together
             with properties={"session_expiry_interval": <seconds>}, otherwise
@@ -171,7 +213,9 @@ class MQTTClient:
         if self._reconnector and self._reconnector.running:
             raise RuntimeError("The client is already connected")
 
-        self._connect_options = _ConnectOptions(url, keepalive, properties, will, ssl)
+        self._connect_options = _ConnectOptions(
+            url, username, password, keepalive, properties, will, ssl
+        )
 
         if self._reconnect_policy and not (properties or {}).get(
             "session_expiry_interval"
@@ -488,9 +532,9 @@ class MQTTClient:
 
         try:
             connack = await self._protocol.connect(
-                self.client_id,
-                self._username,
-                self._password,
+                self._client_id,
+                options.username,
+                options.password,
                 clean_start,
                 options.keepalive,
                 options.properties,
@@ -512,7 +556,7 @@ class MQTTClient:
         # the server assigns an identifier if the client id is empty, it must be
         # used for the following connects to resume the session
         if assigned := connack.properties.get("assigned_client_identifier"):
-            self.client_id = assigned
+            self._client_id = assigned
 
         return connack
 
