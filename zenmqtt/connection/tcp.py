@@ -60,13 +60,21 @@ class TCPConnectionTransport(MQTTConnectionTransport):
     async def close(self) -> None:
         self._reader.feed_eof()
 
-        # TLS transports don't support half-close
-        if self._writer.can_write_eof():
-            self._writer.write_eof()
+        # the connection may be broken already (e.g. reset by the peer): closing
+        # it is still fine, the errors only say that the socket is gone
+        try:
+            # TLS transports don't support half-close
+            if self._writer.can_write_eof():
+                self._writer.write_eof()
+        except OSError:
+            pass
 
         self._writer.close()
 
-        await self._writer.wait_closed()
+        try:
+            await self._writer.wait_closed()
+        except OSError:
+            pass
 
     async def read(self, size: int = -1) -> bytes:
         return await self._reader.read(size)
