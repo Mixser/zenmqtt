@@ -99,6 +99,8 @@ class MQTTClient:
         self._password: Optional[str] = None
 
         self._connect_options: Optional[_ConnectOptions] = None
+        # a task waits for the next message, see messages
+        self._reading = False
 
         self._subscriptions = SubscriptionRegistry()
         self._reconnector: Optional[Reconnector] = None
@@ -366,10 +368,27 @@ class MQTTClient:
         number of QoS 1/2 messages which aren't acknowledged is limited by
         "receive_maximum" of connect properties; QoS 0 messages aren't
         limited. While 1000 or more messages wait, a warning is logged and
-        metrics get on_messages_buffered events. Several tasks may iterate at
-        once, each message goes to one of them.
+        metrics get on_messages_buffered events.
+
+        Messages are read by one task: if another task waits for a message at
+        the same time, it gets RuntimeError. To process messages concurrently,
+        read them in one task and hand them to workers.
         """
-        return AsyncMessageIterator(self._protocol.next_message)
+        return AsyncMessageIterator(self._next_message)
+
+    async def _next_message(self) -> Optional[PublishResult]:
+        if self._reading:
+            raise RuntimeError(
+                "client.messages is read by another task; read messages in one "
+                "task and hand them to workers to process them concurrently"
+            )
+
+        self._reading = True
+
+        try:
+            return await self._protocol.next_message()
+        finally:
+            self._reading = False
 
     async def _connect(self, clean_session: bool) -> ConnectionResult:
         options = self._connect_options

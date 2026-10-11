@@ -233,7 +233,7 @@ class MQTTProtocol:
     async def next_message(self) -> Optional[PublishResult]:
         """
         The next incoming message, None after close(); QoS 1/2 messages must
-        be acknowledged by ack().
+        be acknowledged by ack(). Meant for one reader, see MQTTClient.messages.
         """
         return await self._incoming.next_message()
 

@@ -88,9 +88,6 @@ class IncomingFlow:
         # messages
         self._buffer: deque[Optional[PublishResult]] = deque()
         self._buffer_ready = asyncio.Event()
-        # incremented when a reader takes the end of messages, so the other
-        # waiting readers end too
-        self._ends = 0
         self.buffer_monitor = BufferMonitor(context)
 
     @property
@@ -123,24 +120,15 @@ class IncomingFlow:
 
     async def next_message(self) -> Optional[PublishResult]:
         """
-        Waits for the next message; None is the end of messages, it ends all
-        readers which wait at that moment. Each message goes to one reader.
+        Waits for the next message, None is the end of messages. Meant for one
+        reader: the end of messages goes to one of the waiting readers only.
         """
-        ends = self._ends
-
         while not self._buffer:
             self._buffer_ready.clear()
             await self._buffer_ready.wait()
 
-            if self._ends != ends:
-                return None
-
         message = self._buffer.popleft()
         self.buffer_monitor.update(len(self._buffer))
-
-        if message is None:
-            self._ends += 1
-            self._buffer_ready.set()
 
         return message
 

@@ -1,7 +1,14 @@
 import asyncio
 import struct
 
-from tests.unit.mqtt.protocol.helpers import TIMEOUT, FakeTransport, pack_connack
+import pytest
+
+from tests.unit.mqtt.protocol.helpers import (
+    TIMEOUT,
+    FakeTransport,
+    pack_connack,
+    pack_qos0,
+)
 from zenmqtt.client import MQTTClient
 from zenmqtt.connection import register_implementation
 from zenmqtt.mqtt.packet import PacketType
@@ -64,3 +71,45 @@ async def test_assigned_client_identifier_is_used_for_next_connect():
     assert client.client_id == "auto-42"
 
     await asyncio.wait_for(client.disconnect(), TIMEOUT)
+
+
+async def test_messages_are_read_by_one_task():
+    client = MQTTClient("client-id", reconnect=None)
+    transport = FakeTransport()
+    await connect(client, transport, pack_connack())
+
+    first = asyncio.create_task(anext(client.messages))
+    await asyncio.sleep(0.01)
+
+    # another task waits at the same time
+    with pytest.raises(RuntimeError, match="read by another task"):
+        await anext(client.messages)
+
+    transport.feed(pack_qos0("a/b", b"1"))
+    assert (await asyncio.wait_for(first, TIMEOUT)).payload == b"1"
+
+    # one after another, from different tasks
+    transport.feed(pack_qos0("a/b", b"2"))
+    second = asyncio.create_task(anext(client.messages))
+    assert (await asyncio.wait_for(second, TIMEOUT)).payload == b"2"
+
+    await client.disconnect()
+
+
+async def test_cancelled_read_frees_messages_for_another_task():
+    client = MQTTClient("client-id", reconnect=None)
+    transport = FakeTransport()
+    await connect(client, transport, pack_connack())
+
+    reader = asyncio.create_task(anext(client.messages))
+    await asyncio.sleep(0.01)
+    reader.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await reader
+
+    transport.feed(pack_qos0("a/b", b"payload"))
+    message = await asyncio.wait_for(anext(client.messages), TIMEOUT)
+    assert message.payload == b"payload"
+
+    await client.disconnect()

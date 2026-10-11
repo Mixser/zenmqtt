@@ -156,6 +156,10 @@ async for message in client.messages:
         await client.ack(message)
 ```
 
+`client.messages` is read by one task; another task which waits for a message
+at the same time gets `RuntimeError`. To process messages concurrently, read
+them in one task and hand them to workers, e.g. through an `asyncio.Queue`.
+
 If the connection is lost before the ack, the broker sends the message again
 after reconnect. The iteration over `client.messages` continues across
 reconnects and ends when the client stops.
