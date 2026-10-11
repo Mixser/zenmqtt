@@ -51,11 +51,11 @@ class Tracing:
         """Called when a publish call starts, before it waits for a connection."""
         return PublishTrace(properties)
 
-    def processing(
+    def trace(
         self, client_id: str, message: PublishResult
     ) -> AbstractContextManager[None]:
         """
-        Wraps the processing of a received message, see MQTTClient.processing().
+        Wraps the processing of a received message, see MQTTClient.trace().
         """
         return nullcontext()
 
@@ -77,7 +77,7 @@ class _GuardedPublishTrace(PublishTrace):
             self._errors.report("PublishTrace.end", exc)
 
 
-class _GuardedProcessing(AbstractContextManager[None]):
+class _GuardedTrace(AbstractContextManager[None]):
     """
     Exceptions of the tracing context are reported, and it never suppresses an
     exception of the processing.
@@ -95,7 +95,7 @@ class _GuardedProcessing(AbstractContextManager[None]):
             self._context.__enter__()
             self._entered = True
         except Exception as exc:
-            self._errors.report("processing.__enter__", exc)
+            self._errors.report("trace.__enter__", exc)
 
     def __exit__(
         self,
@@ -109,7 +109,7 @@ class _GuardedProcessing(AbstractContextManager[None]):
         try:
             self._context.__exit__(exc_type, exc, traceback)
         except Exception as error:
-            self._errors.report("processing.__exit__", error)
+            self._errors.report("trace.__exit__", error)
 
 
 class _GuardedTracing(Tracing):
@@ -147,16 +147,16 @@ class _GuardedTracing(Tracing):
 
         return _GuardedPublishTrace(trace, self._errors)
 
-    def processing(
+    def trace(
         self, client_id: str, message: PublishResult
     ) -> AbstractContextManager[None]:
         try:
-            context = self.wrapped.processing(client_id, message)
+            context = self.wrapped.trace(client_id, message)
         except Exception as exc:
-            self._errors.report("processing", exc)
+            self._errors.report("trace", exc)
             return nullcontext()
 
-        return _GuardedProcessing(context, self._errors)
+        return _GuardedTrace(context, self._errors)
 
 
 def guard_tracing(tracing: Optional[Tracing]) -> Optional[Tracing]:

@@ -293,12 +293,12 @@ from zenmqtt.instrumentation.opentelemetry import OpenTelemetryTracing
 client = MQTTClient("my-client", tracing=OpenTelemetryTracing(tracer_provider))
 
 async for message in client.messages:
-    with client.processing(message):
+    with client.trace(message):
         await process(message)
         await client.ack(message)
 ```
 
-Without `tracing`, `client.processing()` does nothing, and OpenTelemetry isn't
+Without `tracing`, `client.trace()` does nothing, and OpenTelemetry isn't
 imported. See [examples/opentelemetry_tracing.py](https://github.com/Mixser/zenmqtt/blob/main/examples/opentelemetry_tracing.py).
 
 ### Custom session storage

@@ -424,7 +424,7 @@ flowchart LR
   Hooks which the collector doesn't override aren't wrapped and cost nothing.
   Tracing is wrapped the same way: a publish which the server acknowledged
   doesn't fail because its span couldn't be ended, and the tracing context
-  around `processing()` never swallows an exception of the application.
+  around `trace()` never swallows an exception of the application.
 - The protocol only calls these hooks where the event happens. The timestamps
   for durations are part of the flow state; for example, the latency of a
   re-sent message isn't counted from its first send.
@@ -449,7 +449,7 @@ sequenceDiagram
     P->>B: PUBLISH, user property traceparent
     B-->>P: PUBACK, the span ends
     B->>C: PUBLISH, user property traceparent
-    Note over C: client.processing(message):<br/>span "process" (CONSUMER),<br/>parent: the "publish" span
+    Note over C: client.trace(message):<br/>span "process" (CONSUMER),<br/>parent: the "publish" span
 ```
 
 - **Publish:** the span starts when `publish()` is called, so it includes the
@@ -462,7 +462,7 @@ sequenceDiagram
   properties are kept. A re-sent message keeps the same properties, so it
   stays in the same trace.
 - **Processing:** the application wraps the processing of a message in
-  `client.processing(message)`. The span uses the context from the message as
+  `client.trace(message)`. The span uses the context from the message as
   parent, or the current span if the message has no context. The span is
   explicit, so it can't leak for messages which are never acknowledged.
 - **Span names** are `publish` and `process`, without the topic: the number of
