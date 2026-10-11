@@ -2,6 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/zenmqtt.svg)](https://pypi.org/project/zenmqtt/)
 [![CI](https://github.com/Mixser/zenmqtt/actions/workflows/zenmqtt.yml/badge.svg)](https://github.com/Mixser/zenmqtt/actions/workflows/zenmqtt.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://mixser.github.io/zenmqtt/coverage/badge.json)](https://mixser.github.io/zenmqtt/coverage/)
 [![Benchmarks](https://img.shields.io/badge/benchmarks-history-blue)](https://mixser.github.io/zenmqtt/perf/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/Mixser/zenmqtt/blob/main/LICENSE)
 

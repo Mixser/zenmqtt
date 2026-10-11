@@ -40,7 +40,7 @@ test/unit:
 # needs a broker: MQTT_INTEGRATION_URL=tcp://localhost:1883 make test/integration
 .PHONY: test/integration
 test/integration:
-	@poetry run pytest -W error $(TEST_INTEGRATION)
+	@poetry run pytest -W error --cov=$(SOURCE) $(TEST_INTEGRATION)
 
 # needs a broker for publish and end-to-end: MQTT_URL=tcp://host:port make bench
 .PHONY: bench

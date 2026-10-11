@@ -57,3 +57,21 @@ line-width=120
 # async tests run in an event loop without @pytest.mark.asyncio
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.coverage.run]
+source = ["zenmqtt"]
+branch = true
+# CI combines the data of several jobs
+relative_files = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "^\\s*\\.\\.\\.$",
+]
+
+[tool.coverage.html]
+# the published report lists all modules, also the fully covered ones
+skip_covered = false
