@@ -151,12 +151,14 @@ with a failure reason code). When a message holds back later
 acknowledgements for 30 seconds, a warning is logged.
 
 ```python
+from zenmqtt import ReasonCode
+
 async for message in client.messages:
     try:
         await process(message)
     except InvalidPayload:
         # reject: the broker doesn't send this message again
-        await client.ack(message, reason_code=0x99)
+        await client.ack(message, reason_code=ReasonCode.PAYLOAD_FORMAT_INVALID)
     else:
         await client.ack(message)
 ```
@@ -172,18 +174,33 @@ reconnects and ends when the client stops.
 ### Subscriptions
 
 ```python
-from zenmqtt import Subscription
+from zenmqtt import QoS, Subscription
 
 result = await client.subscribe(
     [
-        ("alerts/#", 2),
-        Subscription("chat/room", qos=1, no_local=True, retain_handling=2),
+        ("alerts/#", QoS.EXACTLY_ONCE),
+        Subscription("chat/room", qos=QoS.AT_LEAST_ONCE, no_local=True, retain_handling=2),
     ]
 )
-print(result.reason_codes)  # granted QoS per topic, >= 0x80 means failure
+
+# one reason code per topic: the granted QoS, or a failure
+for topic, reason_code in zip(["alerts/#", "chat/room"], result.reason_codes):
+    if reason_code.is_failure:
+        print(f"{topic}: {reason_code.name}")  # e.g. NOT_AUTHORIZED
 
 await client.unsubscribe(["alerts/#"])
 ```
+
+### QoS and reason codes
+
+`QoS` and `ReasonCode` are `IntEnum`s with the names of the MQTT 5.0
+specification. They are ints, so plain numbers work too (`qos=1`,
+`reason_code=0x99`). Reason codes and QoS of received packets are returned as
+these enums: `result.reason_code` shows as `<ReasonCode.NOT_AUTHORIZED: 135>`,
+`reason_code.is_failure` is True from 0x80. Some values have several names in
+the specification (0x00 is "Success", "Normal disconnection" and "Granted QoS
+0"); they are one member, shown as `SUCCESS`. A value which isn't in the
+specification is returned as a member like `UNKNOWN_0x42`, not as an error.
 
 ### Will message and disconnect
 

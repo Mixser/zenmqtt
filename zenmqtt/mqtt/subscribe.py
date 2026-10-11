@@ -4,6 +4,7 @@ from typing import Final, Sequence, Tuple, TypedDict, Union, cast
 
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader, PacketType
 from zenmqtt.mqtt.properties import Properties, pack_properties, parse_properties
+from zenmqtt.mqtt.reason_codes import ReasonCode, to_reason_codes
 from zenmqtt.mqtt.utils import pack_fixed_header, pack_str16
 
 
@@ -27,7 +28,7 @@ class SubscribeResult:
 
     packet_identifier: int
     properties: SubackProperties
-    reason_codes: Sequence[int]
+    reason_codes: Sequence[ReasonCode]
 
 
 @dataclass(frozen=True)
@@ -36,7 +37,7 @@ class UnsubscribeResult:
 
     packet_identifier: int
     properties: UnsubscribeProperties
-    reason_codes: Sequence[int]
+    reason_codes: Sequence[ReasonCode]
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,10 +158,10 @@ def parse_unsuback_packet(
 
 def _parse_packet(
     fixed_header: FixedHeader, reader: BytesReader
-) -> Tuple[int, Properties, Sequence[int]]:
+) -> Tuple[int, Properties, Sequence[ReasonCode]]:
     packet_identifier = reader.read_uint16()
     properties = parse_properties(reader)
     # one reason code per topic
-    reason_codes = list(reader.read_rest())
+    reason_codes = to_reason_codes(reader.read_rest())
 
     return packet_identifier, properties, reason_codes

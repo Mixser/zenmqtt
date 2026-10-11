@@ -1,11 +1,24 @@
 import struct
 from dataclasses import dataclass
-from typing import Any, Optional, Sequence, Tuple, TypedDict, cast
+from enum import IntEnum
+from typing import Any, Final, Optional, Sequence, Tuple, TypedDict, cast
 
 from zenmqtt.exceptions import MalformedPacketError
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader, PacketType
 from zenmqtt.mqtt.properties import Properties, pack_properties, parse_properties
+from zenmqtt.mqtt.reason_codes import ReasonCode, to_reason_code
 from zenmqtt.mqtt.utils import pack_fixed_header, pack_str16
+
+
+class QoS(IntEnum):
+    """Quality of service levels; a value is an int, plain 0, 1, 2 work too."""
+
+    AT_MOST_ONCE = 0
+    AT_LEAST_ONCE = 1
+    EXACTLY_ONCE = 2
+
+
+_QOS_BY_VALUE: Final[tuple[QoS, ...]] = tuple(QoS)
 
 
 class PublishProperties(TypedDict, total=False):
@@ -81,7 +94,7 @@ class PublishResult:
         "topic",
     )
     dup: bool
-    qos: int
+    qos: QoS
     retain: bool
 
     packet_identifier: Optional[int]
@@ -107,7 +120,7 @@ def parse_publish_packet(
 
     return PublishResult(
         dup=dup,
-        qos=qos,
+        qos=_QOS_BY_VALUE[qos],
         retain=retain,
         packet_identifier=packet_identifier,
         topic=topic,
@@ -121,7 +134,7 @@ class PubAckResult:
     __slots__ = ("packet_identifier", "reason_code", "properties")
 
     packet_identifier: int
-    reason_code: int
+    reason_code: ReasonCode
     properties: PubackProperties
 
 
@@ -149,7 +162,7 @@ def pack_puback_packet(
 class PubRecResult:
     __slots__ = ("packet_identifier", "reason_code", "properties")
     packet_identifier: int
-    reason_code: int
+    reason_code: ReasonCode
     properties: PubrecProperties
 
 
@@ -178,7 +191,7 @@ class PubRelResult:
     __slots__ = ("packet_identifier", "reason_code", "properties")
 
     packet_identifier: int
-    reason_code: int
+    reason_code: ReasonCode
     properties: PubrelProperties
 
 
@@ -207,7 +220,7 @@ class PubCompResult:
     __slots__ = ("packet_identifier", "reason_code", "properties")
 
     packet_identifier: int
-    reason_code: int
+    reason_code: ReasonCode
     properties: PubcompProperties
 
 
@@ -235,10 +248,10 @@ def pack_pubcomp_packet(
 
 def _parse_publish_response_packet(
     fixed_header: FixedHeader, reader: BytesReader
-) -> Tuple[int, int, Properties]:
+) -> Tuple[int, ReasonCode, Properties]:
     packet_identifier = reader.read_uint16()
     # both the reason code and properties may be omitted
-    reason_code = reader.read_byte() if reader.remaining() else 0
+    reason_code = to_reason_code(reader.read_byte() if reader.remaining() else 0)
     properties = parse_properties(reader) if reader.remaining() else {}
 
     reader.ensure_end()
