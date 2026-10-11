@@ -2,11 +2,11 @@ name: publish
 
 # Publishes the package when a GitHub release is published:
 #   gh release create v0.2.0 --target main --generate-notes
-# A pre-release (e.g. v0.2.0rc1, created with --prerelease) goes to TestPyPI.
+# Pre-releases (e.g. v0.2.0rc1 with --prerelease) go to PyPI too: pip installs
+# them only with --pre or an exact version.
 #
-# Uses trusted publishing, no tokens: PyPI and TestPyPI need a publisher for
-# this repository, the workflow "publish.yml" and the environment "pypi" /
-# "testpypi".
+# Uses trusted publishing, no tokens: PyPI needs a publisher for this
+# repository and the workflow "publish.yml".
 
 on:
   release:
@@ -66,8 +66,8 @@ jobs:
     needs: [ build ]
     runs-on: ubuntu-latest
     environment:
-      name: ${{ github.event.release.prerelease && 'testpypi' || 'pypi' }}
-      url: ${{ github.event.release.prerelease && 'https://test.pypi.org/p/zenmqtt' || 'https://pypi.org/p/zenmqtt' }}
+      name: pypi
+      url: https://pypi.org/p/zenmqtt
     permissions:
       # trusted publishing
       id-token: write
@@ -76,11 +76,5 @@ jobs:
         with:
           name: dist
           path: dist/
-      - name: Publish to TestPyPI
-        if: github.event.release.prerelease
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
       - name: Publish to PyPI
-        if: ${{ !github.event.release.prerelease }}
         uses: pypa/gh-action-pypi-publish@release/v1
