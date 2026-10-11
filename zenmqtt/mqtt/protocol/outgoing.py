@@ -11,10 +11,10 @@ from zenmqtt.exceptions import (
     ServerLimitError,
     SessionLostError,
 )
-from zenmqtt.mqtt.connect import ConnectionResult
 from zenmqtt.mqtt.limits import DEFAULT_RECEIVE_MAXIMUM
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader
 from zenmqtt.mqtt.protocol.context import ProtocolContext
+from zenmqtt.mqtt.protocol.part import ConnectionInfo, ProtocolPart
 from zenmqtt.mqtt.publish import (
     PublishAcknowledgement,
     PublishProperties,
@@ -107,7 +107,7 @@ def _strip_topic_alias(properties: PublishProperties) -> PublishProperties:
     )
 
 
-class OutgoingFlow:
+class OutgoingFlow(ProtocolPart):
     """
     Outgoing PUBLISH: QoS 1/2 messages are stored in the session until the
     final acknowledgement and re-sent after reconnect.
@@ -188,22 +188,21 @@ class OutgoingFlow:
         # lost meanwhile, it'll be re-sent on the next connect
         return await self._send_stored(packet_identifier, qos, packet, connection)
 
-    async def on_connected(self, connection_result: ConnectionResult) -> None:
-        """Called after successful CONNACK, before the client is connected."""
+    async def on_connected(self, info: ConnectionInfo) -> None:
         self._closed_with = None
+
+        if not info.result.session_present:
+            # the stored messages are discarded with the session
+            self._fail_all(SessionLostError())
 
         # publish calls wait while the server's "Receive Maximum" is reached
         self._send_quota = _SendQuota(
-            connection_result.properties.get("receive_maximum", DEFAULT_RECEIVE_MAXIMUM)
+            info.result.properties.get("receive_maximum", DEFAULT_RECEIVE_MAXIMUM)
         )
 
         await self._resend_pending_messages()
 
-    def on_session_lost(self) -> None:
-        """The server didn't keep the session, stored messages are discarded."""
-        self._fail_all(SessionLostError())
-
-    def on_connection_lost(self, exc: ConnectionLostError) -> None:
+    async def on_connection_lost(self, exc: ConnectionLostError) -> None:
         if self._send_quota:
             # messages waiting for the quota weren't stored nor sent
             self._send_quota.abort(NotConnectedError())

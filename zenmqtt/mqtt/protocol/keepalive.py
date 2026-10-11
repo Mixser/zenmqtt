@@ -7,11 +7,12 @@ from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader
 from zenmqtt.mqtt.ping import pack_pingreq_packet, parse_pingresp_packet
 from zenmqtt.mqtt.protocol.context import ProtocolContext
+from zenmqtt.mqtt.protocol.part import ConnectionInfo, ProtocolPart
 
 logger = getLogger(__name__)
 
 
-class KeepAlive:
+class KeepAlive(ProtocolPart):
     """PINGREQ/PINGRESP and keep alive (MQTT 5, 3.1.2.10)."""
 
     def __init__(self, context: ProtocolContext) -> None:
@@ -55,17 +56,15 @@ class KeepAlive:
             self._context.metrics.on_ping(self._context.now() - self._ping_sent_at)
             future.set_result(None)
 
-    def start(self, keepalive: int) -> None:
-        """
-        :param keepalive: seconds between control packets sent by the client,
-            0 disables keep alive
-        """
-        if keepalive:
+    async def on_connected(self, info: ConnectionInfo) -> None:
+        # seconds between control packets sent by the client, 0 disables
+        # keep alive; the task runs when the protocol is connected already
+        if info.keepalive:
             self.task = asyncio.create_task(
-                self._keep_alive_loop(keepalive), name="mqtt-protocol-keep-alive"
+                self._keep_alive_loop(info.keepalive), name="mqtt-protocol-keep-alive"
             )
 
-    def on_connection_lost(self, exc: Exception) -> None:
+    async def on_connection_lost(self, exc: ConnectionLostError) -> None:
         if self.task:
             self.task.cancel()
             self.task = None

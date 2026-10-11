@@ -3,9 +3,10 @@ from dataclasses import dataclass
 from logging import getLogger
 from typing import Any, Optional, Sequence, TypeVar, Union
 
-from zenmqtt.exceptions import NotConnectedError, ServerLimitError
+from zenmqtt.exceptions import ConnectionLostError, NotConnectedError, ServerLimitError
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader
 from zenmqtt.mqtt.protocol.context import ProtocolContext
+from zenmqtt.mqtt.protocol.part import ProtocolPart
 from zenmqtt.mqtt.session import MQTTSession, PacketIdentifier
 from zenmqtt.mqtt.subscribe import (
     SubscribeResult,
@@ -33,7 +34,7 @@ class _PendingCommand:
     sent_at: float
 
 
-class Commands:
+class Commands(ProtocolPart):
     """SUBSCRIBE and UNSUBSCRIBE, which wait for SUBACK and UNSUBACK."""
 
     def __init__(self, context: ProtocolContext, session: MQTTSession) -> None:
@@ -96,18 +97,17 @@ class Commands:
 
         await self._complete(unsuback_packet.packet_identifier, unsuback_packet)
 
-    def on_connection_lost(self, exc: Exception) -> list[PacketIdentifier]:
-        """
-        Fails waiting commands, they aren't re-sent. Returns their packet
-        identifiers, which must be released.
-        """
+    async def on_connection_lost(self, exc: ConnectionLostError) -> None:
+        """Fails waiting commands, they aren't re-sent."""
         pending, self._pending = self._pending, {}
 
         for command in pending.values():
             if not command.future.done():
                 command.future.set_exception(exc)
 
-        return list(pending)
+        # unlike publish packets, which stay in the session
+        for packet_identifier in pending:
+            await self._session.release_packet_identifier(packet_identifier)
 
     @staticmethod
     def _create_future() -> asyncio.Future[Any]:

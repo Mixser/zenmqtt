@@ -7,7 +7,6 @@ from zenmqtt.connection import MQTTConnection
 from zenmqtt.exceptions import ConnectionLostError, MalformedPacketError, ProtocolError
 from zenmqtt.instrumentation.metrics import MetricsCollector
 from zenmqtt.mqtt.connect import (
-    SESSION_PRESENT_FLAG,
     ConnectionResult,
     ConnectProperties,
     DisconnectProperties,
@@ -25,6 +24,7 @@ from zenmqtt.mqtt.protocol.context import ProtocolContext
 from zenmqtt.mqtt.protocol.incoming import IncomingFlow
 from zenmqtt.mqtt.protocol.keepalive import KeepAlive
 from zenmqtt.mqtt.protocol.outgoing import OutgoingFlow
+from zenmqtt.mqtt.protocol.part import ConnectionInfo, ProtocolPart
 from zenmqtt.mqtt.protocol.stream import PacketReader
 from zenmqtt.mqtt.publish import (
     PublishAcknowledgement,
@@ -71,6 +71,18 @@ class MQTTProtocol:
         self._outgoing = OutgoingFlow(self._context, session)
         self._commands = Commands(self._context, session)
         self._keep_alive = KeepAlive(self._context)
+
+        # the order in which the parts are called:
+        # - on connect, outgoing re-sends stored messages before keep alive
+        #   starts and before new publish calls are sent;
+        # - on connection lost, commands are last: they release packet
+        #   identifiers with an await, after the other parts handled the loss
+        self._parts: tuple[ProtocolPart, ...] = (
+            self._outgoing,
+            self._incoming,
+            self._keep_alive,
+            self._commands,
+        )
 
         self._read_loop_task: Optional[Task[None]] = None
         self._packet_reader: Optional[PacketReader] = None
@@ -137,7 +149,9 @@ class MQTTProtocol:
         properties = properties or {}
 
         self._authentication_method = properties.get("authentication_method")
-        self._incoming.on_new_connection(properties)
+
+        for part in self._parts:
+            part.on_connecting(properties)
 
         if self._packet_reader:
             self._packet_reader.maximum_packet_size = properties.get(
@@ -170,20 +184,22 @@ class MQTTProtocol:
         if connection_result.result_code >= FAILURE_REASON_CODE:
             return connection_result
 
-        if not connection_result.flags & SESSION_PRESENT_FLAG:
+        if not connection_result.session_present:
             await self._discard_session()
 
         self._context.server_limits = ServerLimits.from_connack(
             connection_result.properties
         )
 
-        await self._outgoing.on_connected(connection_result)
+        info = ConnectionInfo(
+            connection_result,
+            connection_result.properties.get("server_keep_alive", keepalive),
+        )
+
+        for part in self._parts:
+            await part.on_connected(info)
 
         self._context.connected = True
-
-        self._keep_alive.start(
-            connection_result.properties.get("server_keep_alive", keepalive)
-        )
 
         return connection_result
 
@@ -217,8 +233,8 @@ class MQTTProtocol:
         Nothing will connect anymore: fails publish calls which wait for
         acknowledgements and ends the messages.
         """
-        self._outgoing.close(exc)
-        self._incoming.close()
+        for part in self._parts:
+            part.close(exc)
 
     async def publish(
         self,
@@ -265,8 +281,6 @@ class MQTTProtocol:
             )
 
         await self._session.reset()
-
-        self._outgoing.on_session_lost()
 
     async def _handle_connack(
         self, fixed_header: FixedHeader, reader: BytesReader
@@ -373,14 +387,8 @@ class MQTTProtocol:
         if self._connection_future and not self._connection_future.done():
             self._connection_future.set_exception(exc)
 
-        self._keep_alive.on_connection_lost(exc)
-        self._outgoing.on_connection_lost(exc)
-        command_packet_identifiers = self._commands.on_connection_lost(exc)
-        self._incoming.on_connection_lost()
-
-        # publish packets stay in the session, commands aren't re-sent
-        for packet_identifier in command_packet_identifiers:
-            await self._session.release_packet_identifier(packet_identifier)
+        for part in self._parts:
+            await part.on_connection_lost(exc)
 
         if not connection.is_closing():
             await connection.disconnect()

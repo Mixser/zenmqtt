@@ -7,6 +7,7 @@ from logging import getLogger
 from typing import Optional, cast
 
 from zenmqtt.exceptions import (
+    ConnectionLostError,
     ProtocolError,
     ReceiveMaximumExceededError,
     TopicAliasInvalidError,
@@ -16,6 +17,7 @@ from zenmqtt.mqtt.connect import ConnectProperties
 from zenmqtt.mqtt.limits import DEFAULT_RECEIVE_MAXIMUM
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader
 from zenmqtt.mqtt.protocol.context import ProtocolContext
+from zenmqtt.mqtt.protocol.part import ProtocolPart
 from zenmqtt.mqtt.publish import (
     PublishResult,
     pack_puback_packet,
@@ -56,7 +58,7 @@ class _ConnectionState:
     )
 
 
-class IncomingFlow:
+class IncomingFlow(ProtocolPart):
     """
     Incoming PUBLISH. The read loop never waits for the application: messages
     wait in a buffer which the application reads by next_message(), so control
@@ -89,7 +91,7 @@ class IncomingFlow:
     def inflight(self) -> set[PacketIdentifier]:
         return self._state.inflight
 
-    def on_new_connection(self, properties: ConnectProperties) -> None:
+    def on_connecting(self, properties: ConnectProperties) -> None:
         """
         Topic aliases and the receive quota don't survive the reconnect; acks
         of messages from the previous connection are ignored, the server
@@ -102,14 +104,14 @@ class IncomingFlow:
 
         self._state = _ConnectionState()
 
-    def on_connection_lost(self) -> None:
+    async def on_connection_lost(self, exc: ConnectionLostError) -> None:
         # not acknowledged messages are re-sent by the server, QoS 0 messages
         # are delivered
         self._buffer = deque(
             message for message in self._buffer if message is None or not message.qos
         )
 
-    def close(self) -> None:
+    def close(self, exc: Exception) -> None:
         """The client stops for good: the end of messages."""
         self._enqueue(None)
 
