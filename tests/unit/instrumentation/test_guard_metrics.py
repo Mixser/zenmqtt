@@ -1,7 +1,7 @@
 import logging
 
 from tests.unit.mqtt.protocol.helpers import FailingMetrics
-from zenmqtt.instrumentation import metrics as metrics_module
+from zenmqtt.instrumentation import guard as guard_module
 from zenmqtt.instrumentation.metrics import MetricsCollector, guard_metrics
 
 
@@ -38,14 +38,14 @@ def test_only_overridden_hooks_are_wrapped():
 
 def test_hook_error_is_logged_once_per_interval(caplog, monkeypatch):
     now = [100.0]
-    monkeypatch.setattr(metrics_module.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(guard_module.time, "monotonic", lambda: now[0])
     guarded = guard_metrics(FailingMetrics())
 
     with caplog.at_level(logging.ERROR, logger="zenmqtt.instrumentation"):
         for _ in range(3):
             guarded.on_ping(0.1)
 
-        now[0] += metrics_module._ERROR_LOG_INTERVAL
+        now[0] += guard_module._ERROR_LOG_INTERVAL
         guarded.on_ping(0.1)
 
     logs = [record for record in caplog.records if "hook_error" in record.message]

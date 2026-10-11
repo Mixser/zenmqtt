@@ -7,6 +7,7 @@
 | [sqlite_session.py](sqlite_session.py) | custom session storage based on `BaseSession`, survives app restarts |
 | [ack.py](ack.py) | ack of processed messages, rejecting a message, flow control by `receive_maximum` |
 | [opentelemetry_metrics.py](opentelemetry_metrics.py) | client metrics with OpenTelemetry (needs `zenmqtt[otel]` and `opentelemetry-sdk`) |
+| [opentelemetry_tracing.py](opentelemetry_tracing.py) | spans of publish and processing, the trace continues from the publisher to the consumer (needs `zenmqtt[otel]` and `opentelemetry-sdk`) |
 
 ## Running
 

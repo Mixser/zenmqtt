@@ -55,7 +55,7 @@ zenmqtt/
   connection/           transports: registry of URL schemes, TCP and TLS
   mqtt/                 packets: CONNECT, PUBLISH, SUBSCRIBE, properties, limits
   mqtt/protocol/        the protocol: core and its parts
-  instrumentation/      MetricsCollector, monitors, OpenTelemetry adapter
+  instrumentation/      MetricsCollector, Tracing, monitors, OpenTelemetry adapters
 ```
 
 ## Client
@@ -415,6 +415,9 @@ flowchart LR
   with the traceback, then at most once a minute with the number of errors),
   so a broken metrics adapter can't close the connection or stop reconnect.
   Hooks which the collector doesn't override aren't wrapped and cost nothing.
+  Tracing is wrapped the same way: a publish which the server acknowledged
+  doesn't fail because its span couldn't be ended, and the tracing context
+  around `processing()` never swallows an exception of the application.
 - The protocol only calls these hooks where the event happens. The timestamps
   for durations are part of the flow state; for example, the latency of a
   re-sent message isn't counted from its first send.
@@ -422,6 +425,42 @@ flowchart LR
   report, they don't change the behaviour of the client.
 - `OpenTelemetryMetrics` exports the events as OpenTelemetry metrics. Topics
   aren't attributes, because their number isn't limited.
+
+### Tracing
+
+Tracing is optional: `MQTTClient(tracing=...)` takes a `Tracing` object, and
+`OpenTelemetryTracing` implements it. Without it, the client doesn't call any
+tracing code and OpenTelemetry isn't imported.
+
+```mermaid
+sequenceDiagram
+    participant P as Publisher
+    participant B as Broker
+    participant C as Consumer
+
+    Note over P: span "publish" (PRODUCER)
+    P->>B: PUBLISH, user property traceparent
+    B-->>P: PUBACK, the span ends
+    B->>C: PUBLISH, user property traceparent
+    Note over C: client.processing(message):<br/>span "process" (CONSUMER),<br/>parent: the "publish" span
+```
+
+- **Publish:** the span starts when `publish()` is called, so it includes the
+  waiting for a reconnect. It ends when the packet is written (QoS 0) or with
+  the final acknowledgement (QoS 1/2). A failure reason code or an exception
+  sets the error status.
+- **Propagation:** the context of the publish span is injected into the user
+  properties by the configured propagator (W3C `traceparent` by default). Keys
+  of the propagator replace the same keys of the application; other user
+  properties are kept. A re-sent message keeps the same properties, so it
+  stays in the same trace.
+- **Processing:** the application wraps the processing of a message in
+  `client.processing(message)`. The span uses the context from the message as
+  parent, or the current span if the message has no context. The span is
+  explicit, so it can't leak for messages which are never acknowledged.
+- **Span names** are `publish` and `process`, without the topic: the number of
+  topics isn't limited. The topic is the attribute
+  `messaging.destination.name`.
 
 ## Errors
 

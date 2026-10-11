@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from logging import getLogger
 from ssl import SSLContext
@@ -8,6 +9,7 @@ from typing import Any, Awaitable, Callable, Final, Optional, Sequence, TypeVar
 from zenmqtt.connection import create_connection
 from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
 from zenmqtt.instrumentation.metrics import MetricsCollector, guard_metrics
+from zenmqtt.instrumentation.tracing import Tracing, guard_tracing
 from zenmqtt.mqtt.connect import (
     SESSION_PRESENT_FLAG,
     ConnectionResult,
@@ -80,6 +82,7 @@ class MQTTClient:
         session: Optional[MQTTSession] = None,
         metrics: Optional[MetricsCollector] = None,
         reconnect: Optional[ReconnectPolicy] = DEFAULT_RECONNECT_POLICY,
+        tracing: Optional[Tracing] = None,
     ) -> None:
         """
         :param session: storage of in-flight QoS 1/2 messages, in-memory by default
@@ -87,9 +90,14 @@ class MQTTClient:
             e.g. zenmqtt.instrumentation.opentelemetry.OpenTelemetryMetrics
         :param reconnect: automatic reconnect after the connection is lost,
             None disables it; see connect() for details
+        :param tracing: spans of publish calls and of the processing of
+            messages, e.g. zenmqtt.instrumentation.opentelemetry.OpenTelemetryTracing;
+            the trace context is sent in user properties
         """
-        # hooks are guarded once here, the protocol keeps the guarded collector
+        # hooks are guarded once here, the protocol keeps the guarded collector;
+        # instrumentation never changes the behaviour of the client
         self._metrics = guard_metrics(metrics)
+        self._tracing = guard_tracing(tracing)
         self._reconnect_policy = reconnect
 
         self._session = session or build_default_session()
@@ -322,11 +330,29 @@ class MQTTClient:
             connect(clean_session); with automatic reconnect: the client
             stopped before the acknowledgement
         """
-        return await self._when_connected(
-            lambda: self._protocol.publish(
-                topic, message, qos=qos, retain=retain, properties=properties
+        if self._tracing is None:
+            return await self._when_connected(
+                lambda: self._protocol.publish(
+                    topic, message, qos=qos, retain=retain, properties=properties
+                )
             )
+
+        trace = self._tracing.start_publish(
+            self.client_id, topic, message, qos, retain, properties or {}
         )
+
+        try:
+            result = await self._when_connected(
+                lambda: self._protocol.publish(
+                    topic, message, qos=qos, retain=retain, properties=trace.properties
+                )
+            )
+        except BaseException as exc:
+            trace.end(None, exc)
+            raise
+
+        trace.end(result, None)
+        return result
 
     async def ping(self) -> None:
         """
@@ -402,6 +428,22 @@ class MQTTClient:
             doesn't send a rejected message again
         """
         await self._protocol.ack(message, reason_code)
+
+    def processing(self, message: PublishResult) -> AbstractContextManager[None]:
+        """
+        Wraps the processing of a received message for tracing: with tracing,
+        the block runs in a span which continues the trace of the publisher;
+        without tracing it does nothing.
+
+            async for message in client.messages:
+                with client.processing(message):
+                    await handle(message)
+                    await client.ack(message)
+        """
+        if self._tracing is None:
+            return nullcontext()
+
+        return self._tracing.processing(self.client_id, message)
 
     @property
     def messages(self) -> AsyncMessageIterator:
