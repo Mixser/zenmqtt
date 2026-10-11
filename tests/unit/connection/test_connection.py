@@ -1,3 +1,4 @@
+import asyncio
 import ssl
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -106,3 +107,45 @@ async def test_close(can_write_eof):
     assert writer.write_eof.called is can_write_eof
     writer.close.assert_called_once()
     writer.wait_closed.assert_awaited_once()
+
+
+async def test_write_waits_while_the_peer_doesnt_read():
+    accepted: asyncio.Future[asyncio.StreamWriter] = asyncio.Future()
+
+    # the server accepts the connection and never reads from it
+    server = await asyncio.start_server(
+        lambda reader, writer: accepted.set_result(writer), "127.0.0.1", 0
+    )
+    port = server.sockets[0].getsockname()[1]
+    reader, writer = await asyncio.open_connection("127.0.0.1", port)
+    peer = await asyncio.wait_for(accepted, 1)
+    transport = TCPConnectionTransport(reader, writer)
+    chunk = bytes(64 * 1024)
+
+    try:
+        # 32 MiB is more than the socket buffers of both sides
+        for _ in range(512):
+            try:
+                await asyncio.wait_for(transport.write(chunk), 0.5)
+            except TimeoutError:
+                break
+        else:
+            pytest.fail("write didn't wait for the peer")
+
+        # the data waits in the socket buffers, not in the memory of the process
+        assert writer.transport.get_write_buffer_size() < 1024 * 1024
+    finally:
+        writer.transport.abort()
+        peer.transport.abort()
+
+        server.close()
+        await server.wait_closed()
+
+
+async def test_write_to_a_lost_connection_doesnt_raise():
+    reader, writer = MagicMock(), MagicMock()
+    writer.drain = AsyncMock(side_effect=ConnectionResetError("Connection lost"))
+
+    await TCPConnectionTransport(reader, writer).write(b"payload")
+
+    writer.write.assert_called_once_with(b"payload")

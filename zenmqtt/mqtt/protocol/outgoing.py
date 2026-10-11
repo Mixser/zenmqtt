@@ -164,21 +164,25 @@ class OutgoingFlow:
                 packet_identifier, topic, payload, qos, retain, False, properties
             )
             connection = await self._reserve(packet_identifier, packet)
+
+            await self._session.store_outgoing_message(
+                OutgoingMessage(
+                    packet_identifier=packet_identifier,
+                    topic=topic,
+                    payload=payload,
+                    qos=qos,
+                    retain=retain,
+                    properties=properties,
+                    state=OutgoingMessageState.AWAITING_ACK,
+                )
+            )
         except BaseException:
+            # e.g. the session storage failed or the call was cancelled
+            if self._send_quota:
+                self._send_quota.release(packet_identifier)
+
             await self._session.release_packet_identifier(packet_identifier)
             raise
-
-        await self._session.store_outgoing_message(
-            OutgoingMessage(
-                packet_identifier=packet_identifier,
-                topic=topic,
-                payload=payload,
-                qos=qos,
-                retain=retain,
-                properties=properties,
-                state=OutgoingMessageState.AWAITING_ACK,
-            )
-        )
 
         # from here the message belongs to the session: if the connection was
         # lost meanwhile, it'll be re-sent on the next connect

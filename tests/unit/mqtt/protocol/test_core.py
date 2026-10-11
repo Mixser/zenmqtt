@@ -1,6 +1,7 @@
 """Connection lifecycle, the read loop and server DISCONNECT."""
 import asyncio
 import logging
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -10,14 +11,18 @@ from tests.unit.mqtt.protocol.helpers import (
     build_protocol,
     connect,
     expect,
+    expect_disconnect,
     expect_publish,
     pack_connack,
+    pack_publish,
+    receive_and_ack,
     wait_for_connection_lost,
 )
 from zenmqtt.connection import MQTTConnection
 from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
 from zenmqtt.mqtt.connect import DisconnectResult, WillMessage, parse_disconnect_packet
 from zenmqtt.mqtt.packet import PacketType
+from zenmqtt.mqtt.publish import pack_pubrel_packet
 
 
 async def test_failed_connack_is_returned():
@@ -173,3 +178,40 @@ async def test_server_disconnect_is_none_when_connection_dropped():
 
     assert exc_info.value.server_disconnect is None
     assert protocol.server_disconnect is None
+
+
+@pytest.mark.parametrize(
+    "packet, reason_code",
+    (
+        # the reserved type 0: Malformed Packet
+        (b"\x00\x00", 0x81),
+        # CONNECT and PINGREQ are sent only by clients: Protocol Error
+        (b"\x10\x00", 0x82),
+        (b"\xc0\x00", 0x82),
+    ),
+)
+async def test_unexpected_packet_type_closes_the_connection(packet, reason_code):
+    protocol, _, _ = build_protocol()
+    transport = await connect(protocol)
+
+    transport.feed(packet)
+
+    await expect_disconnect(transport, reason_code)
+    await wait_for_connection_lost(protocol)
+
+
+async def test_failed_handler_closes_the_connection():
+    protocol, session, messages = build_protocol()
+    transport = await connect(protocol)
+
+    transport.feed(pack_publish(1, qos=2))
+    await receive_and_ack(protocol, messages)
+    await expect(transport, PacketType.PUBREC)
+
+    # without PUBCOMP the QoS 2 flow would hang until a reconnect
+    session.complete_incoming_message = AsyncMock(side_effect=OSError("disk is full"))
+    transport.feed(pack_pubrel_packet(1, 0, {}))
+
+    # Implementation specific error
+    await expect_disconnect(transport, 0x83)
+    await wait_for_connection_lost(protocol)

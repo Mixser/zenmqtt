@@ -4,7 +4,7 @@ from logging import getLogger
 from typing import Awaitable, Callable, Optional, Sequence
 
 from zenmqtt.connection import MQTTConnection
-from zenmqtt.exceptions import ConnectionLostError, ProtocolError
+from zenmqtt.exceptions import ConnectionLostError, MalformedPacketError, ProtocolError
 from zenmqtt.metrics import MetricsCollector
 from zenmqtt.mqtt.connect import (
     SESSION_PRESENT_FLAG,
@@ -31,7 +31,7 @@ from zenmqtt.mqtt.publish import (
     PublishProperties,
     PublishResult,
 )
-from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE
+from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE, IMPLEMENTATION_SPECIFIC_ERROR
 from zenmqtt.mqtt.session import MQTTSession
 from zenmqtt.mqtt.subscribe import (
     SubscribeResult,
@@ -320,26 +320,37 @@ class MQTTProtocol:
                 self._context.metrics.on_packet_received(header.packet_type, size)
 
                 if (handler := self._handlers.get(header.packet_type)) is None:
-                    raise ValueError(f"Invalid packet type: {header.packet_type}")
+                    # type 0 is reserved, the others are sent only by clients
+                    raise (
+                        MalformedPacketError
+                        if header.packet_type == PacketType.RESERVED
+                        else ProtocolError
+                    )(f"Unexpected packet type: {header.packet_type.name}")
 
                 try:
                     await handler(header, reader)
                 except ProtocolError:
                     raise
                 except Exception as exc:
+                    # e.g. the session storage failed: the state of the flow
+                    # is unknown, so the connection is closed; after reconnect
+                    # the session and the server re-send what isn't completed
                     logger.error(
                         "mqtt_protocol.handle_incoming_packet.error", exc_info=exc
                     )
+                    await self._abort(connection, IMPLEMENTATION_SPECIFIC_ERROR)
+                    return
         except ProtocolError as exc:
             logger.error("mqtt_protocol.protocol_error", exc_info=exc)
-            await self._context.write(
-                connection, pack_disconnect_packet(exc.reason_code, {})
-            )
-            await connection.disconnect()
+            await self._abort(connection, exc.reason_code)
         except Exception as exc:
             logger.error("mqtt_protocol.read_loop.error", exc_info=exc)
         finally:
             await self._handle_connection_lost(connection)
+
+    async def _abort(self, connection: MQTTConnection, reason_code: int) -> None:
+        await self._context.write(connection, pack_disconnect_packet(reason_code, {}))
+        await connection.disconnect()
 
     async def _handle_connection_lost(self, connection: MQTTConnection) -> None:
         logger.debug("mqtt_protocol.handle_connection_lost")

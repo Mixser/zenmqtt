@@ -21,6 +21,9 @@ class StreamWriter(Protocol):
     def write(self, payload: bytes) -> None:
         ...
 
+    async def drain(self) -> None:
+        ...
+
     def write_eof(self) -> None:
         ...
 
@@ -44,6 +47,15 @@ class TCPConnectionTransport(MQTTConnectionTransport):
 
     async def write(self, payload: bytes) -> None:
         self._writer.write(payload)
+
+        # backpressure: waits while the send buffer is above its high-water
+        # mark (64 KiB by default), e.g. the broker doesn't read
+        try:
+            await self._writer.drain()
+        except ConnectionError:
+            # the connection is lost, the read loop handles it; the data is
+            # lost like with a write to a closed transport
+            pass
 
     async def close(self) -> None:
         self._reader.feed_eof()
