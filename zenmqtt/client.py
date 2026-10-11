@@ -141,7 +141,7 @@ class MQTTClient:
         self,
         url: str,
         *,
-        clean_session: bool = False,
+        clean_start: bool = False,
         keepalive: int = DEFAULT_KEEP_ALIVE,
         properties: Optional[ConnectProperties] = None,
         will: Optional[WillMessage] = None,
@@ -156,7 +156,7 @@ class MQTTClient:
 
         :param url: tcp://host[:port] or mqtts://host[:port] for TLS, the default
             port is 1883 for tcp:// and 8883 for mqtts://
-        :param clean_session: discard the session on the server and the client;
+        :param clean_start: discard the session on the server and the client;
             to re-send QoS 1/2 messages after a reconnect use False together
             with properties={"session_expiry_interval": <seconds>}, otherwise
             the server drops the session when the connection is closed
@@ -183,9 +183,9 @@ class MQTTClient:
                 "subscriptions"
             )
 
-        connack = await self._connect(clean_session)
+        connack = await self._connect(clean_start)
 
-        if connack.result_code >= FAILURE_REASON_CODE:
+        if connack.reason_code >= FAILURE_REASON_CODE:
             return connack
 
         self._stopped = False
@@ -197,7 +197,7 @@ class MQTTClient:
                 self._reconnect_policy,
                 self._protocol,
                 self._metrics,
-                connect=lambda: self._connect(clean_session=False),
+                connect=lambda: self._connect(clean_start=False),
                 connection_lost=self._on_connection_lost,
                 reconnected=self._on_reconnected,
                 gave_up=self._on_gave_up,
@@ -210,7 +210,7 @@ class MQTTClient:
 
     async def disconnect(
         self,
-        reason: int = 0,
+        reason_code: int = 0,
         properties: Optional[DisconnectProperties] = None,
         *,
         timeout: Optional[float] = None,
@@ -227,7 +227,7 @@ class MQTTClient:
         automatic reconnect) and the re-sent messages are waited for too. QoS 0
         messages are sent at once, so they aren't waited for.
 
-        :param reason: reason code of DISCONNECT, e.g. 0x04 "Disconnect with
+        :param reason_code: reason code of DISCONNECT, e.g. 0x04 "Disconnect with
             Will Message" asks the server to publish the will message
         :param timeout: seconds to wait for messages in flight; None
             disconnects at once
@@ -246,7 +246,7 @@ class MQTTClient:
             self._reconnector = None
             await reconnector.stop()
 
-        await self._protocol.disconnect(reason=reason, properties=properties)
+        await self._protocol.disconnect(reason_code=reason_code, properties=properties)
 
         self._set_connected(False)
 
@@ -327,7 +327,7 @@ class MQTTClient:
         :raises ConnectionLostError: without automatic reconnect: the connection
             was lost before the acknowledgement, the message will be re-sent on
             the next connect only if the server keeps the session, see
-            connect(clean_session); with automatic reconnect: the client
+            connect(clean_start); with automatic reconnect: the client
             stopped before the acknowledgement
         """
         if self._tracing is None:
@@ -479,7 +479,7 @@ class MQTTClient:
         finally:
             self._reading = False
 
-    async def _connect(self, clean_session: bool) -> ConnectionResult:
+    async def _connect(self, clean_start: bool) -> ConnectionResult:
         options = self._connect_options
         assert options
 
@@ -491,7 +491,7 @@ class MQTTClient:
                 self.client_id,
                 self._username,
                 self._password,
-                clean_session,
+                clean_start,
                 options.keepalive,
                 options.properties,
                 options.will,
@@ -502,7 +502,7 @@ class MQTTClient:
                 await connection.disconnect()
             raise
 
-        if connack.result_code >= FAILURE_REASON_CODE:
+        if connack.reason_code >= FAILURE_REASON_CODE:
             # the server closes the connection anyway
             if not connection.is_closing():
                 await connection.disconnect()

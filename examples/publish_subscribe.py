@@ -22,7 +22,7 @@ async def main():
     if MQTT_USERNAME:
         client.authorize(MQTT_USERNAME, MQTT_PASSWORD)
 
-    connection_result = await client.connect(MQTT_URL, clean_session=True)
+    connection_result = await client.connect(MQTT_URL, clean_start=True)
     print("connected:", connection_result)
 
     subscribe_result = await client.subscribe([(TOPIC, 2)])
