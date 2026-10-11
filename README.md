@@ -137,10 +137,17 @@ client.on_disconnect = lambda exc: print("connection lost", exc)
 ### Receiving and acknowledging messages
 
 Every QoS 1/2 message from `client.messages` must be acknowledged with
-`client.ack(message)`; `ack()` does nothing for QoS 0. Acknowledgements are
-sent in the order the messages were received. Messages which aren't
+`client.ack(message)`; `ack()` does nothing for QoS 0. Messages which aren't
 acknowledged count to `receive_maximum` of the connect properties: when it's
 reached, the broker stops sending QoS 1/2 messages until the client acks.
+
+MQTT 5 requires acknowledgements in the order the messages were received. So
+one message which isn't acknowledged holds back the acknowledgements of all
+messages received after it, even if they are already processed, and they keep
+counting to `receive_maximum`. If messages are processed concurrently, make
+sure every message is acknowledged, also when its processing fails (ack it
+with a failure reason code). When a message holds back later
+acknowledgements for 30 seconds, a warning is logged.
 
 ```python
 async for message in client.messages:

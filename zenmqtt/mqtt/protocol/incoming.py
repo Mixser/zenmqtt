@@ -36,11 +36,16 @@ _BUFFERED_WARNING_INTERVAL: Final[float] = 10.0
 # seconds between reports of the buffer size to metrics while it's above the
 # warning threshold; it changes with every message, the last value is enough
 _BUFFERED_REPORT_INTERVAL: Final[float] = 0.1
+# seconds after which a not acknowledged message which holds back acks of
+# later messages is logged
+ACK_BLOCKED_WARNING: Final[float] = 30.0
 
 
 @dataclass(slots=True)
 class _PendingAck:
     message: PublishResult
+    # loop time
+    received_at: float
     acked: bool = False
     reason_code: int = 0
 
@@ -90,6 +95,9 @@ class IncomingFlow:
 
         self._state = _ConnectionState()
         self._ack_lock = asyncio.Lock()
+        # warns about the first not acknowledged message which holds back acks
+        self._ack_blocked_timer: Optional[asyncio.TimerHandle] = None
+        self._ack_blocked_head: Optional[_PendingAck] = None
 
         # messages which wait for delivery to the messages queue; None marks
         # the end of messages
@@ -155,12 +163,23 @@ class IncomingFlow:
 
             state.inflight.add(packet_identifier)
 
+        if packet_identifier in state.pending_acks:
+            # the server sent the message again before the ack: the pending
+            # ack answers both, the message isn't delivered again (MQTT 5,
+            # 4.3.3)
+            logger.debug(
+                "mqtt_protocol.handle_publish_packet.duplicate pid:%s",
+                packet_identifier,
+            )
+            self._context.metrics.on_message_received(message.qos, True)
+            return
+
         duplicate = message.qos == 2 and await self._session.has_incoming_message(
             packet_identifier
         )
         self._context.metrics.on_message_received(message.qos, duplicate)
 
-        pending = _PendingAck(message)
+        pending = _PendingAck(message, self._context.now())
         state.pending_acks[packet_identifier] = pending
 
         if duplicate:
@@ -204,8 +223,11 @@ class IncomingFlow:
     async def ack(self, message: PublishResult, reason_code: int = 0) -> None:
         """
         Acknowledges a message: PUBACK for QoS 1, PUBREC for QoS 2, nothing for
-        QoS 0. Acks are sent in the order messages were received, so an ack
-        waits for the acks of earlier messages.
+        QoS 0. Acks are sent in the order messages were received (MQTT 5, 4.6),
+        so an ack waits for the acks of earlier messages: one message which
+        isn't acknowledged holds back the acks of all later ones, and they
+        count to "Receive Maximum". A warning is logged when such a message
+        isn't acknowledged for ACK_BLOCKED_WARNING seconds.
 
         :param reason_code: 0 or >= 0x80 to reject the message; the server
             doesn't re-send a rejected message
@@ -238,6 +260,7 @@ class IncomingFlow:
                 packet_identifier, pending = next(iter(pending_acks.items()))
 
                 if not pending.acked:
+                    self._watch_blocked_ack(state, pending)
                     return
 
                 del pending_acks[packet_identifier]
@@ -273,6 +296,43 @@ class IncomingFlow:
                     reason_code,
                 )
                 await self._context.write(connection, packet)
+
+    def _watch_blocked_ack(self, state: _ConnectionState, head: _PendingAck) -> None:
+        """One timer for the first not acknowledged message, not per message."""
+        if head is self._ack_blocked_head:
+            return
+
+        if self._ack_blocked_timer:
+            self._ack_blocked_timer.cancel()
+
+        self._ack_blocked_head = head
+        self._ack_blocked_timer = asyncio.get_running_loop().call_at(
+            head.received_at + ACK_BLOCKED_WARNING,
+            self._warn_blocked_ack,
+            state,
+            head,
+        )
+
+    def _warn_blocked_ack(self, state: _ConnectionState, head: _PendingAck) -> None:
+        self._ack_blocked_timer = None
+        packet_identifier = cast(int, head.message.packet_identifier)
+
+        # acknowledged meanwhile or received by the previous connection
+        if state is not self._state or head.acked:
+            return
+
+        if state.pending_acks.get(packet_identifier) is not head:
+            return
+
+        logger.warning(
+            "mqtt_protocol.ack_blocked: the message pid:%s topic:%s isn't "
+            "acknowledged for %.0f s; acks are sent in the order of receiving, "
+            "so %s later messages wait for it",
+            packet_identifier,
+            head.message.topic,
+            self._context.now() - head.received_at,
+            len(state.pending_acks) - 1,
+        )
 
     def _resolve_topic_alias(self, message: PublishResult) -> PublishResult:
         topic_alias = message.properties.get("topic_alias")
