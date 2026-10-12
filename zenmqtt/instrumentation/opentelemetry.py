@@ -134,9 +134,9 @@ class OpenTelemetryMetrics(MetricsCollector):
             }
             for qos in (0, 1, 2)
         }
-        self._published_attributes: dict[tuple[int, int], dict[str, AttributeValue]] = (
-            {}
-        )
+        self._published_attributes: dict[
+            tuple[int, int], dict[str, AttributeValue]
+        ] = {}
         self._buffered_messages = meter.create_gauge(
             "zenmqtt.messages.buffered",
             unit="{message}",

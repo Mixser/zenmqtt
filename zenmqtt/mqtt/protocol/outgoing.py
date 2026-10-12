@@ -365,8 +365,7 @@ class OutgoingFlow:
                 except ServerLimitError as exc:
                     # the server would close the connection on every re-send
                     logger.warning(
-                        "mqtt_protocol.resend_pending_message.discard pid:%s "
-                        "reason:%s",
+                        "mqtt_protocol.resend_pending_message.discard pid:%s reason:%s",
                         packet_identifier,
                         exc,
                     )

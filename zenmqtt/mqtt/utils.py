@@ -3,7 +3,7 @@ import struct
 from zenmqtt.mqtt.packet import PacketType
 
 
-def pack_variable_byte_integer(value: int) -> bytes:
+def pack_variable_byte_integer(value: int) -> bytearray:
     result = bytearray()
 
     while True:

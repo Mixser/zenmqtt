@@ -333,8 +333,8 @@ manual step which compares its performance with `main`, and the history of
 
 ```sh
 poetry install            # add --with bench for the aiomqtt comparison
-make fmt                  # black, isort
-make lint                 # black, flake8, mypy
+make fmt                  # ruff: sorts imports, formats
+make lint                 # ruff (format check, lint), mypy
 make test                 # pytest with coverage
 make test/integration     # against a broker, MQTT_INTEGRATION_URL=tcp://localhost:1883
 make bench                # benchmarks, a broker is needed for some scenarios

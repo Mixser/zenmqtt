@@ -86,16 +86,14 @@ def test_pack_connect_packet(
             None,
             "password",
             {},
-            b"\x10\x20\x00\x04MQTT\x05\x40\x00\x00\x00"
-            b"\x00\tclient-id\x00\x08password",
+            b"\x10\x20\x00\x04MQTT\x05\x40\x00\x00\x00\x00\tclient-id\x00\x08password",
         ),
         # empty username and password are sent
         (
             "",
             "",
             {},
-            b"\x10\x1a\x00\x04MQTT\x05\xc0\x00\x00\x00"
-            b"\x00\tclient-id\x00\x00\x00\x00",
+            b"\x10\x1a\x00\x04MQTT\x05\xc0\x00\x00\x00\x00\tclient-id\x00\x00\x00\x00",
         ),
         (
             None,
