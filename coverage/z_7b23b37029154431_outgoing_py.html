@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_7b23b37029154431_stream_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-12 20:38 +0000
+            created at 2026-10-12 20:49 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -396,9 +396,9 @@
     <p class="run"><span class="n"><a id="t312" href="#t312">312</a></span><span class="t">        <span class="key">if</span> <span class="key">not</span> <span class="nam">connected</span> <span class="key">and</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_closed_with</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t313" href="#t313">313</a></span><span class="t">            <span class="key">raise</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_closed_with</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t314" href="#t314">314</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t315" href="#t315">315</a></span><span class="t">        <span class="nam">future</span><span class="op">:</span> <span class="nam">asyncio</span><span class="op">.</span><span class="nam">Future</span><span class="op">[</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t316" href="#t316">316</a></span><span class="t">            <span class="nam">PublishAcknowledgement</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t317" href="#t317">317</a></span><span class="t">        <span class="op">]</span> <span class="op">=</span> <span class="nam">asyncio</span><span class="op">.</span><span class="nam">get_running_loop</span><span class="op">(</span><span class="op">)</span><span class="op">.</span><span class="nam">create_future</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t315" href="#t315">315</a></span><span class="t">        <span class="nam">future</span><span class="op">:</span> <span class="nam">asyncio</span><span class="op">.</span><span class="nam">Future</span><span class="op">[</span><span class="nam">PublishAcknowledgement</span><span class="op">]</span> <span class="op">=</span> <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t316" href="#t316">316</a></span><span class="t">            <span class="nam">asyncio</span><span class="op">.</span><span class="nam">get_running_loop</span><span class="op">(</span><span class="op">)</span><span class="op">.</span><span class="nam">create_future</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t317" href="#t317">317</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t318" href="#t318">318</a></span><span class="t">        <span class="nam">pending</span> <span class="op">=</span> <span class="nam">_PendingPublish</span><span class="op">(</span><span class="nam">qos</span><span class="op">,</span> <span class="nam">future</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t319" href="#t319">319</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_pending</span><span class="op">[</span><span class="nam">packet_identifier</span><span class="op">]</span> <span class="op">=</span> <span class="nam">pending</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t320" href="#t320">320</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -527,7 +527,7 @@
             <a class="nav" href="z_7b23b37029154431_stream_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-12 20:38 +0000
+            created at 2026-10-12 20:49 +0000
         </p>
     </div>
 </footer>
