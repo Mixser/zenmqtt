@@ -4,7 +4,7 @@
 
 ```sh
 poetry install --with bench          # aiomqtt for the comparison, optional
-docker run --rm -p 1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf
+make local/infrastructure/up         # Mosquitto on localhost:1883
 
 make bench                           # all scenarios, all available clients
 MQTT_URL=tcp://localhost:1883 make bench ARGS="--scenarios publish --qos 1 --messages 50000"
