@@ -37,6 +37,22 @@ def test_types_of_client_methods_are_exported():
                 assert type_ in vars(zenmqtt).values(), (name, type_)
 
 
+def test_errors_have_one_base():
+    errors = [
+        value
+        for value in vars(zenmqtt.exceptions).values()
+        if isinstance(value, type) and issubclass(value, Exception)
+    ]
+
+    assert len(errors) > 10
+    for error in errors:
+        assert issubclass(error, zenmqtt.MQTTError), error
+
+    # ValueError before MQTTError: except ValueError still catches them
+    assert issubclass(zenmqtt.ServerLimitError, ValueError)
+    assert issubclass(zenmqtt.ProtocolError, ValueError)
+
+
 def test_version():
     assert isinstance(zenmqtt.__version__, str) and zenmqtt.__version__
 

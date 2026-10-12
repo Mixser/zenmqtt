@@ -4,15 +4,19 @@ if TYPE_CHECKING:
     from zenmqtt.mqtt.connect import ServerDisconnect
 
 
-class MQTTConnectionError(Exception):
-    pass
+class MQTTError(Exception):
+    """Base of all errors of the client: except MQTTError catches any of them."""
 
 
-class NotConnectedError(MQTTConnectionError):
+class ClientConnectionError(MQTTError):
+    """The client isn't connected or the connection was lost."""
+
+
+class NotConnectedError(ClientConnectionError):
     """Operation was requested while the client isn't connected."""
 
 
-class ConnectionLostError(MQTTConnectionError):
+class ConnectionLostError(ClientConnectionError):
     """
     Connection was lost before the operation was acknowledged.
 
@@ -40,7 +44,7 @@ class SessionLostError(ConnectionLostError):
         self.args = ("The server didn't keep the session, the message was discarded",)
 
 
-class ServerLimitError(ValueError):
+class ServerLimitError(MQTTError, ValueError):
     """
     The operation breaks a limit which the server sent in CONNACK;
     nothing is sent to the server.
@@ -51,7 +55,7 @@ class QoSNotSupportedError(ServerLimitError):
     """QoS of the message is higher than "Maximum QoS" of the server."""
 
 
-class PacketTooLargeError(ServerLimitError):
+class OutgoingPacketTooLargeError(ServerLimitError):
     """The packet is bigger than "Maximum Packet Size" of the server."""
 
 
@@ -62,7 +66,7 @@ class FeatureNotSupportedError(ServerLimitError):
     """
 
 
-class ProtocolError(ValueError):
+class ProtocolError(MQTTError, ValueError):
     """
     A received packet violates the protocol; the client closes the connection
     with DISCONNECT and the reason code of the error.

@@ -259,10 +259,12 @@ re-sent. QoS 0 messages aren't waited for.
 | `NotConnectedError` | the client isn't connected and doesn't reconnect |
 | `ConnectionLostError` | the connection was lost before the acknowledgement (without reconnect) |
 | `SessionLostError` | the broker didn't keep the session, the message was discarded |
-| `QoSNotSupportedError`, `PacketTooLargeError`, `FeatureNotSupportedError` | the operation breaks a limit of the broker from CONNACK (all are `ServerLimitError`); nothing is sent |
+| `QoSNotSupportedError`, `OutgoingPacketTooLargeError`, `FeatureNotSupportedError` | the operation breaks a limit of the broker from CONNACK (all are `ServerLimitError`); nothing is sent |
 | `ValueError` | invalid arguments, e.g. QoS 3 |
 
-All exceptions can be imported from `zenmqtt`. Protocol violations of the broker
+All exceptions can be imported from `zenmqtt`, and all of them are `MQTTError`:
+`except MQTTError` catches any error of the client. `NotConnectedError` and
+`ConnectionLostError` are `ClientConnectionError`. Protocol violations of the broker
 (malformed packets, invalid topic aliases, ...) close the connection with the
 matching DISCONNECT reason code.
 

@@ -11,13 +11,14 @@ from importlib.metadata import PackageNotFoundError, version
 
 from zenmqtt.client import MQTTClient
 from zenmqtt.exceptions import (
+    ClientConnectionError,
     ConnectionLostError,
     FeatureNotSupportedError,
     IncomingPacketTooLargeError,
     MalformedPacketError,
-    MQTTConnectionError,
+    MQTTError,
     NotConnectedError,
-    PacketTooLargeError,
+    OutgoingPacketTooLargeError,
     ProtocolError,
     QoSNotSupportedError,
     ReceiveMaximumExceededError,
@@ -70,6 +71,7 @@ except PackageNotFoundError:  # pragma: no cover - running from sources
 
 __all__ = [
     "BaseSession",
+    "ClientConnectionError",
     "ConnectionLostError",
     "ConnectionResult",
     "ConnectProperties",
@@ -80,14 +82,14 @@ __all__ = [
     "MalformedPacketError",
     "MetricsCollector",
     "MQTTClient",
-    "MQTTConnectionError",
+    "MQTTError",
     "MQTTMessage",
     "MQTTSession",
     "NotConnectedError",
     "OutgoingMessage",
     "OutgoingMessageState",
+    "OutgoingPacketTooLargeError",
     "PacketIdentifier",
-    "PacketTooLargeError",
     "ProtocolError",
     "PubAckResult",
     "PubCompResult",

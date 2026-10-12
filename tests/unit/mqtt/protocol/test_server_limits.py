@@ -29,7 +29,7 @@ from tests.unit.mqtt.protocol.helpers import (
 from zenmqtt.exceptions import (
     ConnectionLostError,
     FeatureNotSupportedError,
-    PacketTooLargeError,
+    OutgoingPacketTooLargeError,
     QoSNotSupportedError,
 )
 from zenmqtt.mqtt.packet import PacketType
@@ -80,7 +80,7 @@ async def test_publish_bigger_than_maximum_packet_size(qos):
     protocol, session, _ = build_protocol()
     transport = await connect(protocol, properties=maximum_packet_size(30))
 
-    with pytest.raises(PacketTooLargeError):
+    with pytest.raises(OutgoingPacketTooLargeError):
         await asyncio.wait_for(protocol.publish("a/b", b"x" * 30, qos=qos), TIMEOUT)
 
     await assert_nothing_leaked(transport, session)
@@ -181,10 +181,10 @@ async def test_subscribe_and_unsubscribe_bigger_than_maximum_packet_size():
     protocol, session, _ = build_protocol()
     transport = await connect(protocol, properties=maximum_packet_size(20))
 
-    with pytest.raises(PacketTooLargeError):
+    with pytest.raises(OutgoingPacketTooLargeError):
         await asyncio.wait_for(protocol.subscribe([("a" * 20, 0)]), TIMEOUT)
 
-    with pytest.raises(PacketTooLargeError):
+    with pytest.raises(OutgoingPacketTooLargeError):
         await asyncio.wait_for(protocol.unsubscribe(["a" * 20]), TIMEOUT)
 
     await assert_nothing_leaked(transport, session)

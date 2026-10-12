@@ -2,7 +2,7 @@ import pytest
 
 from zenmqtt.exceptions import (
     FeatureNotSupportedError,
-    PacketTooLargeError,
+    OutgoingPacketTooLargeError,
     QoSNotSupportedError,
     ServerLimitError,
 )
@@ -134,7 +134,7 @@ def test_check_packet_size():
 
     limits.check_packet_size(b"\x00" * 4)
 
-    with pytest.raises(PacketTooLargeError):
+    with pytest.raises(OutgoingPacketTooLargeError):
         limits.check_packet_size(b"\x00" * 5)
 
     DEFAULT_SERVER_LIMITS.check_packet_size(b"\x00" * 2**20)
@@ -143,5 +143,9 @@ def test_check_packet_size():
 def test_errors_are_value_errors():
     assert issubclass(ServerLimitError, ValueError)
 
-    for error in (QoSNotSupportedError, PacketTooLargeError, FeatureNotSupportedError):
+    for error in (
+        QoSNotSupportedError,
+        OutgoingPacketTooLargeError,
+        FeatureNotSupportedError,
+    ):
         assert issubclass(error, ServerLimitError)
