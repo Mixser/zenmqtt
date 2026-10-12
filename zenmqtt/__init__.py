@@ -35,7 +35,7 @@ from zenmqtt.mqtt.connect import (
     WillProperties,
 )
 from zenmqtt.mqtt.publish import (
-    Message,
+    MQTTMessage,
     PubAckResult,
     PubCompResult,
     PublishAcknowledgement,
@@ -78,10 +78,10 @@ __all__ = [
     "IncomingPacketTooLargeError",
     "InMemorySession",
     "MalformedPacketError",
-    "Message",
     "MetricsCollector",
     "MQTTClient",
     "MQTTConnectionError",
+    "MQTTMessage",
     "MQTTSession",
     "NotConnectedError",
     "OutgoingMessage",

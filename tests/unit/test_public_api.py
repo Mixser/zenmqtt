@@ -18,7 +18,7 @@ def test_root_exports():
 
 
 def _types(hint):
-    """Classes and aliases of zenmqtt in an annotation, e.g. Optional[Message]."""
+    """Classes and aliases of zenmqtt in an annotation, e.g. Optional[MQTTMessage]."""
     if getattr(hint, "__module__", "").startswith("zenmqtt"):
         yield hint
 

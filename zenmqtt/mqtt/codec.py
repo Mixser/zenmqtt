@@ -11,7 +11,7 @@ from zenmqtt.mqtt.connect import (
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader, PacketType
 from zenmqtt.mqtt.ping import PingRespResult, parse_pingresp_packet
 from zenmqtt.mqtt.publish import (
-    Message,
+    MQTTMessage,
     PubAckResult,
     PubCompResult,
     PubRecResult,
@@ -31,7 +31,7 @@ from zenmqtt.mqtt.subscribe import (
 
 # packets a client receives from the server
 IncomingPacket = Union[
-    Message,
+    MQTTMessage,
     PubAckResult,
     PubRecResult,
     PubRelResult,

@@ -26,7 +26,7 @@ from zenmqtt.instrumentation.metrics import MetricsCollector
 from zenmqtt.instrumentation.tracing import PublishTrace, Tracing
 from zenmqtt.mqtt.packet import PacketType
 from zenmqtt.mqtt.publish import (
-    Message,
+    MQTTMessage,
     PublishAcknowledgement,
     PublishProperties,
 )
@@ -407,7 +407,7 @@ class OpenTelemetryTracing(Tracing):
         return _PublishSpan(properties, span)
 
     @contextmanager
-    def trace(self, client_id: str, message: Message) -> Iterator[None]:
+    def trace(self, client_id: str, message: MQTTMessage) -> Iterator[None]:
         # without a context in the message, the current span is the parent
         parent = self._get_propagator().extract(
             message.properties.get("user_property", ()),

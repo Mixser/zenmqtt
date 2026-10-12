@@ -147,7 +147,7 @@ is only in the client.
 `set_connection()` starts one read loop task per connection. `PacketReader`
 reads the socket in chunks of 64 KiB and returns whole packets; all complete
 packets in the buffer are returned before the next read. `decode()` in
-`mqtt/codec.py` parses each packet into its result type (`Message`,
+`mqtt/codec.py` parses each packet into its result type (`MQTTMessage`,
 `PubAckResult`, ...), and the read loop passes it to a handler by that type.
 Handlers get parsed packets only, they never read bytes.
 

@@ -8,7 +8,7 @@ from logging import getLogger
 from typing import Callable, Final, Optional
 
 from zenmqtt.instrumentation.metrics import MetricsCollector
-from zenmqtt.mqtt.publish import Message
+from zenmqtt.mqtt.publish import MQTTMessage
 
 logger = getLogger(__name__)
 
@@ -89,12 +89,12 @@ class AckBlockedMonitor:
     """
 
     def __init__(self) -> None:
-        self._message: Optional[Message] = None
+        self._message: Optional[MQTTMessage] = None
         self._timer: Optional[asyncio.TimerHandle] = None
 
     def watch(
         self,
-        message: Message,
+        message: MQTTMessage,
         received_at: float,
         waiting: Callable[[], Optional[int]],
     ) -> None:

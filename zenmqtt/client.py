@@ -21,7 +21,7 @@ from zenmqtt.mqtt.connect import (
 )
 from zenmqtt.mqtt.protocol import MQTTProtocol
 from zenmqtt.mqtt.publish import (
-    Message,
+    MQTTMessage,
     PublishAcknowledgement,
     PublishProperties,
 )
@@ -54,14 +54,14 @@ OnDisconnect = Callable[[ConnectionLostError], Any]
 
 class AsyncMessageIterator:
     def __init__(
-        self, next_message: Callable[[], Awaitable[Optional[Message]]]
+        self, next_message: Callable[[], Awaitable[Optional[MQTTMessage]]]
     ) -> None:
         self._next_message = next_message
 
     def __aiter__(self) -> "AsyncMessageIterator":
         return self
 
-    async def __anext__(self) -> Message:
+    async def __anext__(self) -> MQTTMessage:
         value = await self._next_message()
 
         if value is None:
@@ -452,7 +452,7 @@ class MQTTClient:
 
         return result
 
-    async def ack(self, message: Message, reason_code: int = 0) -> None:
+    async def ack(self, message: MQTTMessage, reason_code: int = 0) -> None:
         """
         Acknowledges a processed message: sends PUBACK for QoS 1 and PUBREC for
         QoS 2, does nothing for QoS 0. Every QoS 1/2 message from
@@ -473,7 +473,7 @@ class MQTTClient:
         """
         await self._protocol.ack(message, reason_code)
 
-    def trace(self, message: Message) -> AbstractContextManager[None]:
+    def trace(self, message: MQTTMessage) -> AbstractContextManager[None]:
         """
         Wraps the processing of a received message for tracing: with tracing,
         the block runs in a span which continues the trace of the publisher;
@@ -509,7 +509,7 @@ class MQTTClient:
         """
         return AsyncMessageIterator(self._next_message)
 
-    async def _next_message(self) -> Optional[Message]:
+    async def _next_message(self) -> Optional[MQTTMessage]:
         if self._reading:
             raise RuntimeError(
                 "client.messages is read by another task; read messages in one "

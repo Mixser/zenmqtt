@@ -7,7 +7,7 @@ from zenmqtt.mqtt.connect import ConnectionResult, ServerDisconnect
 from zenmqtt.mqtt.packet import split_packet
 from zenmqtt.mqtt.ping import PingRespResult
 from zenmqtt.mqtt.publish import (
-    Message,
+    MQTTMessage,
     PubAckResult,
     PubCompResult,
     PubRecResult,
@@ -20,7 +20,7 @@ from zenmqtt.mqtt.subscribe import SubscribeResult, UnsubscribeResult
     "input, result_type",
     (
         (b"\x20\x03\x00\x00\x00", ConnectionResult),
-        (b"\x30\x06\x00\x03a/b\x00", Message),
+        (b"\x30\x06\x00\x03a/b\x00", MQTTMessage),
         (b"\x40\x02\x00\x01", PubAckResult),
         (b"\x50\x02\x00\x01", PubRecResult),
         (b"\x62\x02\x00\x01", PubRelResult),

@@ -27,7 +27,7 @@ from zenmqtt.mqtt.protocol.keepalive import KeepAlive
 from zenmqtt.mqtt.protocol.outgoing import OutgoingFlow
 from zenmqtt.mqtt.protocol.stream import PacketReader
 from zenmqtt.mqtt.publish import (
-    Message,
+    MQTTMessage,
     PubAckResult,
     PubCompResult,
     PublishAcknowledgement,
@@ -225,14 +225,14 @@ class MQTTProtocol:
     ) -> Optional[PublishAcknowledgement]:
         return await self._outgoing.publish(topic, payload, qos, retain, properties)
 
-    async def next_message(self) -> Optional[Message]:
+    async def next_message(self) -> Optional[MQTTMessage]:
         """
         The next incoming message, None after close(); QoS 1/2 messages must
         be acknowledged by ack(). Meant for one reader, see MQTTClient.messages.
         """
         return await self._incoming.next_message()
 
-    async def ack(self, message: Message, reason_code: int = 0) -> None:
+    async def ack(self, message: MQTTMessage, reason_code: int = 0) -> None:
         await self._incoming.ack(message, reason_code)
 
     async def subscribe(
@@ -334,7 +334,7 @@ class MQTTProtocol:
 
     async def _dispatch(self, packet: IncomingPacket) -> None:
         match packet:
-            case Message():
+            case MQTTMessage():
                 await self._incoming.handle_publish(packet)
             case PubAckResult():
                 await self._outgoing.handle_puback(packet)

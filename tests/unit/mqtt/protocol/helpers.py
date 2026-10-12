@@ -12,7 +12,7 @@ from zenmqtt.mqtt.connect import ConnectProperties, ServerDisconnect
 from zenmqtt.mqtt.packet import PacketType, split_packet
 from zenmqtt.mqtt.protocol import MQTTProtocol
 from zenmqtt.mqtt.publish import (
-    Message,
+    MQTTMessage,
     PubAckResult,
     PubRecResult,
     pack_publish_packet,
@@ -238,8 +238,8 @@ async def expect_unsubscribe(transport: FakeTransport) -> int:
     return await _expect_packet_identifier(transport, PacketType.UNSUBSCRIBE)
 
 
-async def expect_publish(transport: FakeTransport) -> Message:
-    return await expect_packet(transport, Message)
+async def expect_publish(transport: FakeTransport) -> MQTTMessage:
+    return await expect_packet(transport, MQTTMessage)
 
 
 async def expect_puback(transport: FakeTransport) -> PubAckResult:
@@ -301,7 +301,7 @@ class Messages:
     def __init__(self, protocol: MQTTProtocol) -> None:
         self._protocol = protocol
 
-    async def get(self) -> Optional[Message]:
+    async def get(self) -> Optional[MQTTMessage]:
         return await self._protocol.next_message()
 
     def empty(self) -> bool:
