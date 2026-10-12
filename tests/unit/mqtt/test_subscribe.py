@@ -20,7 +20,7 @@ from zenmqtt.mqtt.subscribe import (
             SubscribeResult(packet_identifier=48815, properties={}, reason_codes=[1]),
         ),
         (
-            b"\x90\x13\xbe\xaf\x0F\x26\x00\x05field\x00\x05value\x00",
+            b"\x90\x13\xbe\xaf\x0f\x26\x00\x05field\x00\x05value\x00",
             SubscribeResult(
                 packet_identifier=0xBEAF,
                 properties={

@@ -4,6 +4,7 @@ Converts results of benchmarks.run to the format of github-action-benchmark
 
     python -m benchmarks.history results.json > history.json
 """
+
 import json
 import sys
 

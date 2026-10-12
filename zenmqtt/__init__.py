@@ -6,6 +6,7 @@ Asyncio MQTT 5 client.
     client = MQTTClient("client-id")
     await client.connect("tcp://localhost:1883")
 """
+
 from importlib.metadata import PackageNotFoundError, version
 
 from zenmqtt.client import MQTTClient

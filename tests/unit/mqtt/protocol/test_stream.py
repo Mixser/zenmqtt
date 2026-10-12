@@ -1,4 +1,5 @@
 """Reading of whole packets from the connection."""
+
 import asyncio
 import logging
 

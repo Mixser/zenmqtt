@@ -312,9 +312,9 @@ class OutgoingFlow:
         if not connected and self._closed_with:
             raise self._closed_with
 
-        future: asyncio.Future[
-            PublishAcknowledgement
-        ] = asyncio.get_running_loop().create_future()
+        future: asyncio.Future[PublishAcknowledgement] = (
+            asyncio.get_running_loop().create_future()
+        )
         pending = _PendingPublish(qos, future)
         self._pending[packet_identifier] = pending
 

@@ -5,6 +5,7 @@ API only. They run when MQTT_INTEGRATION_URL is set, e.g.:
     docker run --rm -p 1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf
     MQTT_INTEGRATION_URL=tcp://localhost:1883 make test/integration
 """
+
 import os
 import uuid
 from typing import Any, AsyncIterator, Callable

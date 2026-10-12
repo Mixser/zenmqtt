@@ -11,6 +11,7 @@ so it would make the number of time series unlimited too. For the same reason
 span names don't contain the topic, it's the attribute
 `messaging.destination.name` of the span.
 """
+
 import asyncio
 from contextlib import contextmanager
 from typing import Iterator, Mapping, Optional, Sequence, Tuple, cast
@@ -133,9 +134,9 @@ class OpenTelemetryMetrics(MetricsCollector):
             }
             for qos in (0, 1, 2)
         }
-        self._published_attributes: dict[
-            tuple[int, int], dict[str, AttributeValue]
-        ] = {}
+        self._published_attributes: dict[tuple[int, int], dict[str, AttributeValue]] = (
+            {}
+        )
         self._buffered_messages = meter.create_gauge(
             "zenmqtt.messages.buffered",
             unit="{message}",

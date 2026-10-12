@@ -1,6 +1,7 @@
 """
 The main scenarios of the client against a real broker, end to end.
 """
+
 import asyncio
 import uuid
 from typing import Any, Callable

@@ -2,6 +2,7 @@
 A TCP proxy between the client and the broker, to break the network in tests
 without touching the client or the broker.
 """
+
 import asyncio
 from typing import Optional
 

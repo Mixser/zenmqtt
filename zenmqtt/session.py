@@ -64,6 +64,7 @@ class MQTTSession(Protocol):
         ...
 
     async def acquire_packet_identifier(self) -> PacketIdentifier:
+        """A free packet identifier; waits while all of them are in use."""
         ...
 
     async def release_packet_identifier(
@@ -247,7 +248,7 @@ class BaseSession(MQTTSession, abc.ABC):
     async def _load_outgoing_message(
         self, packet_identifier: PacketIdentifier
     ) -> Optional[OutgoingMessage]:
-        ...
+        """None if there is no such message."""
 
     @abc.abstractmethod
     async def _load_outgoing_messages(self) -> Sequence[OutgoingMessage]:
@@ -261,17 +262,17 @@ class BaseSession(MQTTSession, abc.ABC):
 
     @abc.abstractmethod
     async def _save_incoming_message(self, packet_identifier: PacketIdentifier) -> None:
-        ...
+        """Saves the identifier of an incoming QoS 2 message."""
 
     @abc.abstractmethod
     async def _has_incoming_message(self, packet_identifier: PacketIdentifier) -> bool:
-        ...
+        """True if the identifier is saved."""
 
     @abc.abstractmethod
     async def _delete_incoming_message(
         self, packet_identifier: PacketIdentifier
     ) -> None:
-        ...
+        """Deletes the identifier of an incoming QoS 2 message."""
 
     @abc.abstractmethod
     async def _clear(self) -> None:

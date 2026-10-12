@@ -1,4 +1,5 @@
 """SUBSCRIBE and UNSUBSCRIBE."""
+
 import asyncio
 
 import pytest

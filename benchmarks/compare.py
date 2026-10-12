@@ -11,6 +11,7 @@ change is the ratio of medians head/base, with a 95% confidence interval from
 bootstrap resampling. A change is reported only if the whole interval is
 outside of the threshold.
 """
+
 import argparse
 import json
 import os

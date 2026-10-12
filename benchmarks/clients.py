@@ -2,6 +2,7 @@
 The same small interface for every benchmarked client, so the scenarios
 don't depend on a client library.
 """
+
 from typing import AsyncIterator, Callable, Protocol
 from urllib.parse import urlparse
 
@@ -12,19 +13,19 @@ class BenchClient(Protocol):
     name: str
 
     async def connect(self, url: str) -> None:
-        ...
+        """Returns when CONNACK is received."""
 
     async def publish(self, topic: str, payload: bytes, qos: int) -> None:
         """Returns when the message is sent (QoS 0) or acknowledged (QoS 1/2)."""
 
     async def subscribe(self, topic: str, qos: int) -> None:
-        ...
+        """Returns when SUBACK is received."""
 
     def payloads(self) -> AsyncIterator[bytes]:
         """Payloads of received messages, acknowledged after they are taken."""
 
     async def disconnect(self) -> None:
-        ...
+        """Sends DISCONNECT and closes the connection."""
 
 
 class ZenmqttClient:
