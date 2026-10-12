@@ -9,13 +9,17 @@ class ConnectionOptions(TypedDict, total=False):
 
 
 class MQTTConnectionTransport(Protocol):
-    async def write(self, payload: bytes) -> None: ...
+    async def write(self, payload: bytes) -> None:
+        """Sends the bytes; may wait while the send buffer is full."""
 
-    async def read(self, size: int = -1) -> bytes: ...
+    async def read(self, size: int = -1) -> bytes:
+        """Up to size bytes, b"" when the connection is closed."""
 
-    def is_closing(self) -> bool: ...
+    def is_closing(self) -> bool:
+        """True when the connection is closed or is being closed."""
 
-    async def close(self) -> None: ...
+    async def close(self) -> None:
+        """Closes the connection; then read() returns b""."""
 
 
 class MQTTConnection:

@@ -10,25 +10,34 @@ DEFAULT_TLS_PORT: Final[int] = 8883
 
 
 class StreamReader(Protocol):
-    async def read(self, size: int) -> bytes: ...
+    async def read(self, size: int) -> bytes:
+        """Up to size bytes, b"" at the end of the stream."""
 
-    def feed_eof(self) -> None: ...
+    def feed_eof(self) -> None:
+        """Ends the stream: read() returns b"" after the buffered data."""
 
 
 class StreamWriter(Protocol):
-    def write(self, payload: bytes) -> None: ...
+    def write(self, payload: bytes) -> None:
+        """Puts the bytes into the send buffer."""
 
-    async def drain(self) -> None: ...
+    async def drain(self) -> None:
+        """Waits while the send buffer is above its high-water mark."""
 
-    def write_eof(self) -> None: ...
+    def write_eof(self) -> None:
+        """Closes the write side of the connection (half-close)."""
 
-    def can_write_eof(self) -> bool: ...
+    def can_write_eof(self) -> bool:
+        """False for TLS: it doesn't support half-close."""
 
-    def is_closing(self) -> bool: ...
+    def is_closing(self) -> bool:
+        """True when the stream is closed or is being closed."""
 
-    def close(self) -> None: ...
+    def close(self) -> None:
+        """Starts closing the stream."""
 
-    async def wait_closed(self) -> None: ...
+    async def wait_closed(self) -> None:
+        """Waits until the stream is closed."""
 
 
 class TCPConnectionTransport(MQTTConnectionTransport):
