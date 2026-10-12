@@ -13,7 +13,7 @@ import asyncio
 import logging
 import os
 
-from zenmqtt import MQTTClient, PublishResult
+from zenmqtt import MQTTClient, MQTTMessage
 
 MQTT_URL = os.environ.get("MQTT_URL", "tcp://localhost:1883")
 MQTT_USERNAME = os.environ.get("MQTT_USERNAME")
@@ -27,7 +27,7 @@ PAYLOAD_FORMAT_INVALID = 0x99
 logging.basicConfig(level=logging.INFO)
 
 
-async def process(message: PublishResult) -> None:
+async def process(message: MQTTMessage) -> None:
     if not message.payload.isdigit():
         raise ValueError(f"not a number: {message.payload!r}")
 

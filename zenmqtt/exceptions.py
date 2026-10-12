@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from zenmqtt.mqtt.connect import DisconnectResult
+    from zenmqtt.mqtt.connect import ServerDisconnect
 
 
 class MQTTConnectionError(Exception):
@@ -24,7 +24,7 @@ class ConnectionLostError(MQTTConnectionError):
     closed the connection with it.
     """
 
-    def __init__(self, server_disconnect: Optional["DisconnectResult"] = None):
+    def __init__(self, server_disconnect: Optional["ServerDisconnect"] = None):
         super().__init__(server_disconnect or "Connection lost")
         self.server_disconnect = server_disconnect
 

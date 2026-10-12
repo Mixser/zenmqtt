@@ -3,13 +3,13 @@ import pytest
 from zenmqtt.exceptions import MalformedPacketError, ProtocolError
 from zenmqtt.mqtt.auth import AuthResult
 from zenmqtt.mqtt.codec import decode
-from zenmqtt.mqtt.connect import ConnectionResult, DisconnectResult
+from zenmqtt.mqtt.connect import ConnectionResult, ServerDisconnect
 from zenmqtt.mqtt.packet import split_packet
 from zenmqtt.mqtt.ping import PingRespResult
 from zenmqtt.mqtt.publish import (
+    MQTTMessage,
     PubAckResult,
     PubCompResult,
-    PublishResult,
     PubRecResult,
     PubRelResult,
 )
@@ -20,7 +20,7 @@ from zenmqtt.mqtt.subscribe import SubscribeResult, UnsubscribeResult
     "input, result_type",
     (
         (b"\x20\x03\x00\x00\x00", ConnectionResult),
-        (b"\x30\x06\x00\x03a/b\x00", PublishResult),
+        (b"\x30\x06\x00\x03a/b\x00", MQTTMessage),
         (b"\x40\x02\x00\x01", PubAckResult),
         (b"\x50\x02\x00\x01", PubRecResult),
         (b"\x62\x02\x00\x01", PubRelResult),
@@ -28,7 +28,7 @@ from zenmqtt.mqtt.subscribe import SubscribeResult, UnsubscribeResult
         (b"\x90\x04\x00\x01\x00\x00", SubscribeResult),
         (b"\xb0\x04\x00\x01\x00\x00", UnsubscribeResult),
         (b"\xd0\x00", PingRespResult),
-        (b"\xe0\x00", DisconnectResult),
+        (b"\xe0\x00", ServerDisconnect),
         (b"\xf0\x00", AuthResult),
     ),
 )

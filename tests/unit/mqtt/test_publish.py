@@ -5,9 +5,9 @@ import pytest
 from zenmqtt.exceptions import MalformedPacketError
 from zenmqtt.mqtt.packet import PacketType, split_packet
 from zenmqtt.mqtt.publish import (
+    MQTTMessage,
     PubAckResult,
     PubCompResult,
-    PublishResult,
     PubRecResult,
     PubRelResult,
     pack_puback_packet,
@@ -28,7 +28,7 @@ from zenmqtt.mqtt.publish import (
     (
         (
             b"2\x1e\x00\tmitu/test\x00\x01\x00Hello, world!!!!",
-            PublishResult(
+            MQTTMessage(
                 dup=0,
                 qos=1,
                 retain=0,

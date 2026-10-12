@@ -13,9 +13,9 @@ from typing import Optional
 
 from zenmqtt.instrumentation.guard import HookErrors
 from zenmqtt.mqtt.publish import (
+    MQTTMessage,
     PublishAcknowledgement,
     PublishProperties,
-    PublishResult,
 )
 
 
@@ -53,7 +53,7 @@ class Tracing:
         return PublishTrace(properties)
 
     def trace(
-        self, client_id: str, message: PublishResult
+        self, client_id: str, message: MQTTMessage
     ) -> AbstractContextManager[None]:
         """
         Wraps the processing of a received message, see MQTTClient.trace().
@@ -149,7 +149,7 @@ class _GuardedTracing(Tracing):
         return _GuardedPublishTrace(trace, self._errors)
 
     def trace(
-        self, client_id: str, message: PublishResult
+        self, client_id: str, message: MQTTMessage
     ) -> AbstractContextManager[None]:
         try:
             context = self.wrapped.trace(client_id, message)

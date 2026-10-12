@@ -10,7 +10,7 @@ import pytest
 
 from tests.integration.conftest import SESSION
 from tests.integration.proxy import Proxy
-from zenmqtt import MQTTClient, PublishResult, WillMessage
+from zenmqtt import MQTTClient, MQTTMessage, WillMessage
 
 # generous: a test waits only as long as the broker needs, this is the limit
 TIMEOUT = 10
@@ -18,7 +18,7 @@ TIMEOUT = 10
 MakeClient = Callable[..., MQTTClient]
 
 
-async def receive(client: MQTTClient) -> PublishResult:
+async def receive(client: MQTTClient) -> MQTTMessage:
     return await asyncio.wait_for(anext(client.messages), TIMEOUT)
 
 

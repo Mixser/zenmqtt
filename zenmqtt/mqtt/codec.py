@@ -4,16 +4,16 @@ from zenmqtt.exceptions import MalformedPacketError, ProtocolError
 from zenmqtt.mqtt.auth import AuthResult, parse_auth_packet
 from zenmqtt.mqtt.connect import (
     ConnectionResult,
-    DisconnectResult,
+    ServerDisconnect,
     parse_connack_packet,
     parse_disconnect_packet,
 )
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader, PacketType
 from zenmqtt.mqtt.ping import PingRespResult, parse_pingresp_packet
 from zenmqtt.mqtt.publish import (
+    MQTTMessage,
     PubAckResult,
     PubCompResult,
-    PublishResult,
     PubRecResult,
     PubRelResult,
     parse_puback_packet,
@@ -31,7 +31,7 @@ from zenmqtt.mqtt.subscribe import (
 
 # packets a client receives from the server
 IncomingPacket = Union[
-    PublishResult,
+    MQTTMessage,
     PubAckResult,
     PubRecResult,
     PubRelResult,
@@ -40,7 +40,7 @@ IncomingPacket = Union[
     UnsubscribeResult,
     PingRespResult,
     ConnectionResult,
-    DisconnectResult,
+    ServerDisconnect,
     AuthResult,
 ]
 

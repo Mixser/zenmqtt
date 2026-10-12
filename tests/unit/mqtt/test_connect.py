@@ -2,7 +2,7 @@ import pytest
 
 from zenmqtt.mqtt.connect import (
     ConnectionResult,
-    DisconnectResult,
+    ServerDisconnect,
     WillMessage,
     pack_connect_packet,
     pack_disconnect_packet,
@@ -261,10 +261,10 @@ def test_pack_disconnect_packet(reason, properties, expected_result):
 @pytest.mark.parametrize(
     "input, expected_result",
     (
-        (b"\xe0\x00", DisconnectResult(0, {})),
+        (b"\xe0\x00", ServerDisconnect(0, {})),
         (
             b"\xe0\x07\x00\x05\x11\x00\x00\x00\x0a",
-            DisconnectResult(0, {"session_expiry_interval": 10}),
+            ServerDisconnect(0, {"session_expiry_interval": 10}),
         ),
     ),
 )

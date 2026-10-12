@@ -1,3 +1,6 @@
+import inspect
+import typing
+
 import pytest
 
 import zenmqtt
@@ -12,6 +15,26 @@ def test_root_exports():
 
     assert zenmqtt.MQTTClient.__module__ == "zenmqtt.client"
     assert issubclass(zenmqtt.SessionLostError, zenmqtt.ConnectionLostError)
+
+
+def _types(hint):
+    """Classes and aliases of zenmqtt in an annotation, e.g. Optional[MQTTMessage]."""
+    if getattr(hint, "__module__", "").startswith("zenmqtt"):
+        yield hint
+
+    for arg in typing.get_args(hint):
+        yield from _types(arg)
+
+
+def test_types_of_client_methods_are_exported():
+    # users can annotate their code with imports from zenmqtt only
+    for name, method in inspect.getmembers(zenmqtt.MQTTClient):
+        if name.startswith("_") or not callable(method):
+            continue
+
+        for hint in typing.get_type_hints(method).values():
+            for type_ in _types(hint):
+                assert type_ in vars(zenmqtt).values(), (name, type_)
 
 
 def test_version():

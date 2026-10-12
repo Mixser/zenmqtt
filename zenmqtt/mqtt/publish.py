@@ -85,7 +85,7 @@ def pack_publish_packet(
 
 
 @dataclass(frozen=True)
-class PublishResult:
+class MQTTMessage:
     __slots__ = (
         "packet_identifier",
         "dup",
@@ -106,9 +106,7 @@ class PublishResult:
     properties: PublishProperties
 
 
-def parse_publish_packet(
-    fixed_header: FixedHeader, reader: BytesReader
-) -> PublishResult:
+def parse_publish_packet(fixed_header: FixedHeader, reader: BytesReader) -> MQTTMessage:
     dup = bool(fixed_header.flags & 0x8)
     qos = (fixed_header.flags & 0x6) >> 1
     retain = bool(fixed_header.flags & 0x01)
@@ -120,7 +118,7 @@ def parse_publish_packet(
     packet_identifier = reader.read_uint16() if qos else None
     properties = parse_properties(reader)
 
-    return PublishResult(
+    return MQTTMessage(
         dup=dup,
         qos=_QOS_BY_VALUE[qos],
         retain=retain,

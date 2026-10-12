@@ -26,10 +26,32 @@ from zenmqtt.exceptions import (
     TopicAliasInvalidError,
 )
 from zenmqtt.instrumentation.metrics import MetricsCollector
-from zenmqtt.mqtt.connect import ConnectionResult, DisconnectResult, WillMessage
-from zenmqtt.mqtt.publish import PublishResult, QoS
+from zenmqtt.mqtt.connect import (
+    ConnectionResult,
+    ConnectProperties,
+    DisconnectProperties,
+    ServerDisconnect,
+    WillMessage,
+    WillProperties,
+)
+from zenmqtt.mqtt.publish import (
+    MQTTMessage,
+    PubAckResult,
+    PubCompResult,
+    PublishAcknowledgement,
+    PublishProperties,
+    PubRecResult,
+    QoS,
+)
 from zenmqtt.mqtt.reason_codes import ReasonCode
-from zenmqtt.mqtt.subscribe import Subscription
+from zenmqtt.mqtt.subscribe import (
+    SubscribeResult,
+    Subscription,
+    SubscriptionProperties,
+    SubscriptionRequest,
+    UnsubscribeProperties,
+    UnsubscribeResult,
+)
 from zenmqtt.reconnect import ReconnectPolicy
 from zenmqtt.session import (
     BaseSession,
@@ -50,7 +72,8 @@ __all__ = [
     "BaseSession",
     "ConnectionLostError",
     "ConnectionResult",
-    "DisconnectResult",
+    "ConnectProperties",
+    "DisconnectProperties",
     "FeatureNotSupportedError",
     "IncomingPacketTooLargeError",
     "InMemorySession",
@@ -58,6 +81,7 @@ __all__ = [
     "MetricsCollector",
     "MQTTClient",
     "MQTTConnectionError",
+    "MQTTMessage",
     "MQTTSession",
     "NotConnectedError",
     "OutgoingMessage",
@@ -65,17 +89,28 @@ __all__ = [
     "PacketIdentifier",
     "PacketTooLargeError",
     "ProtocolError",
-    "PublishResult",
+    "PubAckResult",
+    "PubCompResult",
+    "PublishAcknowledgement",
+    "PublishProperties",
+    "PubRecResult",
     "QoS",
     "QoSNotSupportedError",
     "ReasonCode",
     "ReceiveMaximumExceededError",
     "ReconnectPolicy",
+    "ServerDisconnect",
     "ServerLimitError",
     "SessionLostError",
     "SessionOptions",
+    "SubscribeResult",
     "Subscription",
+    "SubscriptionProperties",
+    "SubscriptionRequest",
     "TopicAliasInvalidError",
+    "UnsubscribeProperties",
+    "UnsubscribeResult",
     "WillMessage",
+    "WillProperties",
     "__version__",
 ]

@@ -16,9 +16,9 @@ from tests.unit.test_client import connect
 from zenmqtt.client import MQTTClient
 from zenmqtt.instrumentation.tracing import PublishTrace, Tracing, guard_tracing
 from zenmqtt.mqtt.publish import (
+    MQTTMessage,
     PublishAcknowledgement,
     PublishProperties,
-    PublishResult,
     pack_puback_packet,
 )
 
@@ -67,7 +67,7 @@ class FailingTracing(Tracing):
         return FailingTrace(properties)
 
     def trace(
-        self, client_id: str, message: PublishResult
+        self, client_id: str, message: MQTTMessage
     ) -> AbstractContextManager[None]:
         if self.fail_on == "trace":
             raise RuntimeError("trace failed")

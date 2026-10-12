@@ -13,7 +13,7 @@ from zenmqtt.mqtt.connect import (
     ConnectionResult,
     ConnectProperties,
     DisconnectProperties,
-    DisconnectResult,
+    ServerDisconnect,
     WillMessage,
     pack_connect_packet,
     pack_disconnect_packet,
@@ -27,11 +27,11 @@ from zenmqtt.mqtt.protocol.keepalive import KeepAlive
 from zenmqtt.mqtt.protocol.outgoing import OutgoingFlow
 from zenmqtt.mqtt.protocol.stream import PacketReader
 from zenmqtt.mqtt.publish import (
+    MQTTMessage,
     PubAckResult,
     PubCompResult,
     PublishAcknowledgement,
     PublishProperties,
-    PublishResult,
     PubRecResult,
     PubRelResult,
 )
@@ -82,7 +82,7 @@ class MQTTProtocol:
         self._disconnecting = False
 
         # DISCONNECT of the server for the current/last connection
-        self.server_disconnect: Optional[DisconnectResult] = None
+        self.server_disconnect: Optional[ServerDisconnect] = None
 
         # "Authentication Method" of the last CONNECT
         self._authentication_method: Optional[str] = None
@@ -225,14 +225,14 @@ class MQTTProtocol:
     ) -> Optional[PublishAcknowledgement]:
         return await self._outgoing.publish(topic, payload, qos, retain, properties)
 
-    async def next_message(self) -> Optional[PublishResult]:
+    async def next_message(self) -> Optional[MQTTMessage]:
         """
         The next incoming message, None after close(); QoS 1/2 messages must
         be acknowledged by ack(). Meant for one reader, see MQTTClient.messages.
         """
         return await self._incoming.next_message()
 
-    async def ack(self, message: PublishResult, reason_code: int = 0) -> None:
+    async def ack(self, message: MQTTMessage, reason_code: int = 0) -> None:
         await self._incoming.ack(message, reason_code)
 
     async def subscribe(
@@ -271,7 +271,7 @@ class MQTTProtocol:
         if not self._connection_future.done():
             self._connection_future.set_result(connection_result)
 
-    async def _handle_disconnect(self, disconnect_packet: DisconnectResult) -> None:
+    async def _handle_disconnect(self, disconnect_packet: ServerDisconnect) -> None:
         connection = self._context.connection
         assert connection
 
@@ -334,7 +334,7 @@ class MQTTProtocol:
 
     async def _dispatch(self, packet: IncomingPacket) -> None:
         match packet:
-            case PublishResult():
+            case MQTTMessage():
                 await self._incoming.handle_publish(packet)
             case PubAckResult():
                 await self._outgoing.handle_puback(packet)
@@ -352,7 +352,7 @@ class MQTTProtocol:
                 await self._keep_alive.handle_pingresp(packet)
             case ConnectionResult():
                 await self._handle_connack(packet)
-            case DisconnectResult():
+            case ServerDisconnect():
                 await self._handle_disconnect(packet)
             case AuthResult():
                 await self._handle_auth(packet)
