@@ -82,10 +82,7 @@ jobs:
       - name: Install dependencies
         run: poetry install
       - name: Start Mosquitto
-        run: |
-          docker run -d --name mosquitto -p 1883:1883 eclipse-mosquitto:2 \
-            mosquitto -c /mosquitto-no-auth.conf
-          timeout 30 sh -c 'until nc -z localhost 1883; do sleep 0.5; done'
+        run: make broker/up
       - name: Integration tests
         env:
           MQTT_INTEGRATION_URL: tcp://localhost:1883
@@ -180,10 +177,8 @@ jobs:
           poetry install
 
       - name: Start Mosquitto
-        run: |
-          docker run -d --name mosquitto -p 1883:1883 eclipse-mosquitto:2 \
-            mosquitto -c /mosquitto-no-auth.conf
-          timeout 30 bash -c 'until (echo > /dev/tcp/localhost/1883) 2>/dev/null; do sleep 1; done'
+        working-directory: head
+        run: make broker/up
 
       - name: Compare
         working-directory: head

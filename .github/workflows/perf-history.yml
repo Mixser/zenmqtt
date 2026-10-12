@@ -44,10 +44,7 @@ jobs:
           poetry install
 
       - name: Start Mosquitto
-        run: |
-          docker run -d --name mosquitto -p 1883:1883 eclipse-mosquitto:2 \
-            mosquitto -c /mosquitto-no-auth.conf
-          timeout 30 bash -c 'until (echo > /dev/tcp/localhost/1883) 2>/dev/null; do sleep 1; done'
+        run: make broker/up
 
       - name: Run benchmarks
         run: |

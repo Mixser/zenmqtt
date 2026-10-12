@@ -37,6 +37,16 @@ test:
 test/unit:
 	@poetry run pytest --disable-warnings --cov=$(SOURCE) $(TEST_UNIT)
 
+# MQTT 5 broker from docker-compose.yaml on localhost:1883; up waits until it
+# accepts connections
+.PHONY: broker/up
+broker/up:
+	@docker compose up -d --wait
+
+.PHONY: broker/down
+broker/down:
+	@docker compose down
+
 # needs a broker: MQTT_INTEGRATION_URL=tcp://localhost:1883 make test/integration
 .PHONY: test/integration
 test/integration:
