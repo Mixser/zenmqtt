@@ -28,10 +28,8 @@ otel = ["opentelemetry-api"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.1"
-black = ">=23.10.1,<27.0.0"
-mypy = "^1.6.1"
-isort = "^5.12.0"
-flake8 = "^6.1.0"
+mypy = "^2.4.0"
+ruff = "^0.17.0"
 pytest-asyncio = "^1.4"
 pytest-cov = "^7.1"
 opentelemetry-sdk = "^1.45.1"
@@ -50,8 +48,14 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 
-[tool.black]
-line-width=120
+[tool.ruff]
+# the default line length of black, the code is formatted with it
+line-length = 88
+
+[tool.ruff.lint]
+# the checks of flake8 (pyflakes, pycodestyle errors and warnings) and isort;
+# not the defaults of ruff, they change between versions
+select = ["E4", "E7", "E9", "F", "W", "I"]
 
 [tool.pytest.ini_options]
 # async tests run in an event loop without @pytest.mark.asyncio

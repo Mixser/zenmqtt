@@ -1,7 +1,7 @@
 import struct
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Final, Tuple
+from typing import Final, Tuple, Union
 
 from zenmqtt.exceptions import MalformedPacketError
 
@@ -61,7 +61,9 @@ class FixedHeader:
     length: int
 
 
-def parse_variable_byte_integer(data: bytes, offset: int = 0) -> Tuple[int, int]:
+def parse_variable_byte_integer(
+    data: Union[bytes, bytearray], offset: int = 0
+) -> Tuple[int, int]:
     """
     Returns the value and the number of bytes it takes.
 

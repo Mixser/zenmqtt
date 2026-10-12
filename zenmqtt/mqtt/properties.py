@@ -201,7 +201,7 @@ _pack_uint8: Callable[[int], bytes] = struct.Struct("!B").pack
 _pack_uint16: Callable[[int], bytes] = struct.Struct("!H").pack
 _pack_uint32: Callable[[int], bytes] = struct.Struct("!L").pack
 
-_MAP_PROPERTY_PACKERS: dict[Property, Callable[[Any], bytes]] = {
+_MAP_PROPERTY_PACKERS: dict[Property, Callable[[Any], Union[bytes, bytearray]]] = {
     Property.PAYLOAD_FORMAT_INDICATOR: _pack_uint8,
     Property.MESSAGE_EXPIRY_INTERVAL: _pack_uint32,
     Property.CONTENT_TYPE: pack_str16,
