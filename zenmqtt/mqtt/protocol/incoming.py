@@ -14,15 +14,13 @@ from zenmqtt.exceptions import (
 from zenmqtt.instrumentation.monitors import AckBlockedMonitor, BufferMonitor
 from zenmqtt.mqtt.connect import ConnectProperties
 from zenmqtt.mqtt.limits import DEFAULT_RECEIVE_MAXIMUM
-from zenmqtt.mqtt.packet import BytesReader, FixedHeader
 from zenmqtt.mqtt.protocol.context import ProtocolContext
 from zenmqtt.mqtt.publish import (
     PublishResult,
+    PubRelResult,
     pack_puback_packet,
     pack_pubcomp_packet,
     pack_pubrec_packet,
-    parse_publish_packet,
-    parse_pubrel_packet,
 )
 from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE, PACKET_IDENTIFIER_NOT_FOUND
 from zenmqtt.session import MQTTSession, PacketIdentifier
@@ -127,10 +125,8 @@ class IncomingFlow:
 
         return message
 
-    async def handle_publish(
-        self, fixed_header: FixedHeader, reader: BytesReader
-    ) -> None:
-        message = self._resolve_topic_alias(parse_publish_packet(fixed_header, reader))
+    async def handle_publish(self, packet: PublishResult) -> None:
+        message = self._resolve_topic_alias(packet)
 
         logger.debug("mqtt_protocol.handle_publish_packet packet:%s", message)
 
@@ -182,13 +178,9 @@ class IncomingFlow:
 
         self._enqueue(message)
 
-    async def handle_pubrel(
-        self, fixed_header: FixedHeader, reader: BytesReader
-    ) -> None:
+    async def handle_pubrel(self, pubrel_result: PubRelResult) -> None:
         connection = self._context.connection
         assert connection
-
-        pubrel_result = parse_pubrel_packet(fixed_header, reader)
 
         logger.debug("mqtt_protocol.handle_pubrel_packet packet:%s", pubrel_result)
 
