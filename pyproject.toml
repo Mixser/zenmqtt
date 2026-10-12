@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "zenmqtt"
-version = "0.1.0rc4"
+version = "0.1.0rc5"
 description = "Asyncio MQTT 5 client: automatic reconnect, persistent sessions, acknowledgement after processing"
 authors = ["Mikhail Turchunovich <mixser.by@gmail.com>"]
 license = "MIT"
