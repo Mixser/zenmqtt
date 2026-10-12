@@ -66,7 +66,9 @@ jobs:
           gh-pages-branch: gh-pages
           benchmark-data-dir-path: perf
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
+          # both results are committed to the local gh-pages and pushed by
+          # one push below: one push is one GitHub Pages deployment
+          auto-push: false
           # report only: history and charts, no alerts
           comment-on-alert: false
           fail-on-alert: false
@@ -80,6 +82,23 @@ jobs:
           gh-pages-branch: gh-pages
           benchmark-data-dir-path: perf
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
+          # the local gh-pages has the commit of the previous step: a fetch
+          # into it isn't a fast-forward and fails
+          skip-fetch-gh-pages: true
+          auto-push: false
           comment-on-alert: false
           fail-on-alert: false
+
+      - name: Push the results
+        run: |
+          git switch -q gh-pages
+          git config user.name "github-action-benchmark"
+          git config user.email "github@users.noreply.github.com"
+
+          # coverage-pages pushes to gh-pages too: retry after it
+          for attempt in 1 2 3 4 5; do
+            git push -q origin gh-pages && exit 0
+            sleep $((attempt * 2))
+            git pull -q --rebase origin gh-pages
+          done
+          exit 1
