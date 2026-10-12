@@ -6,12 +6,14 @@ import pytest
 
 from tests.unit.mqtt.protocol.helpers import (
     TIMEOUT,
-    FakeTransport,
     build_protocol,
     connect,
     expect,
     expect_disconnect,
     expect_nothing_sent,
+    expect_packet,
+    expect_puback,
+    expect_pubrec,
     incoming_inflight,
     pack_publish,
     receive,
@@ -19,21 +21,7 @@ from tests.unit.mqtt.protocol.helpers import (
 )
 from zenmqtt.instrumentation import monitors
 from zenmqtt.mqtt.packet import PacketType
-from zenmqtt.mqtt.publish import (
-    pack_publish_packet,
-    pack_pubrel_packet,
-    parse_puback_packet,
-    parse_pubcomp_packet,
-    parse_pubrec_packet,
-)
-
-
-async def expect_puback(transport: FakeTransport):
-    return parse_puback_packet(*await expect(transport, PacketType.PUBACK))
-
-
-async def expect_pubrec(transport: FakeTransport):
-    return parse_pubrec_packet(*await expect(transport, PacketType.PUBREC))
+from zenmqtt.mqtt.publish import PubCompResult, pack_publish_packet, pack_pubrel_packet
 
 
 async def test_qos1_is_acknowledged_by_ack():
@@ -69,7 +57,7 @@ async def test_qos2_is_acknowledged_by_ack():
     assert await session.has_incoming_message(1)
 
     transport.feed(pack_pubrel_packet(1, 0, {}))
-    pubcomp = parse_pubcomp_packet(*await expect(transport, PacketType.PUBCOMP))
+    pubcomp = await expect_packet(transport, PubCompResult)
     assert pubcomp.reason_code == 0
     assert not await session.has_incoming_message(1)
 

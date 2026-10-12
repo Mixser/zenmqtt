@@ -3,6 +3,7 @@ import asyncio
 import logging
 
 from tests.unit.mqtt.protocol.helpers import (
+    PINGRESP,
     TIMEOUT,
     FakeTransport,
     RecordingMetrics,
@@ -10,19 +11,16 @@ from tests.unit.mqtt.protocol.helpers import (
     connect,
     expect,
     expect_nothing_sent,
+    expect_puback,
     expect_publish,
+    expect_pubrec,
     pack_publish,
     receive,
     set_buffered_messages_warning,
     wait_for_connection_lost,
 )
 from zenmqtt.mqtt.packet import PacketType
-from zenmqtt.mqtt.publish import (
-    PubAckResult,
-    pack_puback_packet,
-    parse_puback_packet,
-    parse_pubrec_packet,
-)
+from zenmqtt.mqtt.publish import PubAckResult, pack_puback_packet
 
 
 async def feed(transport: FakeTransport, *packets: bytes) -> None:
@@ -41,7 +39,7 @@ async def test_control_packets_are_handled_while_nobody_reads():
 
     task = asyncio.create_task(protocol.ping())
     await expect(transport, PacketType.PINGREQ)
-    transport.feed(b"\xd0\x00")
+    transport.feed(PINGRESP)
 
     await asyncio.wait_for(task, TIMEOUT)
 
@@ -115,8 +113,8 @@ async def test_acks_keep_the_order_with_duplicates():
 
     await protocol.ack(message)
 
-    puback = parse_puback_packet(*await expect(transport, PacketType.PUBACK))
-    pubrec = parse_pubrec_packet(*await expect(transport, PacketType.PUBREC))
+    puback = await expect_puback(transport)
+    pubrec = await expect_pubrec(transport)
     assert (puback.packet_identifier, pubrec.packet_identifier) == (1, 2)
 
     # the duplicate isn't delivered

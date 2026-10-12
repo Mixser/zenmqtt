@@ -4,6 +4,7 @@ import asyncio
 import pytest
 
 from tests.unit.mqtt.protocol.helpers import (
+    PINGRESP,
     TIMEOUT,
     build_protocol,
     connect,
@@ -25,7 +26,7 @@ async def test_ping():
     task = asyncio.create_task(protocol.ping())
     await expect(transport, PacketType.PINGREQ)
 
-    transport.feed(b"\xd0\x00")
+    transport.feed(PINGRESP)
 
     assert await asyncio.wait_for(task, TIMEOUT) is None
     assert not ping_in_flight(protocol)
@@ -41,7 +42,7 @@ async def test_concurrent_pings_share_pingreq():
 
     assert not transport.has_sent_packets()
 
-    transport.feed(b"\xd0\x00")
+    transport.feed(PINGRESP)
 
     await asyncio.wait_for(asyncio.gather(*tasks), TIMEOUT)
 
@@ -73,13 +74,13 @@ async def test_unexpected_pingresp_is_ignored():
     protocol, _, _ = build_protocol()
     transport = await connect(protocol)
 
-    transport.feed(b"\xd0\x00")
+    transport.feed(PINGRESP)
 
     # the read loop keeps working after PINGRESP without PINGREQ
     task = asyncio.create_task(protocol.ping())
     await expect(transport, PacketType.PINGREQ)
 
-    transport.feed(b"\xd0\x00")
+    transport.feed(PINGRESP)
     await asyncio.wait_for(task, TIMEOUT)
 
 
@@ -91,7 +92,7 @@ async def test_keep_alive_sends_pingreq_when_idle():
         fixed_header, _ = await transport.next_packet(timeout=2)
         assert fixed_header.packet_type == PacketType.PINGREQ
 
-        transport.feed(b"\xd0\x00")
+        transport.feed(PINGRESP)
 
 
 async def test_keep_alive_is_postponed_by_other_packets():
@@ -133,7 +134,7 @@ async def test_server_keep_alive_overrides_client_value():
     fixed_header, _ = await transport.next_packet(timeout=2)
     assert fixed_header.packet_type == PacketType.PINGREQ
 
-    transport.feed(b"\xd0\x00")
+    transport.feed(PINGRESP)
 
 
 async def test_keep_alive_disabled():

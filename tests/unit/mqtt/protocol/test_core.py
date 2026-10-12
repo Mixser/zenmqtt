@@ -12,6 +12,7 @@ from tests.unit.mqtt.protocol.helpers import (
     connect,
     expect,
     expect_disconnect,
+    expect_packet,
     expect_publish,
     pack_connack,
     pack_publish,
@@ -20,7 +21,7 @@ from tests.unit.mqtt.protocol.helpers import (
 )
 from zenmqtt.connection import MQTTConnection
 from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
-from zenmqtt.mqtt.connect import DisconnectResult, WillMessage, parse_disconnect_packet
+from zenmqtt.mqtt.connect import DisconnectResult, WillMessage, pack_disconnect_packet
 from zenmqtt.mqtt.packet import PacketType
 from zenmqtt.mqtt.publish import pack_pubrel_packet
 
@@ -93,8 +94,7 @@ async def test_incoming_publish_with_qos_3_closes_connection():
 
     transport.feed(b"\x36\x0b\x00\x03a/b\x00\x01\x00pay")
 
-    fixed_header, reader = await expect(transport, PacketType.DISCONNECT)
-    assert parse_disconnect_packet(fixed_header, reader) == DisconnectResult(0x81, {})
+    await expect_disconnect(transport, 0x81)
 
     await wait_for_connection_lost(protocol)
 
@@ -141,8 +141,7 @@ async def test_disconnect_with_reason():
         TIMEOUT,
     )
 
-    fixed_header, reader = await expect(transport, PacketType.DISCONNECT)
-    assert parse_disconnect_packet(fixed_header, reader) == DisconnectResult(
+    assert await expect_packet(transport, DisconnectResult) == DisconnectResult(
         0x04, {"reason_string": "bye"}
     )
 
@@ -155,7 +154,7 @@ async def test_server_disconnect_is_exposed():
     await expect(transport, PacketType.SUBSCRIBE)
 
     # 0x8B "Server shutting down"
-    transport.feed(b"\xe0\x01\x8b")
+    transport.feed(pack_disconnect_packet(0x8B, {}))
 
     with pytest.raises(ConnectionLostError) as exc_info:
         await asyncio.wait_for(task, TIMEOUT)
