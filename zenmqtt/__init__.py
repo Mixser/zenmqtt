@@ -36,11 +36,11 @@ from zenmqtt.mqtt.connect import (
 )
 from zenmqtt.mqtt.publish import (
     Message,
-    PubackResult,
-    PubcompResult,
+    PubAckResult,
+    PubCompResult,
     PublishAcknowledgement,
     PublishProperties,
-    PubrecResult,
+    PubRecResult,
     QoS,
 )
 from zenmqtt.mqtt.reason_codes import ReasonCode
@@ -89,11 +89,11 @@ __all__ = [
     "PacketIdentifier",
     "PacketTooLargeError",
     "ProtocolError",
-    "PubackResult",
-    "PubcompResult",
+    "PubAckResult",
+    "PubCompResult",
     "PublishAcknowledgement",
     "PublishProperties",
-    "PubrecResult",
+    "PubRecResult",
     "QoS",
     "QoSNotSupportedError",
     "ReasonCode",

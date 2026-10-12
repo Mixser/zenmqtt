@@ -17,7 +17,7 @@ from zenmqtt.mqtt.limits import DEFAULT_RECEIVE_MAXIMUM
 from zenmqtt.mqtt.protocol.context import ProtocolContext
 from zenmqtt.mqtt.publish import (
     Message,
-    PubrelResult,
+    PubRelResult,
     pack_puback_packet,
     pack_pubcomp_packet,
     pack_pubrec_packet,
@@ -178,7 +178,7 @@ class IncomingFlow:
 
         self._enqueue(message)
 
-    async def handle_pubrel(self, pubrel_result: PubrelResult) -> None:
+    async def handle_pubrel(self, pubrel_result: PubRelResult) -> None:
         connection = self._context.connection
         assert connection
 

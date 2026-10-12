@@ -9,13 +9,13 @@ from zenmqtt.mqtt.connect import (
     parse_disconnect_packet,
 )
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader, PacketType
-from zenmqtt.mqtt.ping import PingrespResult, parse_pingresp_packet
+from zenmqtt.mqtt.ping import PingRespResult, parse_pingresp_packet
 from zenmqtt.mqtt.publish import (
     Message,
-    PubackResult,
-    PubcompResult,
-    PubrecResult,
-    PubrelResult,
+    PubAckResult,
+    PubCompResult,
+    PubRecResult,
+    PubRelResult,
     parse_puback_packet,
     parse_pubcomp_packet,
     parse_publish_packet,
@@ -32,13 +32,13 @@ from zenmqtt.mqtt.subscribe import (
 # packets a client receives from the server
 IncomingPacket = Union[
     Message,
-    PubackResult,
-    PubrecResult,
-    PubrelResult,
-    PubcompResult,
+    PubAckResult,
+    PubRecResult,
+    PubRelResult,
+    PubCompResult,
     SubscribeResult,
     UnsubscribeResult,
-    PingrespResult,
+    PingRespResult,
     ConnectionResult,
     ServerDisconnect,
     AuthResult,

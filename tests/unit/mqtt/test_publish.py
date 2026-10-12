@@ -6,10 +6,10 @@ from zenmqtt.exceptions import MalformedPacketError
 from zenmqtt.mqtt.packet import PacketType, split_packet
 from zenmqtt.mqtt.publish import (
     Message,
-    PubackResult,
-    PubcompResult,
-    PubrecResult,
-    PubrelResult,
+    PubAckResult,
+    PubCompResult,
+    PubRecResult,
+    PubRelResult,
     pack_puback_packet,
     pack_pubcomp_packet,
     pack_publish_packet,
@@ -126,8 +126,8 @@ def test_pack_publish_packet(
 @pytest.mark.parametrize(
     "input, expected_result",
     (
-        (b"@\x04\xde\xad\x01\x00", PubackResult(0xDEAD, 1, {})),
-        (b"@\x04\xbe\xaf\x02\x00", PubackResult(0xBEAF, 2, {})),
+        (b"@\x04\xde\xad\x01\x00", PubAckResult(0xDEAD, 1, {})),
+        (b"@\x04\xbe\xaf\x02\x00", PubAckResult(0xBEAF, 2, {})),
     ),
 )
 async def test_parse_puback_packet(input, expected_result):
@@ -163,14 +163,14 @@ def test_pack_puback_packet(
 @pytest.mark.parametrize(
     "input, expected_result",
     (
-        (b"\x50\x04\xde\xad\x01\x00", PubrecResult(0xDEAD, 0x1, {})),
+        (b"\x50\x04\xde\xad\x01\x00", PubRecResult(0xDEAD, 0x1, {})),
         (
             b"\x50\x0b\xde\xad\x01\x07\x1f\x00\x04text",
-            PubrecResult(0xDEAD, 0x1, {"reason_string": "text"}),
+            PubRecResult(0xDEAD, 0x1, {"reason_string": "text"}),
         ),
         (
             b"\x50\x13\xde\xad\x02\x0f\x26\x00\x05field\x00\x05value",
-            PubrecResult(0xDEAD, 0x2, {"user_property": [("field", "value")]}),
+            PubRecResult(0xDEAD, 0x2, {"user_property": [("field", "value")]}),
         ),
     ),
 )
@@ -231,15 +231,15 @@ def test_pack_pubrel_packet(
     (
         (
             b"\x62\x02\xde\xad",
-            PubrelResult(packet_identifier=0xDEAD, reason_code=0x0, properties={}),
+            PubRelResult(packet_identifier=0xDEAD, reason_code=0x0, properties={}),
         ),
         (
             b"\x62\x04\xbe\xaf\x01\x00",
-            PubrelResult(packet_identifier=0xBEAF, reason_code=0x1, properties={}),
+            PubRelResult(packet_identifier=0xBEAF, reason_code=0x1, properties={}),
         ),
         (
             b"\x62\x04\xbe\xaf\x02\x00",
-            PubrelResult(packet_identifier=0xBEAF, reason_code=0x2, properties={}),
+            PubRelResult(packet_identifier=0xBEAF, reason_code=0x2, properties={}),
         ),
     ),
 )
@@ -279,15 +279,15 @@ def test_pack_pubcomp_packet(
     (
         (
             b"\x70\x02\xde\xad",
-            PubcompResult(packet_identifier=0xDEAD, reason_code=0x0, properties={}),
+            PubCompResult(packet_identifier=0xDEAD, reason_code=0x0, properties={}),
         ),
         (
             b"\x70\x04\xbe\xaf\x01\x00",
-            PubcompResult(packet_identifier=0xBEAF, reason_code=0x1, properties={}),
+            PubCompResult(packet_identifier=0xBEAF, reason_code=0x1, properties={}),
         ),
         (
             b"\x70\x04\xbe\xaf\x02\x00",
-            PubcompResult(packet_identifier=0xBEAF, reason_code=0x2, properties={}),
+            PubCompResult(packet_identifier=0xBEAF, reason_code=0x2, properties={}),
         ),
     ),
 )

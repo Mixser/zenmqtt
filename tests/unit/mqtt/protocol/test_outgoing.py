@@ -20,10 +20,10 @@ from tests.unit.mqtt.protocol.helpers import (
 from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
 from zenmqtt.mqtt.packet import PacketType
 from zenmqtt.mqtt.publish import (
-    PubackResult,
-    PubcompResult,
-    PubrecResult,
-    PubrelResult,
+    PubAckResult,
+    PubCompResult,
+    PubRecResult,
+    PubRelResult,
     pack_puback_packet,
     pack_pubcomp_packet,
     pack_pubrec_packet,
@@ -45,7 +45,7 @@ async def test_qos1_publish_flow():
 
     result = await asyncio.wait_for(task, TIMEOUT)
 
-    assert isinstance(result, PubackResult)
+    assert isinstance(result, PubAckResult)
     assert await session.get_pending_outgoing_messages() == []
     assert acquired_packet_identifiers(session) == set()
 
@@ -59,7 +59,7 @@ async def test_qos2_publish_flow():
     publish = await expect_publish(transport)
     transport.feed(pack_pubrec_packet(publish.packet_identifier, 0, {}))
 
-    pubrel = await expect_packet(transport, PubrelResult)
+    pubrel = await expect_packet(transport, PubRelResult)
     assert pubrel.packet_identifier == publish.packet_identifier
 
     (pending,) = await session.get_pending_outgoing_messages()
@@ -69,7 +69,7 @@ async def test_qos2_publish_flow():
 
     result = await asyncio.wait_for(task, TIMEOUT)
 
-    assert isinstance(result, PubcompResult)
+    assert isinstance(result, PubCompResult)
     assert await session.get_pending_outgoing_messages() == []
     assert acquired_packet_identifiers(session) == set()
 
@@ -85,7 +85,7 @@ async def test_qos2_publish_rejected_by_pubrec():
 
     result = await asyncio.wait_for(task, TIMEOUT)
 
-    assert isinstance(result, PubrecResult)
+    assert isinstance(result, PubRecResult)
     assert result.reason_code == 0x87
     assert not transport.has_sent_packets()
     assert await session.get_pending_outgoing_messages() == []
@@ -123,7 +123,7 @@ async def test_connection_lost_then_resend_with_session_present():
     transport = await connect(protocol, session_present=True)
 
     # the original order is kept: PUBREL for the first message, then PUBLISH
-    pubrel = await expect_packet(transport, PubrelResult)
+    pubrel = await expect_packet(transport, PubRelResult)
     assert pubrel.packet_identifier == qos2_publish.packet_identifier
 
     resent = await expect_publish(transport)
@@ -221,7 +221,7 @@ async def test_pubrec_with_unknown_packet_identifier():
 
     transport.feed(pack_pubrec_packet(42, 0, {}))
 
-    pubrel = await expect_packet(transport, PubrelResult)
+    pubrel = await expect_packet(transport, PubRelResult)
     assert pubrel.packet_identifier == 42
     assert pubrel.reason_code == 0x92
 
@@ -299,7 +299,7 @@ async def test_publish_waits_across_a_lost_connection():
     assert publish.dup and publish.payload == b"payload"
 
     transport.feed(pack_puback_packet(publish.packet_identifier, 0, {}))
-    assert await asyncio.wait_for(task, TIMEOUT) == PubackResult(
+    assert await asyncio.wait_for(task, TIMEOUT) == PubAckResult(
         publish.packet_identifier, 0, {}
     )
 

@@ -5,13 +5,13 @@ from zenmqtt.mqtt.auth import AuthResult
 from zenmqtt.mqtt.codec import decode
 from zenmqtt.mqtt.connect import ConnectionResult, ServerDisconnect
 from zenmqtt.mqtt.packet import split_packet
-from zenmqtt.mqtt.ping import PingrespResult
+from zenmqtt.mqtt.ping import PingRespResult
 from zenmqtt.mqtt.publish import (
     Message,
-    PubackResult,
-    PubcompResult,
-    PubrecResult,
-    PubrelResult,
+    PubAckResult,
+    PubCompResult,
+    PubRecResult,
+    PubRelResult,
 )
 from zenmqtt.mqtt.subscribe import SubscribeResult, UnsubscribeResult
 
@@ -21,13 +21,13 @@ from zenmqtt.mqtt.subscribe import SubscribeResult, UnsubscribeResult
     (
         (b"\x20\x03\x00\x00\x00", ConnectionResult),
         (b"\x30\x06\x00\x03a/b\x00", Message),
-        (b"\x40\x02\x00\x01", PubackResult),
-        (b"\x50\x02\x00\x01", PubrecResult),
-        (b"\x62\x02\x00\x01", PubrelResult),
-        (b"\x70\x02\x00\x01", PubcompResult),
+        (b"\x40\x02\x00\x01", PubAckResult),
+        (b"\x50\x02\x00\x01", PubRecResult),
+        (b"\x62\x02\x00\x01", PubRelResult),
+        (b"\x70\x02\x00\x01", PubCompResult),
         (b"\x90\x04\x00\x01\x00\x00", SubscribeResult),
         (b"\xb0\x04\x00\x01\x00\x00", UnsubscribeResult),
-        (b"\xd0\x00", PingrespResult),
+        (b"\xd0\x00", PingRespResult),
         (b"\xe0\x00", ServerDisconnect),
         (b"\xf0\x00", AuthResult),
     ),

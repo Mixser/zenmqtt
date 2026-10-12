@@ -130,7 +130,7 @@ def parse_publish_packet(fixed_header: FixedHeader, reader: BytesReader) -> Mess
 
 
 @dataclass(frozen=True)
-class PubackResult:
+class PubAckResult:
     __slots__ = ("packet_identifier", "reason_code", "properties")
 
     packet_identifier: int
@@ -138,12 +138,12 @@ class PubackResult:
     properties: PubackProperties
 
 
-def parse_puback_packet(fixed_header: FixedHeader, reader: BytesReader) -> PubackResult:
+def parse_puback_packet(fixed_header: FixedHeader, reader: BytesReader) -> PubAckResult:
     packet_identifier, reason_code, properties = _parse_publish_response_packet(
         fixed_header, reader
     )
 
-    return PubackResult(
+    return PubAckResult(
         packet_identifier=packet_identifier,
         reason_code=reason_code,
         properties=properties,
@@ -159,19 +159,19 @@ def pack_puback_packet(
 
 
 @dataclass(frozen=True)
-class PubrecResult:
+class PubRecResult:
     __slots__ = ("packet_identifier", "reason_code", "properties")
     packet_identifier: int
     reason_code: ReasonCode
     properties: PubrecProperties
 
 
-def parse_pubrec_packet(fixed_header: FixedHeader, reader: BytesReader) -> PubrecResult:
+def parse_pubrec_packet(fixed_header: FixedHeader, reader: BytesReader) -> PubRecResult:
     packet_identifier, reason_code, properties = _parse_publish_response_packet(
         fixed_header, reader
     )
 
-    return PubrecResult(
+    return PubRecResult(
         packet_identifier=packet_identifier,
         reason_code=reason_code,
         properties=properties,
@@ -187,7 +187,7 @@ def pack_pubrec_packet(
 
 
 @dataclass(frozen=True)
-class PubrelResult:
+class PubRelResult:
     __slots__ = ("packet_identifier", "reason_code", "properties")
 
     packet_identifier: int
@@ -195,12 +195,12 @@ class PubrelResult:
     properties: PubrelProperties
 
 
-def parse_pubrel_packet(fixed_header: FixedHeader, reader: BytesReader) -> PubrelResult:
+def parse_pubrel_packet(fixed_header: FixedHeader, reader: BytesReader) -> PubRelResult:
     packet_identifier, reason_code, properties = _parse_publish_response_packet(
         fixed_header, reader
     )
 
-    return PubrelResult(
+    return PubRelResult(
         packet_identifier=packet_identifier,
         reason_code=reason_code,
         properties=properties,
@@ -216,7 +216,7 @@ def pack_pubrel_packet(
 
 
 @dataclass(frozen=True)
-class PubcompResult:
+class PubCompResult:
     __slots__ = ("packet_identifier", "reason_code", "properties")
 
     packet_identifier: int
@@ -226,12 +226,12 @@ class PubcompResult:
 
 def parse_pubcomp_packet(
     fixed_header: FixedHeader, reader: BytesReader
-) -> PubcompResult:
+) -> PubCompResult:
     packet_identifier, reason_code, properties = _parse_publish_response_packet(
         fixed_header, reader
     )
 
-    return PubcompResult(
+    return PubCompResult(
         packet_identifier=packet_identifier,
         reason_code=reason_code,
         properties=properties,
@@ -279,4 +279,4 @@ def _pack_publish_response_packet(
 
 
 # PUBACK for QoS 1; PUBCOMP (or PUBREC with an error reason code) for QoS 2
-PublishAcknowledgement = PubackResult | PubrecResult | PubcompResult
+PublishAcknowledgement = PubAckResult | PubRecResult | PubCompResult

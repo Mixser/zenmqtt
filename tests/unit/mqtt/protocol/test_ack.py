@@ -22,7 +22,7 @@ from tests.unit.mqtt.protocol.helpers import (
 )
 from zenmqtt.instrumentation import monitors
 from zenmqtt.mqtt.packet import PacketType
-from zenmqtt.mqtt.publish import PubcompResult, pack_publish_packet, pack_pubrel_packet
+from zenmqtt.mqtt.publish import PubCompResult, pack_publish_packet, pack_pubrel_packet
 
 
 async def test_qos1_is_acknowledged_by_ack():
@@ -58,7 +58,7 @@ async def test_qos2_is_acknowledged_by_ack():
     assert await session.has_incoming_message(1)
 
     transport.feed(pack_pubrel_packet(1, 0, {}))
-    pubcomp = await expect_packet(transport, PubcompResult)
+    pubcomp = await expect_packet(transport, PubCompResult)
     assert pubcomp.reason_code == 0
     assert not await session.has_incoming_message(1)
 

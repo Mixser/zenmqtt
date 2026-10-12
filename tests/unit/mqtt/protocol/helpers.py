@@ -13,8 +13,8 @@ from zenmqtt.mqtt.packet import PacketType, split_packet
 from zenmqtt.mqtt.protocol import MQTTProtocol
 from zenmqtt.mqtt.publish import (
     Message,
-    PubackResult,
-    PubrecResult,
+    PubAckResult,
+    PubRecResult,
     pack_publish_packet,
 )
 from zenmqtt.session import InMemorySession
@@ -242,12 +242,12 @@ async def expect_publish(transport: FakeTransport) -> Message:
     return await expect_packet(transport, Message)
 
 
-async def expect_puback(transport: FakeTransport) -> PubackResult:
-    return await expect_packet(transport, PubackResult)
+async def expect_puback(transport: FakeTransport) -> PubAckResult:
+    return await expect_packet(transport, PubAckResult)
 
 
-async def expect_pubrec(transport: FakeTransport) -> PubrecResult:
-    return await expect_packet(transport, PubrecResult)
+async def expect_pubrec(transport: FakeTransport) -> PubRecResult:
+    return await expect_packet(transport, PubRecResult)
 
 
 async def expect_disconnect(transport: FakeTransport, reason_code: int):

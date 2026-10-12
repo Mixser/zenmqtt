@@ -148,7 +148,7 @@ is only in the client.
 reads the socket in chunks of 64 KiB and returns whole packets; all complete
 packets in the buffer are returned before the next read. `decode()` in
 `mqtt/codec.py` parses each packet into its result type (`Message`,
-`PubackResult`, ...), and the read loop passes it to a handler by that type.
+`PubAckResult`, ...), and the read loop passes it to a handler by that type.
 Handlers get parsed packets only, they never read bytes.
 
 ```mermaid
@@ -295,7 +295,7 @@ sequenceDiagram
     B-->>O: PUBCOMP
     O->>S: complete_outgoing_message()
     Note over O: release the slot of the send quota
-    O-->>A: PubcompResult
+    O-->>A: PubCompResult
 ```
 
 QoS 1 is the same up to PUBACK, which completes the message.

@@ -19,7 +19,7 @@ from zenmqtt.mqtt.connect import (
     pack_disconnect_packet,
 )
 from zenmqtt.mqtt.limits import ServerLimits
-from zenmqtt.mqtt.ping import PingrespResult
+from zenmqtt.mqtt.ping import PingRespResult
 from zenmqtt.mqtt.protocol.commands import Commands
 from zenmqtt.mqtt.protocol.context import ProtocolContext
 from zenmqtt.mqtt.protocol.incoming import IncomingFlow
@@ -28,12 +28,12 @@ from zenmqtt.mqtt.protocol.outgoing import OutgoingFlow
 from zenmqtt.mqtt.protocol.stream import PacketReader
 from zenmqtt.mqtt.publish import (
     Message,
-    PubackResult,
-    PubcompResult,
+    PubAckResult,
+    PubCompResult,
     PublishAcknowledgement,
     PublishProperties,
-    PubrecResult,
-    PubrelResult,
+    PubRecResult,
+    PubRelResult,
 )
 from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE, IMPLEMENTATION_SPECIFIC_ERROR
 from zenmqtt.mqtt.subscribe import (
@@ -336,19 +336,19 @@ class MQTTProtocol:
         match packet:
             case Message():
                 await self._incoming.handle_publish(packet)
-            case PubackResult():
+            case PubAckResult():
                 await self._outgoing.handle_puback(packet)
-            case PubrecResult():
+            case PubRecResult():
                 await self._outgoing.handle_pubrec(packet)
-            case PubrelResult():
+            case PubRelResult():
                 await self._incoming.handle_pubrel(packet)
-            case PubcompResult():
+            case PubCompResult():
                 await self._outgoing.handle_pubcomp(packet)
             case SubscribeResult():
                 await self._commands.handle_suback(packet)
             case UnsubscribeResult():
                 await self._commands.handle_unsuback(packet)
-            case PingrespResult():
+            case PingRespResult():
                 await self._keep_alive.handle_pingresp(packet)
             case ConnectionResult():
                 await self._handle_connack(packet)
