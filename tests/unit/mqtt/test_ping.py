@@ -1,7 +1,7 @@
 import pytest
 
 from zenmqtt.mqtt.packet import PacketType, split_packet
-from zenmqtt.mqtt.ping import PingRespResult, pack_pingreq_packet, parse_pingresp_packet
+from zenmqtt.mqtt.ping import PingrespResult, pack_pingreq_packet, parse_pingresp_packet
 
 
 def test_pack_pingreq_packet():
@@ -12,7 +12,7 @@ async def test_parse_pingresp_packet():
     fixed_header, reader = split_packet(b"\xd0\x00")
 
     assert fixed_header.packet_type == PacketType.PINGRESP
-    assert parse_pingresp_packet(fixed_header, reader) == PingRespResult()
+    assert parse_pingresp_packet(fixed_header, reader) == PingrespResult()
 
 
 @pytest.mark.parametrize(

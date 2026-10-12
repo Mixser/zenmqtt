@@ -22,7 +22,7 @@ from tests.unit.test_reconnect import (  # noqa: F401
 from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
 from zenmqtt.mqtt.packet import PacketType
 from zenmqtt.mqtt.publish import (
-    PubAckResult,
+    PubackResult,
     pack_puback_packet,
     pack_pubcomp_packet,
     pack_pubrec_packet,
@@ -47,7 +47,7 @@ async def test_disconnect_waits_for_puback(broker):
 
     transport.feed(pack_puback_packet(sent.packet_identifier, 0, {}))
 
-    assert await asyncio.wait_for(publish, TIMEOUT) == PubAckResult(
+    assert await asyncio.wait_for(publish, TIMEOUT) == PubackResult(
         sent.packet_identifier, 0, {}
     )
     await expect_disconnect(transport, 0)

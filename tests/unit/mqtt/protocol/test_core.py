@@ -22,7 +22,7 @@ from tests.unit.mqtt.protocol.helpers import (
 )
 from zenmqtt.connection import MQTTConnection
 from zenmqtt.exceptions import ConnectionLostError, NotConnectedError
-from zenmqtt.mqtt.connect import DisconnectResult, WillMessage, pack_disconnect_packet
+from zenmqtt.mqtt.connect import ServerDisconnect, WillMessage, pack_disconnect_packet
 from zenmqtt.mqtt.packet import PacketType
 from zenmqtt.mqtt.publish import pack_pubrel_packet
 
@@ -142,7 +142,7 @@ async def test_disconnect_with_reason():
         TIMEOUT,
     )
 
-    assert await expect_packet(transport, DisconnectResult) == DisconnectResult(
+    assert await expect_packet(transport, ServerDisconnect) == ServerDisconnect(
         0x04, {"reason_string": "bye"}
     )
 
@@ -160,7 +160,7 @@ async def test_server_disconnect_is_exposed():
     with pytest.raises(ConnectionLostError) as exc_info:
         await asyncio.wait_for(task, TIMEOUT)
 
-    expected = DisconnectResult(0x8B, {})
+    expected = ServerDisconnect(0x8B, {})
 
     assert exc_info.value.server_disconnect == expected
     assert protocol.server_disconnect == expected

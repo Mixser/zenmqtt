@@ -21,7 +21,7 @@ from tests.unit.mqtt.protocol.helpers import (
     wait_for_connection_lost,
 )
 from zenmqtt.mqtt.packet import PacketType
-from zenmqtt.mqtt.publish import PubAckResult, pack_puback_packet
+from zenmqtt.mqtt.publish import PubackResult, pack_puback_packet
 
 
 async def feed(transport: FakeTransport, *packets: bytes) -> None:
@@ -48,7 +48,7 @@ async def test_control_packets_are_handled_while_nobody_reads():
     publish = await expect_publish(transport)
     transport.feed(pack_puback_packet(publish.packet_identifier, 0, {}))
 
-    assert isinstance(await asyncio.wait_for(task, TIMEOUT), PubAckResult)
+    assert isinstance(await asyncio.wait_for(task, TIMEOUT), PubackResult)
 
 
 async def test_slow_consumer_is_reported(caplog):

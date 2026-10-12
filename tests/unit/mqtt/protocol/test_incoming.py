@@ -20,7 +20,7 @@ from tests.unit.mqtt.protocol.helpers import (
 from zenmqtt.exceptions import ConnectionLostError
 from zenmqtt.mqtt.connect import ConnectProperties
 from zenmqtt.mqtt.packet import PacketType
-from zenmqtt.mqtt.publish import PubCompResult, pack_publish_packet, pack_pubrel_packet
+from zenmqtt.mqtt.publish import PubcompResult, pack_publish_packet, pack_pubrel_packet
 
 
 async def test_incoming_qos1_message():
@@ -128,7 +128,7 @@ async def test_pubrel_with_unknown_packet_identifier():
 
     transport.feed(pack_pubrel_packet(42, 0, {}))
 
-    pubcomp = await expect_packet(transport, PubCompResult)
+    pubcomp = await expect_packet(transport, PubcompResult)
     assert pubcomp.packet_identifier == 42
     assert pubcomp.reason_code == 0x92
 
@@ -143,7 +143,7 @@ async def test_pubrel_with_known_packet_identifier():
 
     transport.feed(pack_pubrel_packet(7, 0, {}))
 
-    pubcomp = await expect_packet(transport, PubCompResult)
+    pubcomp = await expect_packet(transport, PubcompResult)
     assert pubcomp.reason_code == 0x00
 
 

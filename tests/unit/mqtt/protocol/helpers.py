@@ -8,13 +8,13 @@ from zenmqtt.connection import MQTTConnection, MQTTConnectionTransport
 from zenmqtt.exceptions import ConnectionLostError
 from zenmqtt.instrumentation.metrics import MetricsCollector
 from zenmqtt.mqtt.codec import IncomingPacket, decode
-from zenmqtt.mqtt.connect import ConnectProperties, DisconnectResult
+from zenmqtt.mqtt.connect import ConnectProperties, ServerDisconnect
 from zenmqtt.mqtt.packet import PacketType, split_packet
 from zenmqtt.mqtt.protocol import MQTTProtocol
 from zenmqtt.mqtt.publish import (
-    PubAckResult,
-    PublishResult,
-    PubRecResult,
+    Message,
+    PubackResult,
+    PubrecResult,
     pack_publish_packet,
 )
 from zenmqtt.session import InMemorySession
@@ -238,20 +238,20 @@ async def expect_unsubscribe(transport: FakeTransport) -> int:
     return await _expect_packet_identifier(transport, PacketType.UNSUBSCRIBE)
 
 
-async def expect_publish(transport: FakeTransport) -> PublishResult:
-    return await expect_packet(transport, PublishResult)
+async def expect_publish(transport: FakeTransport) -> Message:
+    return await expect_packet(transport, Message)
 
 
-async def expect_puback(transport: FakeTransport) -> PubAckResult:
-    return await expect_packet(transport, PubAckResult)
+async def expect_puback(transport: FakeTransport) -> PubackResult:
+    return await expect_packet(transport, PubackResult)
 
 
-async def expect_pubrec(transport: FakeTransport) -> PubRecResult:
-    return await expect_packet(transport, PubRecResult)
+async def expect_pubrec(transport: FakeTransport) -> PubrecResult:
+    return await expect_packet(transport, PubrecResult)
 
 
 async def expect_disconnect(transport: FakeTransport, reason_code: int):
-    assert await expect_packet(transport, DisconnectResult) == DisconnectResult(
+    assert await expect_packet(transport, ServerDisconnect) == ServerDisconnect(
         reason_code, {}
     )
 
@@ -301,7 +301,7 @@ class Messages:
     def __init__(self, protocol: MQTTProtocol) -> None:
         self._protocol = protocol
 
-    async def get(self) -> Optional[PublishResult]:
+    async def get(self) -> Optional[Message]:
         return await self._protocol.next_message()
 
     def empty(self) -> bool:

@@ -188,7 +188,7 @@ def pack_disconnect_packet(reason_code: int, properties: DisconnectProperties) -
 
 
 @dataclass(frozen=True)
-class DisconnectResult:
+class ServerDisconnect:
     __slots__ = ("reason_code", "properties")
 
     reason_code: ReasonCode
@@ -197,14 +197,14 @@ class DisconnectResult:
 
 def parse_disconnect_packet(
     fixed_header: FixedHeader, reader: BytesReader
-) -> DisconnectResult:
+) -> ServerDisconnect:
     # both the reason code and properties may be omitted
     reason_code = to_reason_code(reader.read_byte() if reader.remaining() else 0x0)
     properties = parse_properties(reader) if reader.remaining() else {}
 
     reader.ensure_end()
 
-    return DisconnectResult(
+    return ServerDisconnect(
         reason_code=reason_code,
         properties=cast(DisconnectProperties, properties),
     )

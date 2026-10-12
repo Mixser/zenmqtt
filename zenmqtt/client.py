@@ -16,14 +16,14 @@ from zenmqtt.mqtt.connect import (
     ConnectionResult,
     ConnectProperties,
     DisconnectProperties,
-    DisconnectResult,
+    ServerDisconnect,
     WillMessage,
 )
 from zenmqtt.mqtt.protocol import MQTTProtocol
 from zenmqtt.mqtt.publish import (
+    Message,
     PublishAcknowledgement,
     PublishProperties,
-    PublishResult,
 )
 from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE
 from zenmqtt.mqtt.subscribe import (
@@ -54,14 +54,14 @@ OnDisconnect = Callable[[ConnectionLostError], Any]
 
 class AsyncMessageIterator:
     def __init__(
-        self, next_message: Callable[[], Awaitable[Optional[PublishResult]]]
+        self, next_message: Callable[[], Awaitable[Optional[Message]]]
     ) -> None:
         self._next_message = next_message
 
     def __aiter__(self) -> "AsyncMessageIterator":
         return self
 
-    async def __anext__(self) -> PublishResult:
+    async def __anext__(self) -> Message:
         value = await self._next_message()
 
         if value is None:
@@ -337,7 +337,7 @@ class MQTTClient:
             await self._state_changed.wait()
 
     @property
-    def server_disconnect(self) -> Optional[DisconnectResult]:
+    def server_disconnect(self) -> Optional[ServerDisconnect]:
         """
         DISCONNECT packet (reason code and properties) if the server closed
         the last connection with it, otherwise None; reset on connect.
@@ -452,7 +452,7 @@ class MQTTClient:
 
         return result
 
-    async def ack(self, message: PublishResult, reason_code: int = 0) -> None:
+    async def ack(self, message: Message, reason_code: int = 0) -> None:
         """
         Acknowledges a processed message: sends PUBACK for QoS 1 and PUBREC for
         QoS 2, does nothing for QoS 0. Every QoS 1/2 message from
@@ -473,7 +473,7 @@ class MQTTClient:
         """
         await self._protocol.ack(message, reason_code)
 
-    def trace(self, message: PublishResult) -> AbstractContextManager[None]:
+    def trace(self, message: Message) -> AbstractContextManager[None]:
         """
         Wraps the processing of a received message for tracing: with tracing,
         the block runs in a span which continues the trace of the publisher;
@@ -509,7 +509,7 @@ class MQTTClient:
         """
         return AsyncMessageIterator(self._next_message)
 
-    async def _next_message(self) -> Optional[PublishResult]:
+    async def _next_message(self) -> Optional[Message]:
         if self._reading:
             raise RuntimeError(
                 "client.messages is read by another task; read messages in one "

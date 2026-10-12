@@ -16,8 +16,8 @@ from zenmqtt.mqtt.connect import ConnectProperties
 from zenmqtt.mqtt.limits import DEFAULT_RECEIVE_MAXIMUM
 from zenmqtt.mqtt.protocol.context import ProtocolContext
 from zenmqtt.mqtt.publish import (
-    PublishResult,
-    PubRelResult,
+    Message,
+    PubrelResult,
     pack_puback_packet,
     pack_pubcomp_packet,
     pack_pubrec_packet,
@@ -30,7 +30,7 @@ logger = getLogger(__name__)
 
 @dataclass(slots=True)
 class _PendingAck:
-    message: PublishResult
+    message: Message
     # loop time
     received_at: float
     acked: bool = False
@@ -79,7 +79,7 @@ class IncomingFlow:
 
         # messages which wait for the application; None marks the end of
         # messages
-        self._buffer: deque[Optional[PublishResult]] = deque()
+        self._buffer: deque[Optional[Message]] = deque()
         self._buffer_ready = asyncio.Event()
         self.buffer_monitor = BufferMonitor(context.metrics)
 
@@ -111,7 +111,7 @@ class IncomingFlow:
         """The client stops for good: the end of messages."""
         self._enqueue(None)
 
-    async def next_message(self) -> Optional[PublishResult]:
+    async def next_message(self) -> Optional[Message]:
         """
         Waits for the next message, None is the end of messages. Meant for one
         reader: the end of messages goes to one of the waiting readers only.
@@ -125,7 +125,7 @@ class IncomingFlow:
 
         return message
 
-    async def handle_publish(self, packet: PublishResult) -> None:
+    async def handle_publish(self, packet: Message) -> None:
         message = self._resolve_topic_alias(packet)
 
         logger.debug("mqtt_protocol.handle_publish_packet packet:%s", message)
@@ -178,7 +178,7 @@ class IncomingFlow:
 
         self._enqueue(message)
 
-    async def handle_pubrel(self, pubrel_result: PubRelResult) -> None:
+    async def handle_pubrel(self, pubrel_result: PubrelResult) -> None:
         connection = self._context.connection
         assert connection
 
@@ -200,7 +200,7 @@ class IncomingFlow:
             connection, pack_pubcomp_packet(packet_identifier, reason_code, {})
         )
 
-    async def ack(self, message: PublishResult, reason_code: int = 0) -> None:
+    async def ack(self, message: Message, reason_code: int = 0) -> None:
         """
         Acknowledges a message: PUBACK for QoS 1, PUBREC for QoS 2, nothing for
         QoS 0. Acks are sent in the order messages were received (MQTT 5, 4.6),
@@ -299,7 +299,7 @@ class IncomingFlow:
 
         return len(state.pending_acks) - 1
 
-    def _resolve_topic_alias(self, message: PublishResult) -> PublishResult:
+    def _resolve_topic_alias(self, message: Message) -> Message:
         topic_alias = message.properties.get("topic_alias")
 
         if topic_alias is None:
@@ -323,7 +323,7 @@ class IncomingFlow:
 
         return dataclasses.replace(message, topic=topic)
 
-    def _enqueue(self, message: Optional[PublishResult]) -> None:
+    def _enqueue(self, message: Optional[Message]) -> None:
         self._buffer.append(message)
         self._buffer_ready.set()
         self.buffer_monitor.update(len(self._buffer))

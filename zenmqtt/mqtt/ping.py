@@ -13,16 +13,16 @@ def pack_pingreq_packet() -> bytes:
 
 
 @dataclass(frozen=True)
-class PingRespResult:
+class PingrespResult:
     __slots__ = ()
 
 
 def parse_pingresp_packet(
     fixed_header: FixedHeader, reader: BytesReader
-) -> PingRespResult:
+) -> PingrespResult:
     assert fixed_header.packet_type == PacketType.PINGRESP
 
     if fixed_header.flags != 0x00 or fixed_header.length != 0:
         raise MalformedPacketError(f"Malformed PINGRESP packet: {fixed_header}")
 
-    return PingRespResult()
+    return PingrespResult()

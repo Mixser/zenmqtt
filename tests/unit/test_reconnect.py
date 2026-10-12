@@ -20,7 +20,7 @@ from zenmqtt.connection import register_implementation
 from zenmqtt.exceptions import ConnectionLostError, NotConnectedError, SessionLostError
 from zenmqtt.mqtt.connect import pack_disconnect_packet
 from zenmqtt.mqtt.packet import PacketType
-from zenmqtt.mqtt.publish import PubAckResult, pack_puback_packet, pack_publish_packet
+from zenmqtt.mqtt.publish import PubackResult, pack_puback_packet, pack_publish_packet
 from zenmqtt.mqtt.subscribe import Subscription
 from zenmqtt.reconnect import ReconnectPolicy
 
@@ -381,7 +381,7 @@ async def test_inflight_publish_waits_across_reconnect(broker):
     transport.feed(pack_puback_packet(publish.packet_identifier, 0, {}))
 
     result = await asyncio.wait_for(task, TIMEOUT)
-    assert isinstance(result, PubAckResult)
+    assert isinstance(result, PubackResult)
 
 
 async def test_inflight_publish_fails_when_session_is_lost(broker):

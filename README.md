@@ -80,7 +80,7 @@ asyncio.run(main())
 ```
 
 `publish()` returns `None` for QoS 0 and the final acknowledgement (PUBACK or
-PUBCOMP) for QoS 1/2. Received messages are `PublishResult` objects with
+PUBCOMP) for QoS 1/2. Received messages are `Message` objects with
 `topic`, `payload`, `qos`, `retain`, `dup` and `properties`.
 
 ## Usage
