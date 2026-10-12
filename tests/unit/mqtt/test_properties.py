@@ -40,7 +40,7 @@ ALL_PROPERTIES: Properties = {
     "content_type": "application/json; charset=utf-8",
     "response_topic": "response/топик/1",
     "correlation_data": bytes(range(256)),
-    "subscription_identifier": 268_435_455,
+    "subscription_identifier": [1, 268_435_455],
     "session_expiry_interval": 2**32 - 1,
     "assigned_client_identifier": "auto-42",
     "server_keep_alive": 2**16 - 1,
@@ -76,3 +76,28 @@ def test_all_properties_round_trip():
     assert {name: type(value) for name, value in parsed.items()} == {
         name: type(value) for name, value in ALL_PROPERTIES.items()
     }
+
+
+def test_parse_repeated_subscription_identifiers():
+    # PUBLISH has one identifier per matched subscription (MQTT 5, 3.3.2.3.8)
+    properties = parse_properties(BytesReader(b"\x04\x0b\x01\x0b\x02"))
+
+    assert properties == {"subscription_identifier": [1, 2]}
+
+
+def test_parse_single_subscription_identifier_as_list():
+    properties = parse_properties(BytesReader(b"\x02\x0b\x05"))
+
+    assert properties == {"subscription_identifier": [5]}
+
+
+@pytest.mark.parametrize(
+    "properties, expected_value",
+    (
+        # SUBSCRIBE has one identifier
+        ({"subscription_identifier": 5}, b"\x02\x0b\x05"),
+        ({"subscription_identifier": [1, 2]}, b"\x04\x0b\x01\x0b\x02"),
+    ),
+)
+def test_pack_subscription_identifier(properties, expected_value):
+    assert pack_properties(properties) == expected_value
