@@ -47,8 +47,8 @@ reconnect, and the transport doesn't know about MQTT.
 ```text
 zenmqtt/
   client.py             MQTTClient: the public API
-  reconnector.py        Reconnector: reconnect loop with backoff
-  reconnect.py          ReconnectPolicy, reason codes that stop reconnecting
+  reconnect.py          ReconnectPolicy, reason codes that stop reconnecting,
+                        Reconnector: reconnect loop with backoff
   subscriptions.py      SubscriptionRegistry: subscriptions to restore
   session.py            MQTTSession, BaseSession, InMemorySession
   exceptions.py         all public exceptions
@@ -479,10 +479,13 @@ sequenceDiagram
 | `NotConnectedError` | the client isn't connected and doesn't reconnect |
 | `ConnectionLostError` | the connection was lost before the answer, without reconnect or after the client stopped |
 | `SessionLostError` | the server didn't keep the session, the message was discarded |
-| `ServerLimitError`: `QoSNotSupportedError`, `PacketTooLargeError`, `FeatureNotSupportedError` | the operation breaks a limit of the server from CONNACK; nothing is sent |
+| `ServerLimitError`: `QoSNotSupportedError`, `OutgoingPacketTooLargeError`, `FeatureNotSupportedError` | the operation breaks a limit of the server from CONNACK; nothing is sent |
 | `ProtocolError` and subclasses | the server broke the protocol; the client closes the connection with the matching reason code |
 | `RuntimeError` | a second task reads `client.messages` at the same time |
 | `ValueError` | invalid arguments, e.g. QoS 3 |
+
+All of them except `RuntimeError` and `ValueError` of invalid arguments are
+`MQTTError`. `ServerLimitError` and `ProtocolError` are `ValueError` too.
 
 Invalid input which the server rejects anyway (for example a wildcard in a
 publish topic) isn't validated by the client: the server closes the connection

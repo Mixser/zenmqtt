@@ -33,8 +33,7 @@ from zenmqtt.mqtt.subscribe import (
     UnsubscribeProperties,
     UnsubscribeResult,
 )
-from zenmqtt.reconnect import DEFAULT_RECONNECT_POLICY, ReconnectPolicy
-from zenmqtt.reconnector import Reconnector
+from zenmqtt.reconnect import DEFAULT_RECONNECT_POLICY, Reconnector, ReconnectPolicy
 from zenmqtt.session import MQTTSession, build_default_session
 from zenmqtt.subscriptions import SubscriptionRegistry
 
@@ -362,7 +361,7 @@ class MQTTClient:
 
         :raises ValueError: QoS isn't 0, 1 or 2
         :raises ServerLimitError: the message breaks a limit of the server from
-            CONNACK: QoSNotSupportedError, PacketTooLargeError or
+            CONNACK: QoSNotSupportedError, OutgoingPacketTooLargeError or
             FeatureNotSupportedError (retain, topic alias); nothing is sent
         :raises NotConnectedError: the client isn't connected and doesn't
             reconnect

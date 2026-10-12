@@ -3,7 +3,7 @@ from typing import Final, Optional, Sequence
 
 from zenmqtt.exceptions import (
     FeatureNotSupportedError,
-    PacketTooLargeError,
+    OutgoingPacketTooLargeError,
     QoSNotSupportedError,
 )
 from zenmqtt.mqtt.connect import ConnackProperties
@@ -120,7 +120,7 @@ class ServerLimits:
             self.maximum_packet_size is not None
             and len(packet) > self.maximum_packet_size
         ):
-            raise PacketTooLargeError(
+            raise OutgoingPacketTooLargeError(
                 f"Packet size {len(packet)} is bigger than server's maximum "
                 f"packet size {self.maximum_packet_size}"
             )
