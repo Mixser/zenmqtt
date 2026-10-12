@@ -5,6 +5,7 @@ import logging
 import pytest
 
 from tests.unit.mqtt.protocol.helpers import (
+    PINGRESP,
     TIMEOUT,
     FakeTransport,
     build_protocol,
@@ -53,7 +54,7 @@ async def read_packet(reader: PacketReader):
 
 
 async def test_packets_in_one_read():
-    reader = build_reader(b"\xd0\x00" + PUBLISH + b"\xd0\x00")
+    reader = build_reader(PINGRESP + PUBLISH + PINGRESP)
 
     header, packet_body, size = await read_packet(reader)
     assert (header, packet_body.read_rest(), size) == (
@@ -86,7 +87,7 @@ async def test_packet_split_between_reads():
 async def test_packet_split_between_reads_after_other_packets():
     # the second packet is completed by the next read: returned packets are
     # dropped from the buffer before it's filled
-    data = b"\xd0\x00" + PUBLISH
+    data = PINGRESP + PUBLISH
     reader = build_reader(data[:5], data[5:])
 
     header, _, _ = await read_packet(reader)

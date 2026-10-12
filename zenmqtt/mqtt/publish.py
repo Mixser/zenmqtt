@@ -26,7 +26,9 @@ class PublishProperties(TypedDict, total=False):
     message_expiry_interval: int
     content_type: str
     response_topic: str
-    subscription_identifier: int
+    # identifiers of all subscriptions which matched the message
+    # (MQTT 5, 3.3.2.3.8); the server sends them, a client must not
+    subscription_identifier: Sequence[int]
     topic_alias: int
     user_property: Sequence[Tuple[str, str]]
 
@@ -125,7 +127,7 @@ def parse_publish_packet(
         packet_identifier=packet_identifier,
         topic=topic,
         payload=reader.read_rest(),
-        properties=properties,
+        properties=cast(PublishProperties, properties),
     )
 
 

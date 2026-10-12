@@ -1,11 +1,13 @@
 import asyncio
 from asyncio import Task
 from logging import getLogger
-from typing import Awaitable, Callable, Optional, Sequence
+from typing import Optional, Sequence, assert_never
 
 from zenmqtt.connection import MQTTConnection
-from zenmqtt.exceptions import ConnectionLostError, MalformedPacketError, ProtocolError
+from zenmqtt.exceptions import ConnectionLostError, ProtocolError
 from zenmqtt.instrumentation.metrics import MetricsCollector, guard_metrics
+from zenmqtt.mqtt.auth import AuthResult
+from zenmqtt.mqtt.codec import IncomingPacket, decode
 from zenmqtt.mqtt.connect import (
     SESSION_PRESENT_FLAG,
     ConnectionResult,
@@ -15,11 +17,9 @@ from zenmqtt.mqtt.connect import (
     WillMessage,
     pack_connect_packet,
     pack_disconnect_packet,
-    parse_connack_packet,
-    parse_disconnect_packet,
 )
 from zenmqtt.mqtt.limits import ServerLimits
-from zenmqtt.mqtt.packet import BytesReader, FixedHeader, PacketType
+from zenmqtt.mqtt.ping import PingRespResult
 from zenmqtt.mqtt.protocol.commands import Commands
 from zenmqtt.mqtt.protocol.context import ProtocolContext
 from zenmqtt.mqtt.protocol.incoming import IncomingFlow
@@ -27,9 +27,13 @@ from zenmqtt.mqtt.protocol.keepalive import KeepAlive
 from zenmqtt.mqtt.protocol.outgoing import OutgoingFlow
 from zenmqtt.mqtt.protocol.stream import PacketReader
 from zenmqtt.mqtt.publish import (
+    PubAckResult,
+    PubCompResult,
     PublishAcknowledgement,
     PublishProperties,
     PublishResult,
+    PubRecResult,
+    PubRelResult,
 )
 from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE, IMPLEMENTATION_SPECIFIC_ERROR
 from zenmqtt.mqtt.subscribe import (
@@ -42,8 +46,6 @@ from zenmqtt.mqtt.subscribe import (
 from zenmqtt.session import MQTTSession
 
 logger = getLogger(__name__)
-
-PacketHandler = Callable[[FixedHeader, BytesReader], Awaitable[None]]
 
 
 class MQTTProtocol:
@@ -84,20 +86,6 @@ class MQTTProtocol:
 
         # "Authentication Method" of the last CONNECT
         self._authentication_method: Optional[str] = None
-
-        self._handlers: dict[PacketType, PacketHandler] = {
-            PacketType.CONNACK: self._handle_connack,
-            PacketType.PUBLISH: self._incoming.handle_publish,
-            PacketType.PUBACK: self._outgoing.handle_puback,
-            PacketType.PUBREC: self._outgoing.handle_pubrec,
-            PacketType.PUBREL: self._incoming.handle_pubrel,
-            PacketType.PUBCOMP: self._outgoing.handle_pubcomp,
-            PacketType.SUBACK: self._commands.handle_suback,
-            PacketType.UNSUBACK: self._commands.handle_unsuback,
-            PacketType.PINGRESP: self._keep_alive.handle_pingresp,
-            PacketType.DISCONNECT: self._handle_disconnect,
-            PacketType.AUTH: self._handle_auth,
-        }
 
     @property
     def is_connected(self) -> bool:
@@ -275,25 +263,17 @@ class MQTTProtocol:
 
         self._outgoing.on_session_lost()
 
-    async def _handle_connack(
-        self, fixed_header: FixedHeader, reader: BytesReader
-    ) -> None:
+    async def _handle_connack(self, connection_result: ConnectionResult) -> None:
         assert self._connection_future
-
-        connection_result = parse_connack_packet(fixed_header, reader)
 
         logger.debug("mqtt_protocol.handle_connack_packet packet:%s", connection_result)
 
         if not self._connection_future.done():
             self._connection_future.set_result(connection_result)
 
-    async def _handle_disconnect(
-        self, fixed_header: FixedHeader, reader: BytesReader
-    ) -> None:
+    async def _handle_disconnect(self, disconnect_packet: DisconnectResult) -> None:
         connection = self._context.connection
         assert connection
-
-        disconnect_packet = parse_disconnect_packet(fixed_header, reader)
 
         if disconnect_packet.reason_code >= FAILURE_REASON_CODE:
             logger.warning(
@@ -309,9 +289,7 @@ class MQTTProtocol:
         # pending futures are failed by the read loop once the stream ends
         await connection.disconnect()
 
-    async def _handle_auth(
-        self, fixed_header: FixedHeader, reader: BytesReader
-    ) -> None:
+    async def _handle_auth(self, packet: AuthResult) -> None:
         # the server sends AUTH only if CONNECT had an "Authentication Method"
         # (MQTT 5, 4.12)
         if self._authentication_method is None:
@@ -333,16 +311,8 @@ class MQTTProtocol:
 
                 self._context.metrics.on_packet_received(header.packet_type, size)
 
-                if (handler := self._handlers.get(header.packet_type)) is None:
-                    # type 0 is reserved, the others are sent only by clients
-                    raise (
-                        MalformedPacketError
-                        if header.packet_type == PacketType.RESERVED
-                        else ProtocolError
-                    )(f"Unexpected packet type: {header.packet_type.name}")
-
                 try:
-                    await handler(header, reader)
+                    await self._dispatch(decode(header, reader))
                 except ProtocolError:
                     raise
                 except Exception as exc:
@@ -361,6 +331,33 @@ class MQTTProtocol:
             logger.error("mqtt_protocol.read_loop.error", exc_info=exc)
         finally:
             await self._handle_connection_lost(connection)
+
+    async def _dispatch(self, packet: IncomingPacket) -> None:
+        match packet:
+            case PublishResult():
+                await self._incoming.handle_publish(packet)
+            case PubAckResult():
+                await self._outgoing.handle_puback(packet)
+            case PubRecResult():
+                await self._outgoing.handle_pubrec(packet)
+            case PubRelResult():
+                await self._incoming.handle_pubrel(packet)
+            case PubCompResult():
+                await self._outgoing.handle_pubcomp(packet)
+            case SubscribeResult():
+                await self._commands.handle_suback(packet)
+            case UnsubscribeResult():
+                await self._commands.handle_unsuback(packet)
+            case PingRespResult():
+                await self._keep_alive.handle_pingresp(packet)
+            case ConnectionResult():
+                await self._handle_connack(packet)
+            case DisconnectResult():
+                await self._handle_disconnect(packet)
+            case AuthResult():
+                await self._handle_auth(packet)
+            case _:
+                assert_never(packet)
 
     async def _abort(self, connection: MQTTConnection, reason_code: int) -> None:
         await self._context.write(connection, pack_disconnect_packet(reason_code, {}))

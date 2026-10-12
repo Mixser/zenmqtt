@@ -1,26 +1,28 @@
 """Shared helpers of the protocol tests."""
 import asyncio
 import struct
-from typing import Optional
+from typing import Optional, TypeVar
 
 from zenmqtt.connection import MQTTConnection, MQTTConnectionTransport
 from zenmqtt.exceptions import ConnectionLostError
 from zenmqtt.instrumentation.metrics import MetricsCollector
-from zenmqtt.mqtt.connect import (
-    ConnectProperties,
-    DisconnectResult,
-    parse_disconnect_packet,
-)
+from zenmqtt.mqtt.codec import IncomingPacket, decode
+from zenmqtt.mqtt.connect import ConnectProperties, DisconnectResult
 from zenmqtt.mqtt.packet import PacketType, split_packet
 from zenmqtt.mqtt.protocol import MQTTProtocol
 from zenmqtt.mqtt.publish import (
+    PubAckResult,
     PublishResult,
+    PubRecResult,
     pack_publish_packet,
-    parse_publish_packet,
 )
 from zenmqtt.session import InMemorySession
 
 TIMEOUT = 1
+
+_Packet = TypeVar("_Packet", bound=IncomingPacket)
+
+PINGRESP = bytes([PacketType.PINGRESP << 4, 0])
 
 
 class FakeTransport(MQTTConnectionTransport):
@@ -104,9 +106,19 @@ def server_keep_alive(value: int) -> bytes:
     return struct.pack("!BH", 0x13, value)
 
 
-def pack_suback(packet_identifier: int, *reason_codes: int) -> bytes:
+def _pack_command_ack(
+    packet_type: PacketType, packet_identifier: int, reason_codes: tuple[int, ...]
+) -> bytes:
     payload = struct.pack("!HB", packet_identifier, 0) + bytes(reason_codes)
-    return bytes([PacketType.SUBACK << 4, len(payload)]) + payload
+    return bytes([packet_type << 4, len(payload)]) + payload
+
+
+def pack_suback(packet_identifier: int, *reason_codes: int) -> bytes:
+    return _pack_command_ack(PacketType.SUBACK, packet_identifier, reason_codes)
+
+
+def pack_unsuback(packet_identifier: int, *reason_codes: int) -> bytes:
+    return _pack_command_ack(PacketType.UNSUBACK, packet_identifier, reason_codes)
 
 
 def pack_qos0(topic: str, payload: bytes, topic_alias=None) -> bytes:
@@ -193,13 +205,52 @@ async def receive_and_ack(protocol: MQTTProtocol, messages: "Messages"):
     return message
 
 
-async def expect_publish(transport: FakeTransport):
-    return parse_publish_packet(*await expect(transport, PacketType.PUBLISH))
+async def expect_packet(
+    transport: FakeTransport, packet_class: type[_Packet]
+) -> _Packet:
+    """
+    The next sent packet, parsed by decode(). decode() parses packets of the
+    server, it works here for PUBLISH, PUBACK, PUBREC, PUBREL, PUBCOMP and
+    DISCONNECT: they have the same format in both directions.
+    """
+    packet = decode(*await transport.next_packet())
+    assert isinstance(packet, packet_class), packet
+
+    return packet
+
+
+async def _expect_packet_identifier(
+    transport: FakeTransport, packet_type: PacketType
+) -> int:
+    _, reader = await expect(transport, packet_type)
+
+    return reader.read_uint16()
+
+
+async def expect_subscribe(transport: FakeTransport) -> int:
+    """Packet identifier of the next sent SUBSCRIBE."""
+    return await _expect_packet_identifier(transport, PacketType.SUBSCRIBE)
+
+
+async def expect_unsubscribe(transport: FakeTransport) -> int:
+    """Packet identifier of the next sent UNSUBSCRIBE."""
+    return await _expect_packet_identifier(transport, PacketType.UNSUBSCRIBE)
+
+
+async def expect_publish(transport: FakeTransport) -> PublishResult:
+    return await expect_packet(transport, PublishResult)
+
+
+async def expect_puback(transport: FakeTransport) -> PubAckResult:
+    return await expect_packet(transport, PubAckResult)
+
+
+async def expect_pubrec(transport: FakeTransport) -> PubRecResult:
+    return await expect_packet(transport, PubRecResult)
 
 
 async def expect_disconnect(transport: FakeTransport, reason_code: int):
-    fixed_header, reader = await expect(transport, PacketType.DISCONNECT)
-    assert parse_disconnect_packet(fixed_header, reader) == DisconnectResult(
+    assert await expect_packet(transport, DisconnectResult) == DisconnectResult(
         reason_code, {}
     )
 

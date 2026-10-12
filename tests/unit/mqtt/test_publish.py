@@ -351,3 +351,13 @@ def test_pack_and_parse_big_publish(qos):
     )
     assert message.packet_identifier == (9 if qos else None)
     assert message.properties == properties
+
+
+async def test_parse_publish_packet_with_several_subscription_identifiers():
+    # the message matched the subscriptions with identifiers 1 and 2
+    fixed_header, reader = split_packet(b"\x30\x0b\x00\x03a/b\x04\x0b\x01\x0b\x02x")
+
+    message = parse_publish_packet(fixed_header, reader)
+
+    assert message.properties == {"subscription_identifier": [1, 2]}
+    assert message.payload == b"x"
