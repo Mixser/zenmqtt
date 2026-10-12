@@ -1,6 +1,6 @@
 import struct
 from enum import IntEnum
-from typing import Any, Callable, List, Sequence, Tuple, TypedDict, cast
+from typing import Any, Callable, Final, Sequence, Tuple, TypedDict, Union, cast
 
 from zenmqtt.exceptions import MalformedPacketError
 from zenmqtt.mqtt.packet import BytesReader, PacketType
@@ -133,7 +133,8 @@ class Properties(TypedDict, total=False):
     content_type: str
     response_topic: str
     correlation_data: bytes
-    subscription_identifier: int
+    # one in SUBSCRIBE, one or more in PUBLISH (MQTT 5, 3.3.2.3.8)
+    subscription_identifier: Union[int, Sequence[int]]
     session_expiry_interval: int
     assigned_client_identifier: str
     server_keep_alive: int
@@ -231,6 +232,12 @@ _MAP_PROPERTY_PACKERS: dict[Property, Callable[[Any], bytes]] = {
 }
 
 
+# may be in a packet more than once, parsed into a list
+_REPEATABLE_PROPERTIES: Final = frozenset(
+    {Property.USER_PROPERTY, Property.SUBSCRIPTION_IDENTIFIER}
+)
+
+
 def parse_properties(reader: BytesReader) -> Properties:
     """Reads the length of properties and the properties."""
     length = reader.read_variable_byte_integer()
@@ -244,7 +251,6 @@ def parse_properties(reader: BytesReader) -> Properties:
     end = reader.remaining() - length
     # filled by names of the enum, which are the keys of Properties
     properties: dict[str, Any] = {}
-    user_properties: List[Tuple[str, str]] = []
 
     while reader.remaining() > end:
         code = reader.read_variable_byte_integer()
@@ -256,16 +262,13 @@ def parse_properties(reader: BytesReader) -> Properties:
 
         value = _MAP_PROPERTY_PARSER[prop](reader)
 
-        if prop == Property.USER_PROPERTY:
-            user_properties.append(value)
+        if prop in _REPEATABLE_PROPERTIES:
+            properties.setdefault(prop.name.lower(), []).append(value)
         else:
             properties[prop.name.lower()] = value
 
     if reader.remaining() != end:
         raise MalformedPacketError("Properties don't match their length")
-
-    if user_properties:
-        properties["user_property"] = user_properties
 
     return cast(Properties, properties)
 
@@ -284,6 +287,12 @@ def pack_properties(properties: Properties) -> bytes:
                 data.append(code & 0xFF)
                 data += value_packer(value[0])
                 data += value_packer(value[1])
+        elif code == Property.SUBSCRIPTION_IDENTIFIER and not isinstance(
+            prop_value, int
+        ):
+            for identifier in cast(Sequence[int], prop_value):
+                data.append(code & 0xFF)
+                data += value_packer(identifier)
         else:
             data.append(code & 0xFF)
 
