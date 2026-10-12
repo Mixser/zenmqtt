@@ -342,11 +342,12 @@ make bench-codec          # micro-benchmarks of packing and parsing
 ```
 
 The examples, the integration tests and the broker benchmarks need an MQTT 5
-broker. `make broker/up` starts Mosquitto from `docker-compose.yaml` on
-`localhost:1883`, `make broker/down` stops it:
+broker. `make local/infrastructure/up` starts Mosquitto (the `infrastructure`
+profile of `docker-compose.yaml`) on `localhost:1883`,
+`make local/infrastructure/down` stops it:
 
 ```sh
-make broker/up
+make local/infrastructure/up
 ```
 
 ## License

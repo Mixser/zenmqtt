@@ -44,7 +44,7 @@ jobs:
           poetry install
 
       - name: Start Mosquitto
-        run: make broker/up
+        run: make local/infrastructure/up
 
       - name: Run benchmarks
         run: |

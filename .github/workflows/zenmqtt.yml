@@ -82,7 +82,7 @@ jobs:
       - name: Install dependencies
         run: poetry install
       - name: Start Mosquitto
-        run: make broker/up
+        run: make local/infrastructure/up
       - name: Integration tests
         env:
           MQTT_INTEGRATION_URL: tcp://localhost:1883
@@ -178,7 +178,7 @@ jobs:
 
       - name: Start Mosquitto
         working-directory: head
-        run: make broker/up
+        run: make local/infrastructure/up
 
       - name: Compare
         working-directory: head

@@ -1,8 +1,10 @@
-# MQTT 5 broker for the integration tests, the examples and the benchmarks:
-# make broker/up, make broker/down
+# Infrastructure for the integration tests, the examples and the benchmarks:
+# make local/infrastructure/up, make local/infrastructure/down
 services:
+  # MQTT 5 broker
   mqtt-broker:
     image: eclipse-mosquitto:2
+    profiles: [infrastructure]
     command: mosquitto -c /mosquitto-no-auth.conf
     ports:
       - "1883:1883"

@@ -2,7 +2,7 @@
 Integration tests: the client against a real MQTT 5 broker, through the public
 API only. They run when MQTT_INTEGRATION_URL is set, e.g.:
 
-    make broker/up
+    make local/infrastructure/up
     MQTT_INTEGRATION_URL=tcp://localhost:1883 make test/integration
 """
 import os
