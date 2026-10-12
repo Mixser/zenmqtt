@@ -13,16 +13,15 @@ from zenmqtt.exceptions import (
 )
 from zenmqtt.mqtt.connect import ConnectionResult
 from zenmqtt.mqtt.limits import DEFAULT_RECEIVE_MAXIMUM
-from zenmqtt.mqtt.packet import BytesReader, FixedHeader
 from zenmqtt.mqtt.protocol.context import ProtocolContext
 from zenmqtt.mqtt.publish import (
+    PubAckResult,
+    PubCompResult,
     PublishAcknowledgement,
     PublishProperties,
+    PubRecResult,
     pack_publish_packet,
     pack_pubrel_packet,
-    parse_puback_packet,
-    parse_pubcomp_packet,
-    parse_pubrec_packet,
 )
 from zenmqtt.mqtt.reason_codes import FAILURE_REASON_CODE, PACKET_IDENTIFIER_NOT_FOUND
 from zenmqtt.session import (
@@ -251,22 +250,15 @@ class OutgoingFlow:
         self._closed_with = exc
         self._fail_all(exc)
 
-    async def handle_puback(
-        self, fixed_header: FixedHeader, reader: BytesReader
-    ) -> None:
-        puback_result = parse_puback_packet(fixed_header, reader)
-
+    async def handle_puback(self, puback_result: PubAckResult) -> None:
         logger.debug("mqtt_protocol.handle_puback_packet packet:%s", puback_result)
 
         await self._complete(puback_result.packet_identifier, puback_result)
 
-    async def handle_pubrec(
-        self, fixed_header: FixedHeader, reader: BytesReader
-    ) -> None:
+    async def handle_pubrec(self, pubrec_packet: PubRecResult) -> None:
         connection = self._context.connection
         assert connection
 
-        pubrec_packet = parse_pubrec_packet(fixed_header, reader)
         packet_identifier = pubrec_packet.packet_identifier
 
         logger.debug("mqtt_protocol.handle_pubrec_packet packet:%s", pubrec_packet)
@@ -288,11 +280,7 @@ class OutgoingFlow:
             connection, pack_pubrel_packet(packet_identifier, reason_code, {})
         )
 
-    async def handle_pubcomp(
-        self, fixed_header: FixedHeader, reader: BytesReader
-    ) -> None:
-        pubcomp_packet = parse_pubcomp_packet(fixed_header, reader)
-
+    async def handle_pubcomp(self, pubcomp_packet: PubCompResult) -> None:
         logger.debug("mqtt_protocol.handle_pubcomp_packet packet:%s", pubcomp_packet)
 
         await self._complete(pubcomp_packet.packet_identifier, pubcomp_packet)

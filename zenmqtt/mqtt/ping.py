@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from zenmqtt.exceptions import MalformedPacketError
 from zenmqtt.mqtt.packet import BytesReader, FixedHeader, PacketType
 from zenmqtt.mqtt.utils import pack_fixed_header
@@ -10,8 +12,17 @@ def pack_pingreq_packet() -> bytes:
     return pack_fixed_header(PacketType.PINGREQ, 0x00, 0)
 
 
-def parse_pingresp_packet(fixed_header: FixedHeader, reader: BytesReader) -> None:
+@dataclass(frozen=True)
+class PingRespResult:
+    __slots__ = ()
+
+
+def parse_pingresp_packet(
+    fixed_header: FixedHeader, reader: BytesReader
+) -> PingRespResult:
     assert fixed_header.packet_type == PacketType.PINGRESP
 
     if fixed_header.flags != 0x00 or fixed_header.length != 0:
         raise MalformedPacketError(f"Malformed PINGRESP packet: {fixed_header}")
+
+    return PingRespResult()

@@ -24,7 +24,7 @@ flowchart TB
         parts --> context["ProtocolContext"]
     end
 
-    protocol_layer --> codec["Packets<br/>pack_* / parse_*"]
+    protocol_layer --> codec["Packets<br/>pack_* / decode()"]
     protocol_layer --> session[("Session")]
     protocol_layer --> transport["Transport<br/>MQTTConnection, TCP / TLS"]
     protocol_layer -. "on_* hooks" .-> metrics["Instrumentation"]
@@ -146,13 +146,16 @@ is only in the client.
 
 `set_connection()` starts one read loop task per connection. `PacketReader`
 reads the socket in chunks of 64 KiB and returns whole packets; all complete
-packets in the buffer are returned before the next read. Each packet goes to
-a handler from a table by packet type.
+packets in the buffer are returned before the next read. `decode()` in
+`mqtt/codec.py` parses each packet into its result type (`PublishResult`,
+`PubAckResult`, ...), and the read loop passes it to a handler by that type.
+Handlers get parsed packets only, they never read bytes.
 
 ```mermaid
 flowchart LR
     socket["socket"] --> reader["PacketReader<br/>64 KiB reads"]
-    reader --> loop{"read loop<br/>packet type"}
+    reader --> decode["decode()"]
+    decode --> loop{"read loop<br/>result type"}
     loop -->|CONNACK| connack["core: finish connect()"]
     loop -->|PUBLISH, PUBREL| incoming["IncomingFlow"]
     loop -->|PUBACK, PUBREC, PUBCOMP| outgoing["OutgoingFlow"]
