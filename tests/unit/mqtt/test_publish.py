@@ -68,7 +68,7 @@ async def test_parse_publish_packet_from_bytes(input: bytes, expected_result):
             False,
             False,
             {},
-            b"2\x1b\x00\tmitu/test\xDE\xAD\x00Hello, world!",
+            b"2\x1b\x00\tmitu/test\xde\xad\x00Hello, world!",
         ),
         (
             0xDEAD,
@@ -78,7 +78,7 @@ async def test_parse_publish_packet_from_bytes(input: bytes, expected_result):
             False,
             False,
             {},
-            b"2\x1a\x00\tmitu/test\xDE\xAD\x00Hello, MQTT!",
+            b"2\x1a\x00\tmitu/test\xde\xad\x00Hello, MQTT!",
         ),
         (
             0xDEAD,
@@ -88,7 +88,7 @@ async def test_parse_publish_packet_from_bytes(input: bytes, expected_result):
             True,
             False,
             {},
-            b"3\x1a\x00\tmitu/test\xDE\xAD\x00Hello, MQTT!",
+            b"3\x1a\x00\tmitu/test\xde\xad\x00Hello, MQTT!",
         ),
         (
             0xDEAD,
@@ -98,7 +98,7 @@ async def test_parse_publish_packet_from_bytes(input: bytes, expected_result):
             True,
             True,
             {},
-            b";\x1a\x00\tmitu/test\xDE\xAD\x00Hello, MQTT!",
+            b";\x1a\x00\tmitu/test\xde\xad\x00Hello, MQTT!",
         ),
         (
             0xDEAD,
@@ -126,8 +126,8 @@ def test_pack_publish_packet(
 @pytest.mark.parametrize(
     "input, expected_result",
     (
-        (b"@\x04\xDE\xAD\x01\x00", PubAckResult(0xDEAD, 1, {})),
-        (b"@\x04\xBE\xAF\x02\x00", PubAckResult(0xBEAF, 2, {})),
+        (b"@\x04\xde\xad\x01\x00", PubAckResult(0xDEAD, 1, {})),
+        (b"@\x04\xbe\xaf\x02\x00", PubAckResult(0xBEAF, 2, {})),
     ),
 )
 async def test_parse_puback_packet(input, expected_result):
@@ -163,13 +163,13 @@ def test_pack_puback_packet(
 @pytest.mark.parametrize(
     "input, expected_result",
     (
-        (b"\x50\x04\xDE\xAD\x01\x00", PubRecResult(0xDEAD, 0x1, {})),
+        (b"\x50\x04\xde\xad\x01\x00", PubRecResult(0xDEAD, 0x1, {})),
         (
-            b"\x50\x0B\xDE\xAD\x01\x07\x1f\x00\x04text",
+            b"\x50\x0b\xde\xad\x01\x07\x1f\x00\x04text",
             PubRecResult(0xDEAD, 0x1, {"reason_string": "text"}),
         ),
         (
-            b"\x50\x13\xDE\xAD\x02\x0f\x26\x00\x05field\x00\x05value",
+            b"\x50\x13\xde\xad\x02\x0f\x26\x00\x05field\x00\x05value",
             PubRecResult(0xDEAD, 0x2, {"user_property": [("field", "value")]}),
         ),
     ),

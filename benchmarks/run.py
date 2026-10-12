@@ -7,6 +7,7 @@ Benchmarks of the client.
 
 See benchmarks/README.md for the scenarios and options.
 """
+
 import argparse
 import asyncio
 import cProfile

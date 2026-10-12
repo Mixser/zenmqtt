@@ -63,8 +63,7 @@ class MQTTSession(Protocol):
         """Discard the whole session state."""
         ...
 
-    async def acquire_packet_identifier(self) -> PacketIdentifier:
-        ...
+    async def acquire_packet_identifier(self) -> PacketIdentifier: ...
 
     async def release_packet_identifier(
         self, packet_identifier: PacketIdentifier
@@ -246,8 +245,7 @@ class BaseSession(MQTTSession, abc.ABC):
     @abc.abstractmethod
     async def _load_outgoing_message(
         self, packet_identifier: PacketIdentifier
-    ) -> Optional[OutgoingMessage]:
-        ...
+    ) -> Optional[OutgoingMessage]: ...
 
     @abc.abstractmethod
     async def _load_outgoing_messages(self) -> Sequence[OutgoingMessage]:
@@ -260,18 +258,19 @@ class BaseSession(MQTTSession, abc.ABC):
         """Returns False if there was no such message."""
 
     @abc.abstractmethod
-    async def _save_incoming_message(self, packet_identifier: PacketIdentifier) -> None:
-        ...
+    async def _save_incoming_message(
+        self, packet_identifier: PacketIdentifier
+    ) -> None: ...
 
     @abc.abstractmethod
-    async def _has_incoming_message(self, packet_identifier: PacketIdentifier) -> bool:
-        ...
+    async def _has_incoming_message(
+        self, packet_identifier: PacketIdentifier
+    ) -> bool: ...
 
     @abc.abstractmethod
     async def _delete_incoming_message(
         self, packet_identifier: PacketIdentifier
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @abc.abstractmethod
     async def _clear(self) -> None:

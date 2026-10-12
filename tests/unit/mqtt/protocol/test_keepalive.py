@@ -1,4 +1,5 @@
 """PINGREQ/PINGRESP and keep alive."""
+
 import asyncio
 
 import pytest

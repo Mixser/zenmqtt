@@ -1,4 +1,5 @@
 """Outgoing PUBLISH: QoS 1/2 flows, session, flow control."""
+
 import asyncio
 from unittest.mock import AsyncMock
 

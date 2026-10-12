@@ -1,4 +1,5 @@
 """Shared helpers of the protocol tests."""
+
 import asyncio
 import struct
 from typing import Optional, TypeVar

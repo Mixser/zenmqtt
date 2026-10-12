@@ -1,4 +1,5 @@
 """The lifecycle of the client: async with, credentials, client id."""
+
 import asyncio
 
 import pytest

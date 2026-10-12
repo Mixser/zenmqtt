@@ -1,4 +1,5 @@
 """Incoming PUBLISH: QoS 1/2, topic aliases, receive maximum."""
+
 import asyncio
 
 import pytest

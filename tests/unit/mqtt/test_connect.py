@@ -234,7 +234,7 @@ def test_pack_connect_packet_with_invalid_will_qos():
         (b"\x20\x03\x01\x00\x00", ConnectionResult(1, 0, {})),
         (b"\x20\x03\x01\x02\x00", ConnectionResult(1, 2, {})),
         (
-            b"\x20\x0A\x01\x02\x07\x25\x05\x11\x12\x34\x56\x78",
+            b"\x20\x0a\x01\x02\x07\x25\x05\x11\x12\x34\x56\x78",
             ConnectionResult(
                 1, 2, {"retain_available": True, "session_expiry_interval": 305419896}
             ),

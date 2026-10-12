@@ -6,6 +6,7 @@ properties of PUBLISH, so a consumer span continues the trace of the producer.
 Tracing is the base class with no-op methods; the OpenTelemetry implementation
 is zenmqtt.instrumentation.opentelemetry.OpenTelemetryTracing.
 """
+
 from contextlib import AbstractContextManager, nullcontext
 from types import TracebackType
 from typing import Optional

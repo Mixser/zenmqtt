@@ -1,4 +1,5 @@
 """Metrics events of the protocol."""
+
 import asyncio
 import logging
 

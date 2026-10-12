@@ -7,6 +7,7 @@ Micro-benchmarks of packing and parsing of MQTT packets (pytest-benchmark).
 Every parse benchmark checks its result, so the suite is a test of the codec
 too.
 """
+
 import struct
 
 import pytest

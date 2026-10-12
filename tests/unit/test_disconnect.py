@@ -1,4 +1,5 @@
 """Graceful shutdown: disconnect(timeout=...) waits for messages in flight."""
+
 import asyncio
 import logging
 
