@@ -1,11 +1,11 @@
 """Metrics events of the protocol."""
 import asyncio
 import logging
-import struct
 
 import pytest
 
 from tests.unit.mqtt.protocol.helpers import (
+    PINGRESP,
     TIMEOUT,
     FailingMetrics,
     RecordingMetrics,
@@ -14,10 +14,13 @@ from tests.unit.mqtt.protocol.helpers import (
     connect_with_keep_alive,
     expect,
     expect_publish,
+    expect_subscribe,
+    expect_unsubscribe,
     pack_connack,
     pack_publish,
     pack_qos0,
     pack_suback,
+    pack_unsuback,
     receive,
     receive_and_ack,
     receive_maximum,
@@ -141,7 +144,7 @@ async def test_metrics_ping():
 
     task = asyncio.create_task(protocol.ping())
     await expect(transport, PacketType.PINGREQ)
-    transport.feed(b"\xd0\x00")
+    transport.feed(PINGRESP)
     await asyncio.wait_for(task, TIMEOUT)
 
     [(duration,)] = metrics.get("on_ping")
@@ -165,16 +168,13 @@ async def test_metrics_subscribe_and_unsubscribe():
     transport = await connect(protocol)
 
     task = asyncio.create_task(protocol.subscribe([("a/b", 1), ("c/d", 2)]))
-    _, reader = await expect(transport, PacketType.SUBSCRIBE)
-    packet_identifier = reader.read_uint16()
+    packet_identifier = await expect_subscribe(transport)
     transport.feed(pack_suback(packet_identifier, 0x01, 0x80))
     await asyncio.wait_for(task, TIMEOUT)
 
     task = asyncio.create_task(protocol.unsubscribe(["a/b"]))
-    _, reader = await expect(transport, PacketType.UNSUBSCRIBE)
-    packet_identifier = reader.read_uint16()
-    unsuback = struct.pack("!HBB", packet_identifier, 0, 0)
-    transport.feed(bytes([PacketType.UNSUBACK << 4, len(unsuback)]) + unsuback)
+    packet_identifier = await expect_unsubscribe(transport)
+    transport.feed(pack_unsuback(packet_identifier, 0))
     await asyncio.wait_for(task, TIMEOUT)
 
     [(reason_codes, _)] = metrics.get("on_subscribe_completed")
@@ -227,7 +227,7 @@ async def test_metrics_messages_resent():
     transport.feed(pack_puback_packet(publish.packet_identifier, 0, {}))
     ping = asyncio.create_task(protocol.ping())
     await expect(transport, PacketType.PINGREQ)
-    transport.feed(b"\xd0\x00")
+    transport.feed(PINGRESP)
     await asyncio.wait_for(ping, TIMEOUT)
 
     assert [qos for qos, _, _ in metrics.get("on_publish_completed")] == [1]
@@ -271,14 +271,13 @@ async def test_failing_metrics_dont_affect_the_protocol(caplog):
 
         # subscribe and ping
         task = asyncio.create_task(protocol.subscribe([("a/#", 1)], {}))
-        _, reader = await expect(transport, PacketType.SUBSCRIBE)
-        packet_identifier = int.from_bytes(reader.read(2), "big")
+        packet_identifier = await expect_subscribe(transport)
         transport.feed(pack_suback(packet_identifier, 1))
         await asyncio.wait_for(task, TIMEOUT)
 
         ping = asyncio.create_task(protocol.ping())
         await expect(transport, PacketType.PINGREQ)
-        transport.feed(bytes([PacketType.PINGRESP << 4, 0]))
+        transport.feed(PINGRESP)
         await asyncio.wait_for(ping, TIMEOUT)
 
     assert protocol.is_connected

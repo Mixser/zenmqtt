@@ -5,6 +5,7 @@ import logging
 import pytest
 
 from tests.unit.mqtt.protocol.helpers import (
+    PINGRESP,
     RETAIN_AVAILABLE,
     SHARED_SUBSCRIPTION_AVAILABLE,
     SUBSCRIPTION_IDENTIFIER_AVAILABLE,
@@ -16,6 +17,7 @@ from tests.unit.mqtt.protocol.helpers import (
     connect,
     expect,
     expect_publish,
+    expect_subscribe,
     maximum_packet_size,
     maximum_qos,
     pack_suback,
@@ -244,7 +246,7 @@ async def test_resend_discards_messages_which_break_new_limits(caplog):
 
     ping = asyncio.create_task(protocol.ping())
     await expect(transport, PacketType.PINGREQ)
-    transport.feed(b"\xd0\x00")
+    transport.feed(PINGRESP)
     await asyncio.wait_for(ping, TIMEOUT)
 
     assert await session.get_pending_outgoing_messages() == []
@@ -265,7 +267,6 @@ async def test_subscription_objects_are_checked_by_server_limits():
     await assert_nothing_leaked(transport, session)
 
     task = asyncio.create_task(protocol.subscribe([Subscription("a/b", qos=1)]))
-    _, reader = await expect(transport, PacketType.SUBSCRIBE)
-    packet_identifier = reader.read_uint16()
+    packet_identifier = await expect_subscribe(transport)
     transport.feed(pack_suback(packet_identifier, 0x01))
     await asyncio.wait_for(task, TIMEOUT)
