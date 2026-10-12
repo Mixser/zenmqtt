@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791835798252,
+  "lastUpdate": 1791835800359,
   "repoUrl": "https://github.com/Mixser/zenmqtt",
   "entries": {
     "zenmqtt (Python 3.12)": [
@@ -20337,6 +20337,149 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 7.708779492856489e-8",
             "extra": "mean: 609.2930952329273 nsec\nrounds: 141844"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "Mixser.by@gmail.com",
+            "name": "Mike Turchunovich",
+            "username": "Mixser"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b5c75ef8c788b62e75bced2c65ce9dd98a25a018",
+          "message": "Merge pull request #65 from Mixser/MGG-XXX-codec-decode\n\nMGG-XXX Move packet parsing out of the handlers",
+          "timestamp": "2026-10-12T23:08:10+03:00",
+          "tree_id": "917a5b536ebcc3d0c9b50fddb1efe25001524acb",
+          "url": "https://github.com/Mixser/zenmqtt/commit/b5c75ef8c788b62e75bced2c65ce9dd98a25a018"
+        },
+        "date": 1791835799746,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/codec/test_codec.py::test_pack_publish[64B-qos0]",
+            "value": 462542.7975263349,
+            "unit": "iter/sec",
+            "range": "stddev: 3.740360443022329e-7",
+            "extra": "mean: 2.1619621045835546 usec\nrounds: 46813"
+          },
+          {
+            "name": "benchmarks/codec/test_codec.py::test_pack_publish[64B-qos1]",
+            "value": 449053.5105393227,
+            "unit": "iter/sec",
+            "range": "stddev: 3.7590386906480583e-7",
+            "extra": "mean: 2.2269060958881695 usec\nrounds: 92456"
+          },
+          {
+            "name": "benchmarks/codec/test_codec.py::test_pack_publish[16KiB-qos0]",
+            "value": 335478.3517285247,
+            "unit": "iter/sec",
+            "range": "stddev: 5.906577353955172e-7",
+            "extra": "mean: 2.980818269934802 usec\nrounds: 77406"
+          },
+          {
+            "name": "benchmarks/codec/test_codec.py::test_pack_publish[16KiB-qos1]",
+            "value": 330738.05131845496,
+            "unit": "iter/sec",
+            "range": "stddev: 5.911592524043545e-7",
+            "extra": "mean: 3.023540823360353 usec\nrounds: 100151"
+          },
+          {
+            "name": "benchmarks/codec/test_codec.py::test_pack_publish_with_properties",
+            "value": 204098.79583977183,
+            "unit": "iter/sec",
+            "range": "stddev: 5.353262918097285e-7",
+            "extra": "mean: 4.899587946540615 usec\nrounds: 32190"
+          },
+          {
+            "name": "benchmarks/codec/test_codec.py::test_parse_publish[64B-qos0]",
+            "value": 222792.12664430164,
+            "unit": "iter/sec",
+            "range": "stddev: 5.935528367110954e-7",
+            "extra": "mean: 4.488488956329001 usec\nrounds: 28025"
+          },
+          {
+            "name": "benchmarks/codec/test_codec.py::test_parse_publish[64B-qos1]",
+            "value": 212210.6212857398,
+            "unit": "iter/sec",
+            "range": "stddev: 5.958058007245743e-7",
+            "extra": "mean: 4.712299478420114 usec\nrounds: 79949"
+          },
+          {
+            "name": "benchmarks/codec/test_codec.py::test_parse_publish[16KiB-qos0]",
+            "value": 172661.52203316003,
+            "unit": "iter/sec",
+            "range": "stddev: 7.554689088255767e-7",
+            "extra": "mean: 5.7916783555744855 usec\nrounds: 59401"
+          },
+          {
+            "name": "benchmarks/codec/test_codec.py::test_parse_publish[16KiB-qos1]",
+            "value": 165381.13491966104,
+            "unit": "iter/sec",
+            "range": "stddev: 6.886306975659869e-7",
+            "extra": "mean: 6.046638877437749 usec\nrounds: 67880"
+          },
+          {
+            "name": "benchmarks/codec/test_codec.py::test_parse_publish_with_properties",
+            "value": 104740.25218911684,
+            "unit": "iter/sec",
+            "range": "stddev: 8.074357414134603e-7",
+            "extra": "mean: 9.547427842682874 usec\nrounds: 34695"
+          },
+          {
+            "name": "benchmarks/codec/test_codec.py::test_pack_puback",
+            "value": 1052124.5663688832,
+            "unit": "iter/sec",
+            "range": "stddev: 2.4808387295525655e-7",
+            "extra": "mean: 950.4577993566135 nsec\nrounds: 85129"
+          },
+          {
+            "name": "benchmarks/codec/test_codec.py::test_parse_puback",
+            "value": 184342.3874473985,
+            "unit": "iter/sec",
+            "range": "stddev: 6.400309875006832e-7",
+            "extra": "mean: 5.4246883413362905 usec\nrounds: 29789"
+          },
+          {
+            "name": "benchmarks/codec/test_codec.py::test_pack_properties",
+            "value": 306246.48591160856,
+            "unit": "iter/sec",
+            "range": "stddev: 4.7629112483910804e-7",
+            "extra": "mean: 3.265343590876757 usec\nrounds: 40458"
+          },
+          {
+            "name": "benchmarks/codec/test_codec.py::test_parse_properties",
+            "value": 191445.02496393077,
+            "unit": "iter/sec",
+            "range": "stddev: 6.03212935317328e-7",
+            "extra": "mean: 5.223431636253829 usec\nrounds: 54210"
+          },
+          {
+            "name": "benchmarks/codec/test_codec.py::test_pack_subscribe",
+            "value": 128463.99690728915,
+            "unit": "iter/sec",
+            "range": "stddev: 7.871054621422949e-7",
+            "extra": "mean: 7.784282165233324 usec\nrounds: 25882"
+          },
+          {
+            "name": "benchmarks/codec/test_codec.py::test_parse_suback",
+            "value": 223576.13619707184,
+            "unit": "iter/sec",
+            "range": "stddev: 5.751127687035902e-7",
+            "extra": "mean: 4.472749270157112 usec\nrounds: 34599"
+          },
+          {
+            "name": "benchmarks/codec/test_codec.py::test_parse_variable_byte_integer",
+            "value": 1622047.7797099007,
+            "unit": "iter/sec",
+            "range": "stddev: 1.7027340028115377e-7",
+            "extra": "mean: 616.5046507932384 nsec\nrounds: 81513"
           }
         ]
       }
